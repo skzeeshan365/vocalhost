@@ -1,1 +1,3 @@
 # Vocalhost - Seamless Communication Bridge
+
+Vocalhost is an innovative communication bridge that connects your core system with client agents through websockets. It provides a Django-based bridge server and a versatile Python client agent, enabling real-time, secure, and efficient communication across various platforms. Whether you are using Linux, Windows, macOS, Android, or iOS, Vocalhost seamlessly integrates into your applications and enhances data processing capabilities. Unlock the potential of Vocalhost and experience seamless cross-platform communication in your projects.
