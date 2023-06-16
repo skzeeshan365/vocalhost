@@ -1,7 +1,6 @@
 import asyncio
 import json
 import time
-import uuid
 from urllib.parse import parse_qs
 
 from channels.generic.websocket import AsyncWebsocketConsumer
@@ -48,7 +47,9 @@ class MyWebSocketConsumer(AsyncWebsocketConsumer):
         request_id = data.get('request_id')
 
         # Create a tuple with None as the request ID and the response data
-        response_tuple = (request_id, json.dumps(data['data']))
+        data['data'].pop('request_id', None)
+        data = json.dumps(data['data'])
+        response_tuple = (request_id, data)
 
         # Put the response tuple into the response queue
         await self.connected_clients[self.client_id]['response_queue'].put(response_tuple)

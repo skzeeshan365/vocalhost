@@ -1,8 +1,5 @@
-cloudinary==1.33.0
 Django==4.2.2
-Pillow==9.5.0
 python-dotenv==1.0.0
-Requests==2.31.0
-sendgrid==6.10.0
-google~=3.0.0
-djangorestframework~=3.14.0
+asgiref~=3.7.2
+channels~=4.0.0
+daphne==4.0.0

@@ -20,3 +20,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+# Command to run daphne daphne ReiserX_Tunnel.asgi:application
