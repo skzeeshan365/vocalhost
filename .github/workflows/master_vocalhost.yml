@@ -60,5 +60,5 @@ jobs:
           
       - name: Start Daphne server
         run: |
-          source venv/bin/activate
+          source antenv/bin/activate
           daphne -b 0.0.0.0 -p 8000 ReiserX_Tunnel.asgi:application
