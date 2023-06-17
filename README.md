@@ -1,5 +1,4 @@
-# Vocalhost
-Communication Bridge
+# Vocalhost - Communication Bridge
 
 Vocalhost is a communication solution that enables direct and reliable connections between systems. It comprises a bridge server and a client agent, facilitating seamless interaction and efficient data exchange.
 
