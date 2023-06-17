@@ -4,4 +4,4 @@ Vocalhost is a communication solution that enables direct and reliable connectio
 
 The bridge server acts as a central hub, relaying real-time messages between connected systems over WebSocket connections. The client agent establishes a WebSocket connection with the bridge server, facilitating communication across various platforms.
 
-Vocalhost simplifies system-to-system interaction, providing compatibility and ease of use across different languages, frameworks, and systems. This promotes streamlined data exchange and collaboration.
+Vocalhost simplifies system-to-system interaction, providing compatibility and ease of use across different languages, frameworks, and systems. This promotes streamlined data exchange.
