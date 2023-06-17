@@ -28,7 +28,7 @@ SECRET_KEY = os.getenv('SECRET_KEY')
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['https://vocalhost.azurewebsites.net/', 'vocalhost.azurewebsites.net', '20.43.132.137']
+ALLOWED_HOSTS = ['20.204.65.46']
 
 
 # Application definition
