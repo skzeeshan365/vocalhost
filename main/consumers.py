@@ -73,7 +73,7 @@ class MyWebSocketConsumer(AsyncWebsocketConsumer):
             client_data['status'] = 'busy'
 
             # Send the modified data to the specified client
-            await client_websocket.send(data)
+            await client_websocket.send(data.decode('utf-8'))
 
             return cls.connected_clients[client_id]['request_id']
 

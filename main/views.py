@@ -3,29 +3,39 @@ import uuid
 
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render
 
 # Create your views here.
+from django.views.decorators.csrf import csrf_exempt
+
 from main.consumers import MyWebSocketConsumer
 
 
-async def my_api_view(request):
-    client_id = request.GET.get('CLIENT_ID')
-    data = '{"message": "Hello from the main server", "test": "test"}'
+def home(request):
+    return HttpResponse('Welcome to Vocalhost')
 
-    if MyWebSocketConsumer.get_clients(client_id=client_id):
 
-        # Forward the data to the selected client
-        request_id = await MyWebSocketConsumer.forward_to_client(client_id=client_id, data=data)
+@csrf_exempt
+def connect(request, client_id):
+    if request.method == 'POST':
+        data = request.body
 
-        # Wait for the client response
-        client_response = await MyWebSocketConsumer.get_client_response(client_id, request_id=request_id)
+        if MyWebSocketConsumer.get_clients(client_id=client_id):
+            # Forward the data to the selected client
+            forward_to_client_sync = async_to_sync(MyWebSocketConsumer.forward_to_client)
+            request_id = forward_to_client_sync(client_id=client_id, data=data)
 
-        # Return the client response as the API response
-        if client_response is not None:
-            return HttpResponse(client_response)
+            # Wait for the client response
+            get_client_response_sync = async_to_sync(MyWebSocketConsumer.get_client_response)
+            client_response = get_client_response_sync(client_id, request_id=request_id)
+
+            # Return the client response as the API response
+            if client_response is not None:
+                return HttpResponse(client_response, content_type='text/plain')
+            else:
+                return HttpResponse(client_response, content_type='text/plain')
         else:
-            return HttpResponse(client_response)
+            return HttpResponse('Client not found', content_type='text/plain')
     else:
-        return HttpResponse('No idle clients available')
+        return HttpResponse('Invalid request')

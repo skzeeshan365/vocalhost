@@ -20,6 +20,6 @@ from django.urls import path, include, re_path
 from main import routing
 
 urlpatterns = [
+    path('', include('main.urls')),
     path("admin/", admin.site.urls),
-    path('main/', include('main.urls')),
 ]
