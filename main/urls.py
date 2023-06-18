@@ -1,7 +1,6 @@
-from django.contrib import admin
-from django.urls import path, include, re_path
+from django.urls import path
 
-from main import routing, views
+from main import views
 
 urlpatterns = {
     path('', views.home, name='home'),

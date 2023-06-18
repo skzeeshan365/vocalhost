@@ -1,11 +1,5 @@
-import asyncio
-import uuid
-
 from asgiref.sync import async_to_sync
-from channels.layers import get_channel_layer
-from django.http import HttpResponse, JsonResponse
-from django.shortcuts import render
-
+from django.http import HttpResponse
 # Create your views here.
 from django.views.decorators.csrf import csrf_exempt
 

@@ -1,5 +1,4 @@
 import asyncio
-import json
 import time
 import uuid
 from urllib.parse import parse_qs
