@@ -111,10 +111,14 @@ class MyWebSocketConsumer(AsyncWebsocketConsumer):
         return None
 
     @classmethod
-    def get_clients(cls, client_id):
+    def get_client(cls, client_id):
         if client_id in cls.connected_clients:
             return True
         return False
+
+    @classmethod
+    def get_connected_clients(cls):
+        return list(cls.connected_clients.keys())
 
     @classmethod
     def get_busy_clients(cls):

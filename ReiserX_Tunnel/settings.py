@@ -24,12 +24,12 @@ load_dotenv('.env')
 
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = os.getenv('SECRET_KEY')
+CONNECT_KEY = os.getenv('CONNECT_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = False
+DEBUG = True
 
 ALLOWED_HOSTS = ['20.204.65.46', 'vocalhost.reiserx.com', '127.0.0.1']
-
 
 # Application definition
 
@@ -74,6 +74,9 @@ TEMPLATES = [
 ]
 
 ASGI_APPLICATION = 'ReiserX_Tunnel.asgi.application'
+
+# Add the websocket_handshake_timeout setting
+CHANNELS_WS_HANDSHAKE_TIMEOUT = 120  # Set the timeout to 2 minutes (adjust as needed)
 
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
