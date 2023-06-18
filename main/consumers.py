@@ -1,9 +1,16 @@
 import asyncio
 import json
 import time
+import uuid
 from urllib.parse import parse_qs
 
 from channels.generic.websocket import AsyncWebsocketConsumer
+
+
+def generate_unique_id():
+    # Generate a unique ID using UUID version 4
+    unique_id = str(uuid.uuid4())
+    return unique_id
 
 
 class MyWebSocketConsumer(AsyncWebsocketConsumer):
@@ -27,6 +34,7 @@ class MyWebSocketConsumer(AsyncWebsocketConsumer):
             'status': 'idle',
             'response_queue': asyncio.Queue(),
             'request_queue': asyncio.Queue(),
+            'request_id': generate_unique_id()
         }
 
         # Set the client ID as an attribute of the WebSocket instance
@@ -40,22 +48,13 @@ class MyWebSocketConsumer(AsyncWebsocketConsumer):
 
     async def receive(self, text_data=None, bytes_data=None):
         # Process the received message from the client
-        # Handle the request and send a response back, if required
-        data = json.loads(text_data)
-
-        # Access the data fields as needed
-        request_id = data.get('request_id')
-
-        # Create a tuple with None as the request ID and the response data
-        data['data'].pop('request_id', None)
-        data = json.dumps(data['data'])
-        response_tuple = (request_id, data)
+        response_tuple = (self.connected_clients[self.client_id]['request_id'], text_data)
 
         # Put the response tuple into the response queue
         await self.connected_clients[self.client_id]['response_queue'].put(response_tuple)
 
     @classmethod
-    async def forward_to_client(cls, client_id, request_id, data):
+    async def forward_to_client(cls, client_id, data):
         client_data = cls.connected_clients.get(client_id)
 
         if client_data is None:
@@ -68,23 +67,15 @@ class MyWebSocketConsumer(AsyncWebsocketConsumer):
 
         if client_status == 'busy':
             # Client is busy, queue the request
-            await client_queue.put((request_id, data))
+            await client_queue.put((cls.connected_clients[client_id]['request_id'], data))
         else:
             # Client is idle, send the request immediately
             client_data['status'] = 'busy'
 
-            # Convert the data string to a dictionary
-            data_dict = json.loads(data)
-
-            # Create a new dictionary with the client ID and request ID included
-            data_with_client_id = data_dict.copy()
-            data_with_client_id['request_id'] = request_id
-
-            # Convert the dictionary back to a string
-            data_with_client_id_str = json.dumps(data_with_client_id)
-
             # Send the modified data to the specified client
-            await client_websocket.send(data_with_client_id_str)
+            await client_websocket.send(data)
+
+            return cls.connected_clients[client_id]['request_id']
 
     @classmethod
     async def get_client_response(cls, client_id, request_id, timeout=120):
