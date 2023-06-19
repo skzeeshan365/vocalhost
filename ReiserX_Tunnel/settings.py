@@ -75,9 +75,6 @@ TEMPLATES = [
 
 ASGI_APPLICATION = 'ReiserX_Tunnel.asgi.application'
 
-# Add the websocket_handshake_timeout setting
-CHANNELS_WS_HANDSHAKE_TIMEOUT = 120  # Set the timeout to 2 minutes (adjust as needed)
-
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
 
