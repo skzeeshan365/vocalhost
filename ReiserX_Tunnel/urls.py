@@ -21,5 +21,5 @@ from main import routing
 
 urlpatterns = [
     path('', include('main.urls')),
-    path("admin/", admin.site.urls),
+    path('admin/', admin.site.urls),
 ]
