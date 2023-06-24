@@ -1,5 +1,4 @@
 import asyncio
-import time
 import uuid
 from urllib.parse import parse_qs
 
@@ -33,14 +32,11 @@ class MyWebSocketConsumer(AsyncWebsocketConsumer):
 
         client_id = query_params.get('client_id', [''])[0]
 
-        print(client_id)
-
         # Add the WebSocket instance to the dictionary of connected clients
         self.connected_clients[client_id] = {
             'websocket': self,
             'status': 'idle',
-            'response_queue': asyncio.Queue(),
-            'request_queue': asyncio.Queue(),
+            'response_queue': asyncio.Queue()
         }
 
         # Set the client ID as an attribute of the WebSocket instance
@@ -49,7 +45,6 @@ class MyWebSocketConsumer(AsyncWebsocketConsumer):
     async def disconnect(self, close_code):
         # Perform any necessary cleanup or handling of disconnections
         # Remove the WebSocket instance from the set of connected clients
-        print(id(self.connected_clients))
         if self.client_id in self.connected_clients:
             del self.connected_clients[self.client_id]
         raise StopConsumer()
@@ -76,17 +71,6 @@ class MyWebSocketConsumer(AsyncWebsocketConsumer):
         await client_websocket.send(data.decode('utf-8'))
 
         return
-
-    async def get_client_response(self, client_id, timeout):
-        try:
-            response_queue = self.connected_clients[client_id]['response_queue']
-            self.connected_clients[client_id]['status'] = 'idle'
-            response = await asyncio.wait_for(response_queue.get(), timeout=timeout)
-            return response
-        except asyncio.TimeoutError:
-            return None
-        except Exception as e:
-                return e
 
     @classmethod
     def get_client(cls, client_id):
