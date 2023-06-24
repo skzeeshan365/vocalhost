@@ -1,0 +1,319 @@
+{% load static %}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1.0, shrink-to-fit=no">
+    <link href="assets/images/favicon.png" rel="icon"/>
+    <title>Documentation | Your ThemeForest item Name</title>
+    <meta name="description" content="Your ThemeForest item Name and description">
+    <meta name="author" content="harnishdesign.net">
+
+    <!-- Stylesheet
+    ============================== -->
+    <!-- Bootstrap -->
+    <link rel="stylesheet" type="text/css" href="{% static '/docs/vendor/bootstrap/css/bootstrap.min.css' %}"/>
+    <!-- Font Awesome Icon -->
+    <link rel="stylesheet" type="text/css" href="{% static '/docs/vendor/font-awesome/css/all.min.css' %}"/>
+    <!-- Magnific Popup -->
+    <link rel="stylesheet" type="text/css" href="{% static '/docs/vendor/magnific-popup/magnific-popup.min.css' %}"/>
+    <!-- Highlight Syntax -->
+    <link rel="stylesheet" type="text/css" href="{% static '/docs/vendor/highlight.js/styles/github.css' %}"/>
+    <!-- Custom Stylesheet -->
+    <link rel="stylesheet" type="text/css" href="{% static '/docs/css/stylesheet.css' %}"/>
+</head>
+
+<body data-spy="scroll" data-target=".idocs-navigation" data-offset="125">
+
+<!-- Preloader -->
+<div class="preloader">
+    <div class="lds-ellipsis">
+        <div></div>
+        <div></div>
+        <div></div>
+        <div></div>
+    </div>
+</div>
+<!-- Preloader End -->
+
+<!-- Document Wrapper -->
+<div id="main-wrapper">
+
+    <!-- Header -->
+    <header id="header" class="sticky-top">
+        <!-- Navbar -->
+        <nav class="primary-menu navbar navbar-expand-lg navbar-dropdown-dark">
+            <div class="container-fluid">
+                <!-- Sidebar Toggler -->
+                <button id="sidebarCollapse" class="navbar-toggler d-block d-md-none" type="button">
+                    <span></span><span class="w-75"></span><span class="w-50"></span>
+                </button>
+
+                <span class="text-2 ml-2">Vocalhost</span>
+                <!-- Logo End -->
+
+                <!-- Navbar Toggler -->
+                <button class="navbar-toggler ml-auto" type="button" data-toggle="collapse" data-target="#header-nav">
+                    <span></span><span></span><span></span>
+                </button>
+
+                <div id="header-nav" class="collapse navbar-collapse justify-content-end">
+                    <ul class="navbar-nav">
+                        <li><a target="_blank"
+                               href="https://reiserx.com/contact/">Support</a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </nav>
+        <!-- Navbar End -->
+    </header>
+    <!-- Header End -->
+
+    <!-- Content -->
+    <div id="content" role="main">
+
+        <!-- Sidebar Navigation -->
+        <div class="idocs-navigation bg-light">
+            <ul class="nav flex-column ">
+                <li class="nav-item">
+                    <a class="nav-link" href="#content">Vocalhost</a>
+                    <ul class="nav flex-column">
+                        <li class="nav-item"><a class="nav-link" href="#main">About</a></li>
+                    </ul>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="#content">Getting Started</a>
+                    <ul class="nav flex-column">
+                        <li class="nav-item"><a class="nav-link" href="#content">Installation</a></li>
+                        <li class="nav-item"><a class="nav-link" href="#vocalhostreceiver">Vocalhost Receiver</a>
+                        </li>
+                        <li class="nav-item"><a class="nav-link" href="#vocalhostrequest">Vocalhost Request</a></li>
+                    </ul>
+                </li>
+            </ul>
+        </div>
+
+        <!-- Docs Content -->
+        <div class="idocs-content">
+            <div class="container">
+
+                <section id="main">
+                    <h1>Vocalhost</h1>
+                    <p>
+                        Vocalhost is a communication solution that enables direct and reliable connections between
+                        systems using WebSocket protocol. It comprises a bridge server and a client agent, offering
+                        support for a wide range of languages, frameworks, and systems. This versatility allows for
+                        seamless interaction and efficient data exchange across diverse environments.
+                    </p>
+
+                    <p>
+                        The bridge server acts as a central hub, relaying real-time messages between connected systems
+                        over WebSocket connections. The client agent establishes a WebSocket connection with the bridge
+                        server, facilitating communication across various platforms.
+                    </p>
+
+                    <p>
+                        Vocalhost simplifies system-to-system interaction, providing compatibility and ease of use
+                        across different languages, frameworks, and systems. This promotes streamlined data exchange.
+                    </p>
+                </section>
+                <section id="content">
+                    <h1>Getting Started</h1>
+
+                    <p>Vocalhost is a communication solution that enables direct and reliable connections between
+                        systems using the WebSocket protocol. It consists of a bridge server and two client agents:
+                        VocalhostReceiver and VocalhostRequest.</p>
+
+                    <ol>
+                        <li>Install the Vocalhost library: You can download the Vocalhost library from the official
+                            GitHub repository.
+                        </li>
+                        <li>Import the necessary modules:</li>
+                    </ol>
+                </section>
+
+                <section id="vocalhostreceiver">
+                    <h2>VocalhostReceiver</h2>
+
+                    <p>The <code>VocalhostReceiver</code> client establishes a WebSocket connection with the bridge
+                        server and keeps the connection open to receive incoming messages. It processes the received
+                        messages and generates a response.</p>
+
+                    <h3>Usage</h3>
+
+                    <pre><code class="language-python">
+      from vocalhost import Client
+    </code></pre>
+
+                    <ol start="3">
+                        <li>Define a function to process the received messages and generate a response:</li>
+                    </ol>
+
+                    <pre><code class="language-python">
+      def process_message(message):
+          # Process the received message and generate a response
+          # Implement your custom logic here
+          print("Received message from VocalhostRequest:", message)
+
+          # Generate the response
+          response = "This is the response from the VocalhostReceiver"
+          return response
+    </code></pre>
+
+                    <ol start="4">
+                        <li>Create an instance of the <code>VocalhostReceiver</code> client and provide the <code>process_message</code>
+                            function as an argument:
+                        </li>
+                    </ol>
+
+                    <pre><code class="language-python">
+      receiver = Client(process_message=process_message)
+    </code></pre>
+
+                    <ol start="5">
+                        <li>Connect to the Vocalhost bridge server:</li>
+                    </ol>
+
+                    <pre><code class="language-python">
+      receiver.connect()
+    </code></pre>
+
+                    <p>The <code>VocalhostReceiver</code> client will establish a WebSocket connection with the bridge
+                        server and start listening for incoming messages. When a message is received, the <code>process_message</code>
+                        function will be invoked to process the message and generate a response.</p>
+                </section>
+
+                <section id="vocalhostrequest">
+                    <h2>VocalhostRequest</h2>
+
+                    <p>The <code>VocalhostRequest</code> client is used to send HTTP POST requests to the Vocalhost
+                        bridge server, which will forward the requests to the <code>VocalhostReceiver</code> client. The
+                        <code>VocalhostReceiver</code> client will process the request, generate a response, and send it
+                        back to the bridge server. The bridge server will then respond to the
+                        <code>VocalhostRequest</code> client with the received response.</p>
+
+                    <h3>Usage</h3>
+
+                    <ol>
+                        <li>Install the necessary libraries: Make sure you have the <code>requests</code> library
+                            installed in your Python environment.
+                        </li>
+                        <li>Import the <code>requests</code> module:</li>
+                    </ol>
+
+                    <pre><code class="language-python">
+      import requests
+    </code></pre>
+
+                    <ol start="3">
+                        <li>Specify the URL of the Vocalhost bridge server and the client ID to connect to:</li>
+                    </ol>
+
+                    <pre><code class="language-python">
+      url = 'https://vocalhost.reiserx.com/receiver_id/'
+    </code></pre>
+
+                    <ol start="4">
+                        <li>Set the required headers, such as timeout and authorization:</li>
+                    </ol>
+
+                    <pre><code class="language-python">
+      headers = {
+          'Timeout': '100',
+          'Authorization': 'API_KEY'
+      }
+    </code></pre>
+
+                    <ol start="5">
+                        <li>Prepare the data for the HTTP POST request:</li>
+                    </ol>
+
+                    <pre><code class="language-python">
+      data = {
+          'message': 'How about a game of chess?',
+      }
+    </code></pre>
+
+                    <ol start="6">
+                        <li>Send the HTTP POST request to the Vocalhost bridge server:</li>
+                    </ol>
+
+                    <pre><code class="language-python">
+      response = requests.post(url, headers=headers, json=data)
+    </code></pre>
+
+                    <ol start="7">
+                        <li>Process the response received from the bridge server:</li>
+                    </ol>
+
+                    <pre><code class="language-python">
+      print(response.text)
+    </code></pre>
+
+                    <p>The <code>VocalhostRequest</code> client sends an HTTP POST request to the Vocalhost bridge
+                        server, specifying the URL of the <code>VocalhostReceiver</code> client to connect to. The
+                        bridge server will forward the request to the <code>VocalhostReceiver</code> client, which will
+                        process the request and generate a response. The response will be sent back to the bridge
+                        server, and the bridge server will respond to the <code>VocalhostRequest</code> client with the
+                        received response.</p>
+
+                    <p>Please note that you need to replace the example URLs and headers with the actual values
+                        according to your setup.</p>
+
+                    <p>With Vocalhost, you can streamline system communication by establishing WebSocket connections
+                        between systems, enabling real-time message exchange and seamless interaction across different
+                        languages, frameworks, and systems.</p>
+                </section>
+
+                <!-- Changelog -->
+                <section id="idocs_changelog">
+                    <h2>Changelog</h2>
+                    <p class="text-4">See what's new added, changed, fixed, improved or updated in the latest
+                        versions.</p>
+                    <p class="alert alert-info mb-5">For Future Updates Checkout <a target="_blank" href="https://github.com/skzeeshan365/vocalhost">Github</a></p>
+
+                    <h3 id="v1-1">Version 1.1</h3>
+                    <ul class="changelog">
+                        <li><span class="badge badge-success">Added</span> Clients Connected, available, busy</li>
+                        <li><span class="badge badge-danger">Fixed</span> Fixed websocket connection timeout</li>
+                        <li><span class="badge badge-danger">Fixed</span> Fixed client response timeout</li>
+                        <li><span class="badge badge-info">Updated</span> Websocket connection</li>
+                        <li><span class="badge badge-info">Updated</span> Receiver</li>
+                    </ul>
+
+                    <hr class="divider">
+
+                    <h3 id="v1-0">Version 1.0</h3>
+                    <p>Initial Release</p>
+                </section>
+
+            </div>
+        </div>
+
+    </div>
+    <!-- Content end -->
+
+</div>
+
+<!-- Document Wrapper end -->
+
+<!-- Back To Top -->
+<a id="back-to-top" data-toggle="tooltip" title="Back to Top" href="javascript:void(0)"><i class="fa fa-chevron-up"></i></a>
+
+<!-- JavaScript
+============================ -->
+<script src="{% static '/docs/vendor/jquery/jquery.min.js' %}"></script>
+<script src="{% static '/docs/vendor/bootstrap/js/bootstrap.bundle.min.js' %}"></script>
+<!-- Highlight JS -->
+<script src="{% static '/docs/vendor/highlight.js/highlight.min.js' %}"></script>
+<!-- Easing -->
+<script src="{% static '/docs/vendor/jquery.easing/jquery.easing.min.js' %}"></script>
+<!-- Magnific Popup -->
+<script src="{% static '/docs/vendor/magnific-popup/jquery.magnific-popup.min.js' %}"></script>
+<!-- Custom Script -->
+<script src="{% static '/docs/js/theme.js' %}"></script>
+</body>
+</html>

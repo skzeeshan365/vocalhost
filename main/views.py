@@ -4,6 +4,7 @@ from json import JSONDecodeError
 from django.core.signals import request_finished
 from django.dispatch import receiver
 from django.http import HttpResponse
+from django.shortcuts import render
 
 from ReiserX_Tunnel import settings
 from main.consumers import MyWebSocketConsumer
@@ -13,7 +14,11 @@ from main.consumers import MyWebSocketConsumer
 
 
 def home(request):
-    return HttpResponse('Welcome to Vocalhost')
+    return render(request, 'index.html')
+
+
+def docs(request):
+    return render(request, 'main.html')
 
 
 cancel_event = asyncio.Event()
