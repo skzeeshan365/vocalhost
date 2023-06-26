@@ -35,7 +35,6 @@ ALLOWED_HOSTS = ['20.204.65.46', 'vocalhost.reiserx.com', '127.0.0.1']
 # Application definition
 
 INSTALLED_APPS = [
-    "daphne",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
