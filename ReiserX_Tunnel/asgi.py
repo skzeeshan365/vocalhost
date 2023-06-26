@@ -7,6 +7,5 @@ os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'ReiserX_Tunnel.settings')
 
 application = ProtocolTypeRouter({
     'http': get_asgi_application(),
-    'websocket':
-        URLRouter(websocket_urlpatterns),
+    'websocket': URLRouter(websocket_urlpatterns),
 })
