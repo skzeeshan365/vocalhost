@@ -84,8 +84,6 @@ DATABASES = {
     }
 }
 
-CHANNELS_AUTH_BACKEND = 'ReiserX_Tunnel.AuthBackend.CustomAuthBackend'
-
 # Password validation
 # https://docs.djangoproject.com/en/4.2/ref/settings/#auth-password-validators
 
