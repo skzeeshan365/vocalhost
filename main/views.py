@@ -8,8 +8,6 @@ from django.shortcuts import render
 
 from ReiserX_Tunnel import settings
 from main.consumers import MyWebSocketConsumer
-
-
 # Create your views here.
 from main.forms import RegistrationForm
 
