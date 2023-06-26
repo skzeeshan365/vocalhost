@@ -11,6 +11,7 @@ from main.consumers import MyWebSocketConsumer
 
 
 # Create your views here.
+from main.forms import RegistrationForm
 
 
 def home(request):
@@ -108,3 +109,20 @@ def busy_clients(request):
     if not clients:
         return HttpResponse('No available clients')
     return HttpResponse(clients)
+
+
+def register(request):
+    if request.method == 'POST':
+        form = RegistrationForm(request.POST)
+        if form.is_valid():
+            # Create a new User instance
+            if form.email_exists():
+                form.add_error('email', 'This email is already taken.')
+            else:
+                # Create a new User instance
+                user = form.save()
+                return HttpResponse('Registration successful.')
+    else:
+        form = RegistrationForm()
+
+    return render(request, 'registration/register.html', {'form': form})

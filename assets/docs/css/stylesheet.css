@@ -646,7 +646,7 @@ hr {
   overflow: hidden;
   overflow-y: auto;
   width: 260px;
-  height: calc(100% - 70px);
+  height: calc(100% - 100px);
   z-index: 1;
   border-right: 1px solid rgba(0, 0, 0, 0.05);
   transition: all 0.3s;

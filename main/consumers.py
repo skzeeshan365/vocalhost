@@ -2,8 +2,12 @@ import asyncio
 import uuid
 from urllib.parse import parse_qs
 
+from channels.db import database_sync_to_async
 from channels.exceptions import StopConsumer
 from channels.generic.websocket import AsyncWebsocketConsumer
+
+from ReiserX_Tunnel.AuthBackend import CustomAuthBackend
+from main.models import UserProfile
 
 
 class ClientBusyException(Exception):
@@ -22,15 +26,30 @@ class MyWebSocketConsumer(AsyncWebsocketConsumer):
     connected_clients = {}
     client_responses = {}
     event_loop = None
+    client_id = None
+    user = None
+
+    @database_sync_to_async
+    def authenticate(self, api_key, client, client_id):
+        # Call your custom authentication backend's authenticate method
+        return CustomAuthBackend().authenticate(request=None, api_key=api_key, client=client, client_id=client_id)
 
     async def connect(self):
-        # Perform any necessary initialization or authentication
         await self.accept()
 
         query_string = self.scope['query_string'].decode('utf-8')
         query_params = parse_qs(query_string)
 
         client_id = query_params.get('client_id', [''])[0]
+
+        api_key = query_params.get('api_key', [''])[0]
+
+        # Authenticate the user based on the provided client_id and api_key
+        self.user = await self.authenticate(api_key=api_key, client_id=client_id, client=self)
+
+        if self.user is None:
+            await self.close(3000)
+            return
 
         # Add the WebSocket instance to the dictionary of connected clients
         self.connected_clients[client_id] = {
@@ -47,7 +66,22 @@ class MyWebSocketConsumer(AsyncWebsocketConsumer):
         # Remove the WebSocket instance from the set of connected clients
         if self.client_id in self.connected_clients:
             del self.connected_clients[self.client_id]
+
+        # Remove the client ID from the UserProfile's connected clients
+        if self.user is not None:
+            await database_sync_to_async(self.remove_client_id_from_user_profile)(self.user, self.client_id)
+
         raise StopConsumer()
+
+    @staticmethod
+    @database_sync_to_async
+    def remove_client_id_from_user_profile(user, client_id):
+        try:
+            user_profile = UserProfile.objects.get(user=user)
+            user_profile.connected_clients.remove(client_id)
+            user_profile.save()
+        except UserProfile.DoesNotExist:
+            pass
 
     async def receive(self, text_data=None, bytes_data=None):
         # Process the received message from the client

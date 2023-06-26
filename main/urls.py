@@ -9,4 +9,5 @@ urlpatterns = [
     path('clients/idle/', views.idle_clients, name='idle_clients'),
     path('clients/busy/', views.busy_clients, name='busy_clients'),
     path('docs/', views.docs, name='vocalhost_docs'),
+    path('register/', views.register, name='register'),
 ]
