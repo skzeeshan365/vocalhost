@@ -7,7 +7,7 @@ from channels.exceptions import StopConsumer
 from channels.generic.websocket import AsyncWebsocketConsumer
 
 from ReiserX_Tunnel.AuthBackend import CustomAuthBackend
-from main.models import UserProfile
+from main.models import UserProfile, Client
 
 
 class ClientBusyException(Exception):
@@ -69,7 +69,7 @@ class MyWebSocketConsumer(AsyncWebsocketConsumer):
 
         # Remove the client ID from the UserProfile's connected clients
         if self.user is not None:
-            await database_sync_to_async(self.remove_client_id_from_user_profile)(self.user, self.client_id)
+            await self.remove_client_id_from_user_profile(self.user, self.client_id)
 
         raise StopConsumer()
 
@@ -78,8 +78,10 @@ class MyWebSocketConsumer(AsyncWebsocketConsumer):
     def remove_client_id_from_user_profile(user, client_id):
         try:
             user_profile = UserProfile.objects.get(user=user)
-            user_profile.connected_clients.remove(client_id)
-            user_profile.save()
+            client_instance = Client.objects.get(client_id=client_id)
+            if client_instance in user_profile.connected_clients.all():
+                client_instance.delete()
+                user_profile.save()
         except UserProfile.DoesNotExist:
             pass
 

@@ -78,20 +78,10 @@ ASGI_APPLICATION = 'ReiserX_Tunnel.asgi.application'
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
 
-NAME = os.getenv('DB_NAME')
-HOST = os.getenv('DB_HOST')
-USER = os.getenv('DB_USER')
-PASSWORD = os.getenv('DB_PASSWORD')
-PORT = os.getenv('DB_PORT')
-
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.mysql',
-        'NAME': NAME,
-        'HOST': HOST,
-        'USER': USER,
-        'PASSWORD': PASSWORD,
-        'PORT': PORT,
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': os.path.join(BASE_DIR, 'db.sqlite3'),
     }
 }
 
