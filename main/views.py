@@ -1,15 +1,17 @@
 import asyncio
 from json import JSONDecodeError
 
+from django.contrib import auth
+from django.contrib.auth import authenticate, login
 from django.core.signals import request_finished
 from django.dispatch import receiver
-from django.http import HttpResponse
-from django.shortcuts import render
+from django.http import HttpResponse, JsonResponse
+from django.shortcuts import render, redirect
 
 from ReiserX_Tunnel import settings
 from main.consumers import MyWebSocketConsumer
 # Create your views here.
-from main.forms import RegistrationForm
+from main.forms import RegistrationForm, LoginForm
 
 
 def home(request):
@@ -119,8 +121,63 @@ def register(request):
             else:
                 # Create a new User instance
                 user = form.save()
-                return HttpResponse('Registration successful.')
+
+                user = authenticate(username=user.username, password=form.cleaned_data['password1'])
+                login(request, user)
+
+                return redirect('profile')
     else:
         form = RegistrationForm()
 
     return render(request, 'registration/register.html', {'form': form})
+
+
+
+def login_view(request):
+    if request.method == 'POST':
+        form = LoginForm(request.POST)
+        if form.is_valid():
+            username_or_email = form.cleaned_data['username_or_email']
+            password = form.cleaned_data['password']
+
+            # Authenticate using either username or email
+            user = authenticate(request, username=username_or_email, password=password)
+            if user is None:
+                user = authenticate(request, email=username_or_email, password=password)
+
+            if user is not None:
+                login(request, user)
+                return redirect('profile')  # Redirect to the home page or any other desired page
+            else:
+                form.add_error(None, 'Invalid username/email or password.')
+    else:
+        form = LoginForm()
+
+    return render(request, 'registration/login.html', {'form': form})
+
+
+def get_api(request):
+    if request.method == 'GET':
+        # Assuming you have a User model with an 'api_key' field
+        if request.user.is_authenticated:
+            api_key = request.user.userprofile.api
+            return JsonResponse({'api_content': api_key})
+        else:
+            return JsonResponse({'error': 'User is not authenticated'}, status=401)
+    else:
+        return JsonResponse({'error': 'Invalid request method'}, status=400)
+
+
+def logout(request):
+    auth.logout(request)
+    return redirect('home')
+
+
+def profile(request):
+    user = request.user
+    username = user.username
+    email = user.email
+    api = user.userprofile.api
+    context = {'username': username, 'email': email, 'api': api}
+
+    return render(request, 'registration/profile.html', context)

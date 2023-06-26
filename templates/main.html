@@ -49,15 +49,17 @@
         <nav class="primary-menu navbar navbar-expand-lg navbar-dropdown-dark">
             <div class="container-fluid">
                 <!-- Sidebar Toggler -->
-                <button id="sidebarCollapse" class="navbar-toggler d-block d-md-none" type="button"><span></span><span class="w-75"></span><span class="w-50"></span></button>
+                <button id="sidebarCollapse" class="navbar-toggler d-block d-md-none" type="button"><span></span><span
+                        class="w-75"></span><span class="w-50"></span></button>
 
                 <!-- Logo -->
                 <a class="logo ml-md-3" href="{% url 'home' %}" title="Vocalhost">
-                    <img height="30" width="30" src="{% static '/favicon/android-chrome-192x192.png' %}" alt="Vocalhost"/>
+                    <img height="30" width="30" src="{% static '/favicon/android-chrome-192x192.png' %}"
+                         alt="Vocalhost"/>
                 </a>
                 <span class="Vocalhost" style="margin-left: 8px;">VOCALHOST</span>
 
-        <!-- Logo End -->
+                <!-- Logo End -->
 
                 <!-- Navbar Toggler -->
                 <button class="navbar-toggler ml-auto" type="button" data-toggle="collapse" data-target="#header-nav">
@@ -65,8 +67,17 @@
                 </button>
 
                 <div id="header-nav" class="collapse navbar-collapse justify-content-end">
+                    {% if user.is_authenticated %}
                     <ul class="navbar-nav">
-                        <li><a target="_blank" href="https://reiserx.com/contact/">Support</a></li>
+                        <li><a href="{% url 'profile' %}">Account</a></li>
+                    </ul>
+                    {% else %}
+                    <ul class="navbar-nav">
+                        <li><a href="{% url 'login' %}">Account</a></li>
+                    </ul>
+                    {% endif %}
+                    <ul class="navbar-nav">
+                        <li><a href="https://reiserx.com/contact/">Support</a></li>
                     </ul>
                 </div>
             </div>
@@ -91,9 +102,14 @@
                     <a class="nav-link" href="#content">Getting Started</a>
                     <ul class="nav flex-column">
                         <li class="nav-item"><a class="nav-link" href="#content">Installation</a></li>
-                        <li class="nav-item"><a class="nav-link" href="#vocalhostreceiver">Vocalhost Receiver</a>
-                        </li>
+                        <li class="nav-item"><a class="nav-link" href="#vocalhostreceiver">Vocalhost Receiver</a></li>
                         <li class="nav-item"><a class="nav-link" href="#vocalhostrequest">Vocalhost Request</a></li>
+                    </ul>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="#content">Getting Started</a>
+                    <ul class="nav flex-column">
+                        <li class="nav-item"><a class="nav-link" href="#api">API</a></li>
                     </ul>
                 </li>
             </ul>
@@ -271,12 +287,49 @@
                         languages, frameworks, and systems.</p>
                 </section>
 
+                <hr class="divider">
+
+                <!-- Changelog -->
+                <section id="api">
+                    <h2>API</h2>
+                    {% if user.is_authenticated %}
+                        <p>Get Vocalhost API and Unlock Seamless, Direct, and Reliable System-to-System
+                            Communication.</p>
+                        <button class="btn btn-outline-primary" id="toggle-api">GET YOUR API</button>
+                        <div id="api-content" style="display: none;">
+  <div class="api-container d-flex">
+    <div class="api-content-box bg-light p-3">
+      <!-- Display the API content here -->
+      <div class="d-flex align-items-center">
+        <div class="flex-grow-1">
+          <p class="m-0" id="api-text">This is the API content.</p>
+        </div>
+        <button class="btn btn-secondary btn-sm ml-2" id="copy-api" style="margin-left: 20px !important;">
+          <i class="fas fa-copy"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+                    {% else %}
+                        <!-- Render a message for anonymous users -->
+                        <p>This section is only available to logged-in users. Please log in to access the API.</p>
+                        <button class="btn btn-outline-primary" onclick="window.location.href='{% url 'login' %}'">LOGIN</button>
+
+                    {% endif %}
+
+                </section>
+
+                <hr class="divider">
+
                 <!-- Changelog -->
                 <section id="idocs_changelog">
                     <h2>Changelog</h2>
                     <p class="text-4">See what's new added, changed, fixed, improved or updated in the latest
                         versions.</p>
-                    <p class="alert alert-info mb-5">For Future Updates Checkout <a target="_blank" href="https://github.com/skzeeshan365/vocalhost">Github</a></p>
+                    <p class="alert alert-info mb-5">For Future Updates Checkout <a target="_blank"
+                                                                                    href="https://github.com/skzeeshan365/vocalhost">Github</a>
+                    </p>
 
                     <h3 id="v1-1">Version 1.1</h3>
                     <ul class="changelog">
@@ -315,5 +368,50 @@
 <script src="{% static '/docs/vendor/magnific-popup/jquery.magnific-popup.min.js' %}"></script>
 <!-- Custom Script -->
 <script src="{% static '/docs/js/theme.js' %}"></script>
+<script>
+  // Get the toggle button, API content, and copy button elements
+  var toggleButton = document.getElementById('toggle-api');
+  var apiContent = document.getElementById('api-content');
+  var apiText = document.getElementById('api-text');
+  var copyButton = document.getElementById('copy-api');
+
+  // Hide the toggle button if the API content is displayed initially
+  if (apiContent.style.display === 'block') {
+    toggleButton.style.display = 'none';
+  }
+
+  // Toggle the visibility of the API content and hide the toggle button when clicked
+  toggleButton.addEventListener('click', function () {
+    if (apiContent.style.display === 'none') {
+      // Make an AJAX request to retrieve the API content
+      var xhr = new XMLHttpRequest();
+      xhr.open('GET', '{% url 'get_api' %}', true);
+      xhr.onreadystatechange = function () {
+        if (xhr.readyState === 4 && xhr.status === 200) {
+          var response = JSON.parse(xhr.responseText);
+          var api = response.api_content;
+          apiText.innerText = api;
+          apiContent.style.display = 'block';
+          toggleButton.style.display = 'none';
+        }
+      };
+      xhr.send();
+    } else {
+      apiContent.style.display = 'none';
+    }
+  });
+
+  // Copy the API content to the clipboard
+  copyButton.addEventListener('click', function () {
+    var apiContentText = apiText.innerText;
+    navigator.clipboard.writeText(apiContentText).then(function () {
+      console.log('API content copied to clipboard');
+      copyButton.innerHTML = '<i class="fas fa-check"></i>';
+      copyButton.disabled = true;
+    }, function (err) {
+      console.error('Failed to copy API content: ', err);
+    });
+  });
+</script>
 </body>
 </html>

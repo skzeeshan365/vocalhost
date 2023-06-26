@@ -68,7 +68,7 @@
     <div class="collapse navbar-collapse" id="navbarNav">
         <ul class="navbar-nav ml-auto">
             <li class="nav-item">
-                <a class="nav-link" href="{% url 'login' %}" style="color: #6e6e6e">Login</a>
+                <a class="nav-link" href="{% url 'register' %}" style="color: #6e6e6e">Sign Up</a>
             </li>
             <li class="nav-item">
                 <a class="nav-link" href="{% url 'vocalhost_docs' %}" style="color: #6e6e6e">Docs</a>
@@ -94,7 +94,7 @@
                         {{ form.as_p }}
 
                         <!-- Submit button -->
-                        <button type="submit" class="btn btn-primary btn-lg btn-block">Sign up</button>
+                        <button type="submit" class="btn btn-primary btn-lg btn-block">Sign in</button>
                     <br>
                         {% for message in messages %}
                         <p align="center" style="color: red">{{ message }}</p>

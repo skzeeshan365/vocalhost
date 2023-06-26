@@ -84,6 +84,8 @@ class MyWebSocketConsumer(AsyncWebsocketConsumer):
                 user_profile.save()
         except UserProfile.DoesNotExist:
             pass
+        except Client.DoesNotExist:
+            pass
 
     async def receive(self, text_data=None, bytes_data=None):
         # Process the received message from the client

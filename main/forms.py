@@ -44,3 +44,23 @@ class RegistrationForm(UserCreationForm):
         if User.objects.filter(email=email).exists():
             return True
         return False
+
+
+class LoginForm(forms.Form):
+    username_or_email = forms.CharField()
+    password = forms.CharField(widget=forms.PasswordInput(
+        attrs={
+            'class': 'form-control form-control-lg',
+            'placeholder': 'Password'
+        }
+    ))
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['username_or_email'].widget.attrs.update({
+            'class': 'form-control form-control-lg',
+            'placeholder': 'Username or email'
+        })
+        self.fields['username_or_email'].label = ''
+        self.fields['username_or_email'].help_text = None
+        self.fields['password'].label = ''
