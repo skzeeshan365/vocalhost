@@ -11,7 +11,6 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 """
 import os
 from pathlib import Path
-
 from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -28,13 +27,14 @@ SECRET_KEY = os.getenv('SECRET_KEY')
 CONNECT_KEY = os.getenv('CONNECT_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = False
+DEBUG = True
 
 ALLOWED_HOSTS = ['20.204.65.46', 'vocalhost.reiserx.com', '127.0.0.1']
 
 # Application definition
 
 INSTALLED_APPS = [
+    "daphne",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -42,6 +42,7 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "channels",
+    "main.apps.MainConfig",
 ]
 
 MIDDLEWARE = [
@@ -77,12 +78,24 @@ ASGI_APPLICATION = 'ReiserX_Tunnel.asgi.application'
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
 
+NAME = os.getenv('DB_NAME')
+HOST = os.getenv('DB_HOST')
+USER = os.getenv('DB_USER')
+PASSWORD = os.getenv('DB_PASSWORD')
+PORT = os.getenv('DB_PORT')
+
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': os.path.join(BASE_DIR, 'db.sqlite3'),
+        'ENGINE': 'django.db.backends.mysql',
+        'NAME': NAME,
+        'HOST': HOST,
+        'USER': USER,
+        'PASSWORD': PASSWORD,
+        'PORT': PORT,
     }
 }
+
+CHANNELS_AUTH_BACKEND = 'ReiserX_Tunnel.AuthBackend.CustomAuthBackend'
 
 # Password validation
 # https://docs.djangoproject.com/en/4.2/ref/settings/#auth-password-validators
