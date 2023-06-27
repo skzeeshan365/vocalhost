@@ -1,5 +1,7 @@
 from django.urls import path
+from django.views.generic import RedirectView
 
+from ReiserX_Tunnel import settings
 from main import views
 
 urlpatterns = [
@@ -14,4 +16,14 @@ urlpatterns = [
     path('api/', views.get_api, name='get_api'),
     path('logout/', views.logout, name='logout'),
     path('profile/', views.profile, name='profile'),
+
+    # Favicons
+    path('android-icon-36x36.png', RedirectView.as_view(url=settings.STATIC_URL + 'favicon/android-icon-36x36.png', permanent=True)),
+    path('android-icon-48x48.png', RedirectView.as_view(url=settings.STATIC_URL + 'favicon/android-icon-48x48.png', permanent=True)),
+    path('android-icon-72x72.png', RedirectView.as_view(url=settings.STATIC_URL + 'favicon/android-icon-72x72.png', permanent=True)),
+    path('android-icon-96x96.png', RedirectView.as_view(url=settings.STATIC_URL + 'favicon/android-icon-96x96.png', permanent=True)),
+    path('android-icon-144x144.png', RedirectView.as_view(url=settings.STATIC_URL + 'favicon/android-icon-144x144.png', permanent=True)),
+    path('android-icon-192x192.png', RedirectView.as_view(url=settings.STATIC_URL + 'favicon/android-icon-192x192.png', permanent=True)),
+    path('android-icon-192x192.png', RedirectView.as_view(url=settings.STATIC_URL + 'favicon/browserconfig.xml', permanent=True)),
+    # Favicons
 ]
