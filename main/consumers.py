@@ -32,7 +32,7 @@ class MyWebSocketConsumer(AsyncWebsocketConsumer):
     @database_sync_to_async
     def authenticate(self, api_key, client, client_id):
         # Call your custom authentication backend's authenticate method
-        return CustomAuthBackend().authenticate(request=None, api_key=api_key, client=client, client_id=client_id)
+        return CustomAuthBackend().authenticate(request=None, api_key=api_key, client_id=client_id)
 
     async def connect(self):
         await self.accept()
