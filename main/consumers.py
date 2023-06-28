@@ -51,6 +51,11 @@ class MyWebSocketConsumer(AsyncWebsocketConsumer):
             await self.close(3000)
             return
 
+            # Check if the client is already connected for the user
+        if client_id in self.connected_clients:
+            await self.close(4000)
+            return
+
         # Add the WebSocket instance to the dictionary of connected clients
         self.connected_clients[client_id] = {
             'websocket': self,
