@@ -11,12 +11,12 @@ urlpatterns = [
     path('clients/idle/', views.idle_clients, name='idle_clients'),
     path('clients/busy/', views.busy_clients, name='busy_clients'),
     path('docs/', views.docs, name='vocalhost_docs'),
-    path('register/', views.register, name='register'),
-    path('login/', views.login_view, name='login'),
-    path('api/', views.get_api, name='get_api'),
-    path('logout/', views.logout, name='logout'),
-    path('profile/', views.profile, name='profile'),
-    path('profile/client/delete/<str:client_id>/', views.delete_client, name='delete_client'),
+    path('account/register/', views.register, name='register'),
+    path('account/login/', views.login_view, name='login'),
+    path('account/api/', views.get_api, name='get_api'),
+    path('account/logout/', views.logout, name='logout'),
+    path('account/profile/', views.profile, name='profile'),
+    path('account/client/delete/<str:client_id>/', views.delete_client, name='delete_client'),
 
     # Favicons
     path('android-icon-36x36.png', RedirectView.as_view(url=settings.STATIC_URL + 'favicon/android-icon-36x36.png', permanent=True)),

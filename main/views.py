@@ -4,6 +4,7 @@ from json import JSONDecodeError
 from asgiref.sync import sync_to_async, async_to_sync
 from django.contrib import auth
 from django.contrib.auth import authenticate, login
+from django.contrib.auth.decorators import login_required
 from django.core.signals import request_finished
 from django.dispatch import receiver
 from django.http import HttpResponse, JsonResponse
@@ -160,6 +161,7 @@ def login_view(request):
     return render(request, 'registration/login.html', {'form': form})
 
 
+@login_required
 def get_api(request):
     if request.method == 'GET':
         # Assuming you have a User model with an 'api_key' field
@@ -172,11 +174,13 @@ def get_api(request):
         return JsonResponse({'error': 'Invalid request method'}, status=400)
 
 
+@login_required
 def logout(request):
     auth.logout(request)
     return redirect('home')
 
 
+@login_required
 def profile(request):
     user = request.user
     username = user.username
@@ -190,6 +194,7 @@ def profile(request):
     return render(request, 'registration/profile.html', context)
 
 
+@login_required
 def delete_client(request, client_id):
     user = request.user
     try:
