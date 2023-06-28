@@ -35,8 +35,8 @@ def terminate(sender, **kwargs):
 
 async def connect(request, client_id):
     if request.method == 'POST':
-        api = await UserProfile.get_api(request.user)
-        if request.headers.get('Authorization') == api:
+        user = await UserProfile.get_user(request.headers.get('Authorization'))
+        if user is not None:
             try:
                 client = MyWebSocketConsumer.get_client(client_id=client_id)
                 if client:

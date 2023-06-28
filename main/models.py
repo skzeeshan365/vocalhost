@@ -20,9 +20,12 @@ class UserProfile(models.Model):
 
     @staticmethod
     @database_sync_to_async
-    def get_api(user):
-        user_profile = UserProfile.objects.get(user=user)
-        return user_profile.api
+    def get_user(api):
+        try:
+            user_profile = UserProfile.objects.get(api=api)
+            return user_profile
+        except UserProfile.DoesNotExist:
+            return None
 
     # Create a user profile for each user
     def create_user_profile(sender, instance, created, **kwargs):

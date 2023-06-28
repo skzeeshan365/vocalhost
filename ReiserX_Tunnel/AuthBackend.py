@@ -25,6 +25,8 @@ class CustomAuthBackend(BaseBackend):
             # Add the client to the user's connected clients
             user_profile.connected_clients.create(client_id=client_id)
 
+            print(user_profile.user)
             return user_profile.user
         except UserProfile.DoesNotExist:
+            print('1')
             return None
