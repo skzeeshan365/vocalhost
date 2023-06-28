@@ -1,6 +1,7 @@
 # Create your models here.
 import uuid
 
+from channels.db import database_sync_to_async
 from django.contrib.auth.models import User
 from django.db import models
 
@@ -16,6 +17,12 @@ class UserProfile(models.Model):
             self.api = str(uuid.uuid4())
 
         super().save(*args, **kwargs)
+
+    @staticmethod
+    @database_sync_to_async
+    def get_api(user):
+        user_profile = UserProfile.objects.get(user=user)
+        return user_profile.api
 
     # Create a user profile for each user
     def create_user_profile(sender, instance, created, **kwargs):

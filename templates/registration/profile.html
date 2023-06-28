@@ -190,6 +190,11 @@ section {
 
                             <p>Still in development</p>
 
+<ul style="margin-top: 70px">
+  {% for client in clients %}
+    <li>{{ client.client_id }}</li>
+  {% endfor %}
+</ul>
                         </div>
                     </div>
                 </div>

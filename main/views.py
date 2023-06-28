@@ -1,18 +1,21 @@
 import asyncio
 from json import JSONDecodeError
 
+from asgiref.sync import sync_to_async, async_to_sync
 from django.contrib import auth
 from django.contrib.auth import authenticate, login
 from django.core.signals import request_finished
 from django.dispatch import receiver
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render, redirect
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import csrf_exempt
 
 from ReiserX_Tunnel import settings
 from main.consumers import MyWebSocketConsumer
 # Create your views here.
 from main.forms import RegistrationForm, LoginForm
-
+from main.models import UserProfile
 
 def home(request):
     return render(request, 'index.html')
@@ -32,7 +35,8 @@ def terminate(sender, **kwargs):
 
 async def connect(request, client_id):
     if request.method == 'POST':
-        if request.headers.get('Authorization') == 'key=' + settings.CONNECT_KEY:
+        api = await UserProfile.get_api(request.user)
+        if request.headers.get('Authorization') == api:
             try:
                 client = MyWebSocketConsumer.get_client(client_id=client_id)
                 if client:
@@ -85,7 +89,7 @@ async def connect(request, client_id):
             except Exception as e:
                 return HttpResponse(str(e), content_type='text/plain')
         else:
-            return HttpResponse('Invalid key')
+            return HttpResponse('Invalid api key')
     else:
         return HttpResponse('Invalid request')
 
@@ -130,7 +134,6 @@ def register(request):
         form = RegistrationForm()
 
     return render(request, 'registration/register.html', {'form': form})
-
 
 
 def login_view(request):
@@ -178,6 +181,7 @@ def profile(request):
     username = user.username
     email = user.email
     api = user.userprofile.api
-    context = {'username': username, 'email': email, 'api': api}
+    clients = user.userprofile.connected_clients.all()
+    context = {'username': username, 'email': email, 'api': api, 'clients': clients}
 
     return render(request, 'registration/profile.html', context)

@@ -8,14 +8,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1.0, shrink-to-fit=no">
 
     <!-- Google tag (gtag.js) -->
-<script async src="https://www.googletagmanager.com/gtag/js?id=G-EN0M7XSVZ9"></script>
-<script>
-  window.dataLayer = window.dataLayer || [];
-  function gtag(){dataLayer.push(arguments);}
-  gtag('js', new Date());
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-EN0M7XSVZ9"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
 
-  gtag('config', 'G-EN0M7XSVZ9');
-</script>
+        function gtag() {
+            dataLayer.push(arguments);
+        }
+
+        gtag('js', new Date());
+
+        gtag('config', 'G-EN0M7XSVZ9');
+    </script>
 
     <!-- Favicon -->
     <link rel="apple-touch-icon" sizes="57x57" href="{% static '/favicon/apple-icon-57x57.png' %}">
@@ -91,7 +95,7 @@
 
                 <!-- Logo -->
                 <a class="logo ml-md-3" href="{% url 'home' %}" title="Vocalhost">
-                    <img height="30" width="30" src="{% static '/favicon/android-chrome-192x192.png' %}"
+                    <img height="30" width="30" src="{% static '/img/logo.png' %}"
                          alt="Vocalhost"/>
                 </a>
                 <span class="Vocalhost" style="margin-left: 8px;">VOCALHOST</span>
@@ -105,13 +109,13 @@
 
                 <div id="header-nav" class="collapse navbar-collapse justify-content-end">
                     {% if user.is_authenticated %}
-                    <ul class="navbar-nav">
-                        <li><a href="{% url 'profile' %}">Account</a></li>
-                    </ul>
+                        <ul class="navbar-nav">
+                            <li><a href="{% url 'profile' %}">Account</a></li>
+                        </ul>
                     {% else %}
-                    <ul class="navbar-nav">
-                        <li><a href="{% url 'login' %}">Account</a></li>
-                    </ul>
+                        <ul class="navbar-nav">
+                            <li><a href="{% url 'login' %}">Account</a></li>
+                        </ul>
                     {% endif %}
                     <ul class="navbar-nav">
                         <li><a href="https://reiserx.com/contact/">Support</a></li>
@@ -125,7 +129,6 @@
 
     <!-- Content -->
     <div id="content" role="main">
-
         <!-- Sidebar Navigation -->
         <div class="idocs-navigation bg">
             <ul class="nav flex-column ">
@@ -155,7 +158,6 @@
         <!-- Docs Content -->
         <div class="idocs-content">
             <div class="container">
-
                 <section id="main">
                     <h1>Vocalhost</h1>
                     <p>
@@ -183,12 +185,8 @@
                         systems using the WebSocket protocol. It consists of a bridge server and two client agents:
                         VocalhostReceiver and VocalhostRequest.</p>
 
-                    <ol>
-                        <li>Install the Vocalhost library: You can download the Vocalhost library from the official
-                            GitHub repository.
-                        </li>
-                        <li>Import the necessary modules:</li>
-                    </ol>
+                    <ol><li>Install the Vocalhost library:</li></ol>
+                    <pre><code class="language-python">pip install vocalhost</code></pre>
                 </section>
 
                 <section id="vocalhostreceiver">
@@ -199,43 +197,38 @@
                         messages and generates a response.</p>
 
                     <h3>Usage</h3>
-
-                    <pre><code class="language-python">
-      from vocalhost import Client
-    </code></pre>
+                    <ol>
+                        <li>Import the necessary modules:</li>
+                    </ol>
+                    <pre><code class="language-python">from vocalhost import Receiver</code></pre>
 
                     <ol start="3">
                         <li>Define a function to process the received messages and generate a response:</li>
                     </ol>
 
-                    <pre><code class="language-python">
-      def process_message(message):
-          # Process the received message and generate a response
-          # Implement your custom logic here
-          print("Received message from VocalhostRequest:", message)
+                    <pre><code class="language-python">def process_message(message):
+    # Process the received message and generate a response
+    # Implement your custom logic here
+    print("Received message from VocalhostRequest:", message)
 
-          # Generate the response
-          response = "This is the response from the VocalhostReceiver"
-          return response
-    </code></pre>
+    # Generate the response
+    response = "This is the response from the VocalhostReceiver"
+    return response</code></pre>
 
                     <ol start="4">
-                        <li>Create an instance of the <code>VocalhostReceiver</code> client and provide the <code>process_message</code>
+                        <li>Create an instance of the <code>VocalhostReceiver</code> and provide the <code>process_message</code>
                             function as an argument:
                         </li>
                     </ol>
 
-                    <pre><code class="language-python">
-      receiver = Client(process_message=process_message)
-    </code></pre>
+                    <pre><code class="language-python">client_id = 'Your CLIENT ID or NAME'
+receiver = Receiver(process_message=process_message, client_id, API_KEY)</code></pre>
 
                     <ol start="5">
                         <li>Connect to the Vocalhost bridge server:</li>
                     </ol>
 
-                    <pre><code class="language-python">
-      receiver.connect()
-    </code></pre>
+                    <pre><code class="language-python">receiver.connect()</code></pre>
 
                     <p>The <code>VocalhostReceiver</code> client will establish a WebSocket connection with the bridge
                         server and start listening for incoming messages. When a message is received, the <code>process_message</code>
@@ -254,60 +247,28 @@
                     <h3>Usage</h3>
 
                     <ol>
-                        <li>Install the necessary libraries: Make sure you have the <code>requests</code> library
-                            installed in your Python environment.
-                        </li>
-                        <li>Import the <code>requests</code> module:</li>
+                        <li>Import the necessary modules:</li>
                     </ol>
-
-                    <pre><code class="language-python">
-      import requests
-    </code></pre>
+                    <pre><code class="language-python">from vocalhost import Request</code></pre>
 
                     <ol start="3">
-                        <li>Specify the URL of the Vocalhost bridge server and the client ID to connect to:</li>
+                        <li>Create an instance of Request:</li>
                     </ol>
 
-                    <pre><code class="language-python">
-      url = 'https://vocalhost.reiserx.com/receiver_id/'
-    </code></pre>
+                    <pre><code class="language-python">requests = Request(API_KEY)</code></pre>
 
                     <ol start="4">
-                        <li>Set the required headers, such as timeout and authorization:</li>
+                        <li>Send and data:</li>
                     </ol>
 
-                    <pre><code class="language-python">
-      headers = {
-          'Timeout': '100',
-          'Authorization': 'API_KEY'
-      }
-    </code></pre>
-
-                    <ol start="5">
-                        <li>Prepare the data for the HTTP POST request:</li>
-                    </ol>
-
-                    <pre><code class="language-python">
-      data = {
-          'message': 'How about a game of chess?',
-      }
-    </code></pre>
-
-                    <ol start="6">
-                        <li>Send the HTTP POST request to the Vocalhost bridge server:</li>
-                    </ol>
-
-                    <pre><code class="language-python">
-      response = requests.post(url, headers=headers, json=data)
-    </code></pre>
+                    <pre><code class="language-python">message = 'How about a game of chess?'
+response = requests.send(message, receiver_id)</code></pre>
 
                     <ol start="7">
                         <li>Process the response received from the bridge server:</li>
                     </ol>
 
-                    <pre><code class="language-python">
-      print(response.text)
-    </code></pre>
+                    <pre><code class="language-python">print(response.text)</code></pre>
 
                     <p>The <code>VocalhostRequest</code> client sends an HTTP POST request to the Vocalhost bridge
                         server, specifying the URL of the <code>VocalhostReceiver</code> client to connect to. The
@@ -334,24 +295,27 @@
                             Communication.</p>
                         <button class="btn btn-outline-primary" id="toggle-api">GET YOUR API</button>
                         <div id="api-content" style="display: none;">
-  <div class="api-container d-flex">
-    <div class="api-content-box bg-light p-3">
-      <!-- Display the API content here -->
-      <div class="d-flex align-items-center">
-        <div class="flex-grow-1">
-          <p class="m-0" id="api-text">This is the API content.</p>
-        </div>
-        <button class="btn btn-secondary btn-sm ml-2" id="copy-api" style="margin-left: 20px !important;">
-          <i class="fas fa-copy"></i>
-        </button>
-      </div>
-    </div>
-  </div>
-</div>
+                            <div class="api-container d-flex">
+                                <div class="api-content-box bg-light p-3">
+                                    <!-- Display the API content here -->
+                                    <div class="d-flex align-items-center">
+                                        <div class="flex-grow-1">
+                                            <p class="m-0" id="api-text">This is the API content.</p>
+                                        </div>
+                                        <button class="btn btn-secondary btn-sm ml-2" id="copy-api"
+                                                style="margin-left: 20px !important;">
+                                            <i class="fas fa-copy"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     {% else %}
                         <!-- Render a message for anonymous users -->
                         <p>This section is only available to logged-in users. Please log in to access the API.</p>
-                        <button class="btn btn-outline-primary" onclick="window.location.href='{% url 'login' %}'">LOGIN</button>
+                        <button class="btn btn-outline-primary" onclick="window.location.href='{% url 'login' %}'">
+                            LOGIN
+                        </button>
 
                     {% endif %}
 
@@ -406,49 +370,49 @@
 <!-- Custom Script -->
 <script src="{% static '/docs/js/theme.js' %}"></script>
 <script>
-  // Get the toggle button, API content, and copy button elements
-  var toggleButton = document.getElementById('toggle-api');
-  var apiContent = document.getElementById('api-content');
-  var apiText = document.getElementById('api-text');
-  var copyButton = document.getElementById('copy-api');
+    // Get the toggle button, API content, and copy button elements
+    var toggleButton = document.getElementById('toggle-api');
+    var apiContent = document.getElementById('api-content');
+    var apiText = document.getElementById('api-text');
+    var copyButton = document.getElementById('copy-api');
 
-  // Hide the toggle button if the API content is displayed initially
-  if (apiContent.style.display === 'block') {
-    toggleButton.style.display = 'none';
-  }
-
-  // Toggle the visibility of the API content and hide the toggle button when clicked
-  toggleButton.addEventListener('click', function () {
-    if (apiContent.style.display === 'none') {
-      // Make an AJAX request to retrieve the API content
-      var xhr = new XMLHttpRequest();
-      xhr.open('GET', '{% url 'get_api' %}', true);
-      xhr.onreadystatechange = function () {
-        if (xhr.readyState === 4 && xhr.status === 200) {
-          var response = JSON.parse(xhr.responseText);
-          var api = response.api_content;
-          apiText.innerText = api;
-          apiContent.style.display = 'block';
-          toggleButton.style.display = 'none';
-        }
-      };
-      xhr.send();
-    } else {
-      apiContent.style.display = 'none';
+    // Hide the toggle button if the API content is displayed initially
+    if (apiContent.style.display === 'block') {
+        toggleButton.style.display = 'none';
     }
-  });
 
-  // Copy the API content to the clipboard
-  copyButton.addEventListener('click', function () {
-    var apiContentText = apiText.innerText;
-    navigator.clipboard.writeText(apiContentText).then(function () {
-      console.log('API content copied to clipboard');
-      copyButton.innerHTML = '<i class="fas fa-check"></i>';
-      copyButton.disabled = true;
-    }, function (err) {
-      console.error('Failed to copy API content: ', err);
+    // Toggle the visibility of the API content and hide the toggle button when clicked
+    toggleButton.addEventListener('click', function () {
+        if (apiContent.style.display === 'none') {
+            // Make an AJAX request to retrieve the API content
+            var xhr = new XMLHttpRequest();
+            xhr.open('GET', '{% url 'get_api' %}', true);
+            xhr.onreadystatechange = function () {
+                if (xhr.readyState === 4 && xhr.status === 200) {
+                    var response = JSON.parse(xhr.responseText);
+                    var api = response.api_content;
+                    apiText.innerText = api;
+                    apiContent.style.display = 'block';
+                    toggleButton.style.display = 'none';
+                }
+            };
+            xhr.send();
+        } else {
+            apiContent.style.display = 'none';
+        }
     });
-  });
+
+    // Copy the API content to the clipboard
+    copyButton.addEventListener('click', function () {
+        var apiContentText = apiText.innerText;
+        navigator.clipboard.writeText(apiContentText).then(function () {
+            console.log('API content copied to clipboard');
+            copyButton.innerHTML = '<i class="fas fa-check"></i>';
+            copyButton.disabled = true;
+        }, function (err) {
+            console.error('Failed to copy API content: ', err);
+        });
+    });
 </script>
 </body>
 </html>
