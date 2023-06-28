@@ -11,11 +11,12 @@ from django.shortcuts import render, redirect
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 
-from ReiserX_Tunnel import settings
+from ReiserX_Tunnel import settings, AuthBackend
 from main.consumers import MyWebSocketConsumer
 # Create your views here.
 from main.forms import RegistrationForm, LoginForm
-from main.models import UserProfile
+from main.models import UserProfile, Client
+
 
 def home(request):
     return render(request, 'index.html')
@@ -182,6 +183,32 @@ def profile(request):
     email = user.email
     api = user.userprofile.api
     clients = user.userprofile.connected_clients.all()
-    context = {'username': username, 'email': email, 'api': api, 'clients': clients}
+    receiver_limit = AuthBackend.MAX_CLIENTS_LIMIT
+    receiver_percentage = (clients.count()/receiver_limit) * 100
 
+    context = {'username': username, 'email': email, 'api': api, 'clients': clients, 'receiver_usage': clients.count(), 'receiver_limit': receiver_limit, 'receiver_percentage': receiver_percentage}
     return render(request, 'registration/profile.html', context)
+
+
+def delete_client(request, client_id):
+    user = request.user
+    try:
+        if user.userprofile.connected_clients.get(client_id=client_id) is not None:
+            client = MyWebSocketConsumer.get_client_details(client_id)
+            if client is None:
+                remove_client_id_from_user_profile(client_id)
+                return redirect('profile')
+            else:
+                return HttpResponse('Receiver is connected')
+    except UserProfile.DoesNotExist:
+        return HttpResponse('Client not found in database')
+
+
+def remove_client_id_from_user_profile(client_id):
+    try:
+        client_instance = Client.objects.get(client_id=client_id)
+        client_instance.delete()
+    except UserProfile.DoesNotExist:
+        pass
+    except Client.DoesNotExist:
+        pass

@@ -125,6 +125,13 @@ class MyWebSocketConsumer(AsyncWebsocketConsumer):
             return None
 
     @classmethod
+    def get_client_details(cls, client_id):
+        try:
+            return cls.connected_clients[client_id]
+        except KeyError:
+            return None
+
+    @classmethod
     def get_connected_clients(cls):
         return list(cls.connected_clients.keys())
 
