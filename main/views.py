@@ -1,7 +1,6 @@
 import asyncio
 from json import JSONDecodeError
 
-from asgiref.sync import sync_to_async, async_to_sync
 from django.contrib import auth
 from django.contrib.auth import authenticate, login
 from django.contrib.auth.decorators import login_required
@@ -9,10 +8,8 @@ from django.core.signals import request_finished
 from django.dispatch import receiver
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render, redirect
-from django.utils.decorators import method_decorator
-from django.views.decorators.csrf import csrf_exempt
 
-from ReiserX_Tunnel import settings, AuthBackend
+from ReiserX_Tunnel import AuthBackend
 from main.consumers import MyWebSocketConsumer
 # Create your views here.
 from main.forms import RegistrationForm, LoginForm
@@ -96,25 +93,37 @@ async def connect(request, client_id):
         return HttpResponse('Invalid request')
 
 
+@login_required(login_url='/account/login/')
 def connected_clients(request):
-    clients = MyWebSocketConsumer.get_connected_clients()
-    if not clients:
-        return HttpResponse('No available clients')
-    return HttpResponse(clients)
+    if request.user.is_superuser:
+        clients = MyWebSocketConsumer.get_connected_clients()
+        if not clients:
+            return HttpResponse('No available clients')
+        return HttpResponse(clients)
+    else:
+        return HttpResponse('Permission denied')
 
 
+@login_required(login_url='/account/login/')
 def idle_clients(request):
-    clients = MyWebSocketConsumer.get_idle_clients()
-    if not clients:
-        return HttpResponse('No available clients')
-    return HttpResponse(clients)
+    if request.user.is_superuser:
+        clients = MyWebSocketConsumer.get_idle_clients()
+        if not clients:
+            return HttpResponse('No available clients')
+        return HttpResponse(clients)
+    else:
+        return HttpResponse('Permission denied')
 
 
+@login_required(login_url='/account/login/')
 def busy_clients(request):
-    clients = MyWebSocketConsumer.get_busy_clients()
-    if not clients:
-        return HttpResponse('No available clients')
-    return HttpResponse(clients)
+    if request.user.is_superuser:
+        clients = MyWebSocketConsumer.get_busy_clients()
+        if not clients:
+            return HttpResponse('No available clients')
+        return HttpResponse(clients)
+    else:
+        return HttpResponse('Permission denied')
 
 
 def register(request):
@@ -188,9 +197,10 @@ def profile(request):
     api = user.userprofile.api
     clients = user.userprofile.connected_clients.all()
     receiver_limit = AuthBackend.MAX_CLIENTS_LIMIT
-    receiver_percentage = (clients.count()/receiver_limit) * 100
+    receiver_percentage = (clients.count() / receiver_limit) * 100
 
-    context = {'username': username, 'email': email, 'api': api, 'clients': clients, 'receiver_usage': clients.count(), 'receiver_limit': receiver_limit, 'receiver_percentage': receiver_percentage}
+    context = {'username': username, 'email': email, 'api': api, 'clients': clients, 'receiver_usage': clients.count(),
+               'receiver_limit': receiver_limit, 'receiver_percentage': receiver_percentage}
     return render(request, 'registration/profile.html', context)
 
 
@@ -209,6 +219,7 @@ def delete_client(request, client_id):
         return HttpResponse('Client not found in database')
 
 
+@login_required(login_url='/account/login/')
 def remove_client_id_from_user_profile(client_id):
     try:
         client_instance = Client.objects.get(client_id=client_id)
