@@ -15,9 +15,10 @@ pip install vocalhost
 ## VocalhostReceiver
 The VocalhostReceiver client establishes a WebSocket connection with the bridge server and keeps the connection open to receive incoming messages. It processes the received messages and generates a response.
 
-#### Usage
 Import the necessary modules:
+```python
 from vocalhost import Receiver
+```
 Define a function to process the received messages and generate a response:
 
 ```python
@@ -43,7 +44,6 @@ The VocalhostReceiver client will establish a WebSocket connection with the brid
 ## VocalhostRequest
 The VocalhostRequest client is used to send HTTP POST requests to the Vocalhost bridge server, which will forward the requests to the VocalhostReceiver client. The VocalhostReceiver client will process the request, generate a response, and send it back to the bridge server. The bridge server will then respond to the VocalhostRequest client with the received response.
 
-#### Usage
 Import the necessary modules:
 ```python
 from vocalhost import Request
