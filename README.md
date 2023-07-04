@@ -9,13 +9,13 @@ Vocalhost simplifies system-to-system interaction, providing compatibility and e
 ## Getting Started
 Vocalhost is a communication solution that enables direct and reliable connections between systems using the WebSocket protocol. It consists of a bridge server and two client agents: VocalhostReceiver and VocalhostRequest.
 
-### Install the Vocalhost library:
+#### Install the Vocalhost library:
 pip install vocalhost
 
 ## VocalhostReceiver
 The VocalhostReceiver client establishes a WebSocket connection with the bridge server and keeps the connection open to receive incoming messages. It processes the received messages and generates a response.
 
-### Usage
+#### Usage
 Import the necessary modules:
 from vocalhost import Receiver
 Define a function to process the received messages and generate a response:
@@ -43,7 +43,7 @@ The VocalhostReceiver client will establish a WebSocket connection with the brid
 ## VocalhostRequest
 The VocalhostRequest client is used to send HTTP POST requests to the Vocalhost bridge server, which will forward the requests to the VocalhostReceiver client. The VocalhostReceiver client will process the request, generate a response, and send it back to the bridge server. The bridge server will then respond to the VocalhostRequest client with the received response.
 
-### Usage
+#### Usage
 Import the necessary modules:
 ```python
 from vocalhost import Request
@@ -62,8 +62,6 @@ Process the response received from the bridge server:
 print(response.text)
 ```
 The VocalhostRequest client sends an HTTP POST request to the Vocalhost bridge server, specifying the URL of the VocalhostReceiver client to connect to. The bridge server will forward the request to the VocalhostReceiver client, which will process the request and generate a response. The response will be sent back to the bridge server, and the bridge server will respond to the VocalhostRequest client with the received response.
-
-Please note that you need to replace the example URLs and headers with the actual values according to your setup.
 
 With Vocalhost, you can streamline system communication by establishing WebSocket connections between systems, enabling real-time message exchange and seamless interaction across different languages, frameworks, and systems.
 
