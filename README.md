@@ -10,8 +10,9 @@ Vocalhost simplifies system-to-system interaction, providing compatibility and e
 Vocalhost is a communication solution that enables direct and reliable connections between systems using the WebSocket protocol. It consists of a bridge server and two client agents: VocalhostReceiver and VocalhostRequest.
 
 #### Install the Vocalhost library:
+```python
 pip install vocalhost
-
+```
 ## VocalhostReceiver
 The VocalhostReceiver client establishes a WebSocket connection with the bridge server and keeps the connection open to receive incoming messages. It processes the received messages and generates a response.
 
