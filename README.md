@@ -18,14 +18,15 @@ Usage
 Import the necessary modules:
 from vocalhost import Receiver
 Define a function to process the received messages and generate a response:
+
 def process_message(message):
     # Process the received message and generate a response
     # Implement your custom logic here
     print("Received message from VocalhostRequest:", message)
-
     # Generate the response
     response = "This is the response from the VocalhostReceiver"
     return response
+    
 Create an instance of the VocalhostReceiver and provide the process_message function as an argument:
 client_id = 'Your CLIENT ID or NAME'
 receiver = Receiver(process_message=process_message, client_id, API_KEY)
