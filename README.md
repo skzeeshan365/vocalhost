@@ -58,7 +58,7 @@ vocalhost.API_KEY = API_KEY
 Send data:
 ```python
 message = 'How about a game of chess?'
-response = vocalhost.Request.send(message, receiver_id='3')
+response = vocalhost.Request.send(message, receiver_id=receiver_id)
 ```
 Process the response received from the Receiver:
 ```python
