@@ -45,16 +45,21 @@ class MyWebSocketConsumer(AsyncWebsocketConsumer):
         api_key = query_params.get('api_key', [''])[0]
 
         # Authenticate the user based on the provided client_id and api_key
-        self.user = await self.authenticate(api_key=api_key, client_id=client_id, client=self)
+        self.user, limit = await self.authenticate(api_key=api_key, client_id=client_id, client=self)
 
         if self.user is None:
-            await self.close(3000)
+            await self.send("Invalid api")
+            await self.close()
             return
-
-            # Check if the client is already connected for the user
-        if client_id in self.connected_clients:
-            await self.close(4000)
-            return
+        else:
+            if not limit:
+                await self.send("Max receiver limit")
+                await self.close()
+                return
+            elif client_id in self.connected_clients:
+                await self.send("Client id already exists")
+                await self.close()
+                return
 
         # Add the WebSocket instance to the dictionary of connected clients
         self.connected_clients[client_id] = {
