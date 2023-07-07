@@ -204,10 +204,13 @@
                                     <li class="mb-2 mb-xl-3 display-28"><span
                                             class="display-26 text-secondary me-2 font-weight-600">Email:</span> {{ email }}
                                     </li>
-                                    <li class="mb-2 mb-xl-3 display-28"><span
-                                            class="display-26 text-secondary me-2 font-weight-600">API:</span> {{ api }}
-                                    </li>
-
+                                    <li class="mb-2 mb-xl-3 display-28" style="display: flex; align-items: center;">
+    <span class="display-26 text-secondary me-2 font-weight-600">API:</span>
+    <span id="api-display" style="margin-left: 5px; margin-bottom: 1px; margin-top: 2px;">{{ api }}</span>
+    <a href="#" id="refresh-button" class="btn btn-link" style="align-self: center;" onclick="refreshApi()">
+        <i class="fas fa-sync-alt"></i>
+    </a>
+</li>
                                     <li class="mb-2 mb-xl-3 display-28">
                                         <div class="d-flex align-items-center justify-content-between">
                                             <div>
@@ -325,6 +328,8 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.0.0/dist/js/bootstrap.min.js"
         integrity="sha384-JZR6Spejh4U02d8jOt6vLEHfe/JQGiRRSQQxSfFWpi1MquVdAyjUar5+76PVCmYl"
         crossorigin="anonymous"></script>
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+
 <script>
     // Get the toggle button, API content, and copy button elements
     var copyButton = document.getElementById('copy-api');
@@ -335,6 +340,23 @@
     copyButton.addEventListener('click', function () {
         $('#exampleModalCenter').modal('show');
     });
+
+    function refreshApi() {
+    // Make an AJAX request to regenerate the API key
+    $.ajax({
+        url: '{% url 'regenerate_api' %}',  // Replace with the appropriate URL for the API key refresh endpoint
+        method: 'POST',
+        success: function(response) {
+            // Update the API display with the new API key
+            $('#api-display').text(response.api);
+        },
+        error: function() {
+            // Handle any error that occurs during the AJAX request
+            console.log('Error occurred during API key refresh.');
+        }
+    });
+}
+
 </script>
 </body>
 </html>

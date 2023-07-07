@@ -233,4 +233,8 @@ def remove_client_id_from_user_profile(request, client_id):
 @login_required(login_url='/account/login/')
 def regenerate_api(request):
     request.user.userprofile.regenerate_api_key()
-    return HttpResponse('regenerated')
+    new_api_key = request.user.userprofile.api
+    response_data = {
+        'api': new_api_key
+    }
+    return JsonResponse(response_data)

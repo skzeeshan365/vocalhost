@@ -3,7 +3,7 @@ from django.db import IntegrityError
 
 from main.models import UserProfile
 
-MAX_CLIENTS_LIMIT = 2
+MAX_CLIENTS_LIMIT = 1
 
 
 class CustomAuthBackend(BaseBackend):
