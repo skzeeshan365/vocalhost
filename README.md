@@ -16,7 +16,11 @@ The VocalhostReceiver client establishes a WebSocket connection with the bridge 
 
 Import the necessary modules:
 ```python
-from vocalhost import Receiver
+import vocalhost
+```
+Pass your vocalhost API_KEY:
+```python
+vocalhost.API_KEY = API_KEY
 ```
 Define a function to process the received messages and generate a response:
 
@@ -29,14 +33,14 @@ def process_message(message):
     response = "This is the response from the VocalhostReceiver"
     return response
 ```
-Create an instance of the VocalhostReceiver and provide the process_message function as an argument:
+Assign process_message function:
 ```python
-client_id = 'Your CLIENT ID or NAME'
-receiver = Receiver(process_message=process_message, client_id, API_KEY)
+vocalhost.process_message = process_message
 ```
-Connect to the Vocalhost bridge server:
+Connect to the Vocalhost server:
 ```python
-receiver.connect()
+client_id = 'RECEIVER_ID_0R_NAME'
+vocalhost.Receiver.connect(client_id=client_id)
 ```
 The VocalhostReceiver client will establish a WebSocket connection with the bridge server and start listening for incoming messages. When a message is received, the process_message function will be invoked to process the message and generate a response.
 
@@ -45,18 +49,18 @@ The VocalhostRequest client is used to send HTTP POST requests to the Vocalhost 
 
 Import the necessary modules:
 ```python
-from vocalhost import Request
+import vocalhost
 ```
-Create an instance of Request:
+Pass your vocalhost API_KEY:
 ```python
-requests = Request(API_KEY)
+vocalhost.API_KEY = API_KEY
 ```
-Send and data:
+Send data:
 ```python
 message = 'How about a game of chess?'
-response = requests.send(message, receiver_id)
+response = vocalhost.Request.send(message, receiver_id='3')
 ```
-Process the response received from the bridge server:
+Process the response received from the Receiver:
 ```python
 print(response.text)
 ```
