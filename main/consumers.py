@@ -49,7 +49,6 @@ class MyWebSocketConsumer(AsyncWebsocketConsumer):
 
         if self.user is None:
             await self.send("Invalid api", close=True)
-            await self.close()
             return
         else:
             if not limit:
