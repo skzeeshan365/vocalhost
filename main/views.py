@@ -211,7 +211,7 @@ def delete_client(request, client_id):
         if user.userprofile.connected_clients.get(client_id=client_id) is not None:
             client = MyWebSocketConsumer.get_client_details(client_id)
             if client is None:
-                remove_client_id_from_user_profile(client_id)
+                remove_client_id_from_user_profile(request, client_id)
                 return redirect('profile')
             else:
                 return HttpResponse('Receiver is connected')
@@ -220,7 +220,7 @@ def delete_client(request, client_id):
 
 
 @login_required(login_url='/account/login/')
-def remove_client_id_from_user_profile(client_id):
+def remove_client_id_from_user_profile(request, client_id):
     try:
         client_instance = Client.objects.get(client_id=client_id)
         client_instance.delete()
