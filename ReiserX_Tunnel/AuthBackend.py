@@ -1,5 +1,4 @@
 from django.contrib.auth.backends import BaseBackend
-from django.db import IntegrityError
 
 from main.models import UserProfile
 
