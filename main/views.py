@@ -228,3 +228,9 @@ def remove_client_id_from_user_profile(request, client_id):
         pass
     except Client.DoesNotExist:
         pass
+
+
+@login_required(login_url='/account/login/')
+def regenerate_api(request):
+    request.user.userprofile.regenerate_api_key()
+    return HttpResponse('regenerated')

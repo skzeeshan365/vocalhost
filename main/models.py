@@ -18,6 +18,11 @@ class UserProfile(models.Model):
 
         super().save(*args, **kwargs)
 
+    def regenerate_api_key(self):
+        # Regenerate the API key
+        self.api = str(uuid.uuid4())
+        self.save()
+
     @staticmethod
     @database_sync_to_async
     def get_user(api):
