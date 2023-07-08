@@ -81,7 +81,7 @@
         }
 
         section {
-            padding: 120px 0;
+            padding: 20px 0;
             overflow: hidden;
             background: #fff;
         }
@@ -185,16 +185,24 @@
     </style>
 </head>
 <body>
-<section class="bg-light">
-    <div class="container">
+<section class="">
+    <div class="container-fluid">
+
+        <div class="alert alert-success alert-dismissible" role="alert" id="alert" style="display: none">
+        <strong id="alertMessage">Congrats!</strong> Your new API KEY is generated.
+        <button type="button" class="close" onclick="hideAlert()" aria-label="Close">
+            <span aria-hidden="true">&times;</span>
+        </button>
+    </div>
+
         <div class="row">
             <div class="col-lg-12 mb-4 mb-sm-5">
                 <div class="card card-style1 border-0">
                     <div class="card-body p-1-9 p-sm-2-3 p-md-6 p-lg-7">
                         <div class="row align-items-center">
-                            <div class="col-lg-6 mb-4 mb-lg-0">
+                            <div class="col-lg-4 mb-3 mb-lg-0">
                                 <img src="https://mdbcdn.b-cdn.net/img/Photos/new-templates/bootstrap-login-form/draw2.svg"
-                                     alt="..." width="400px" height="400px">
+                                     alt="..." width="320px" height="320px">
                             </div>
                             <div class="col-lg-6 px-xl-10">
                                 <div class="bg-secondary d-lg-inline-block py-1-9 px-1-9 px-sm-6 mb-1-9 rounded">
@@ -205,16 +213,19 @@
                                             class="display-26 text-secondary me-2 font-weight-600">Email:</span> {{ email }}
                                     </li>
                                     <li class="mb-2 mb-xl-3 display-28" style="display: flex; align-items: center;">
-    <span class="display-26 text-secondary me-2 font-weight-600">API:</span>
-    <span id="api-display" style="margin-left: 5px; margin-bottom: 1px; margin-top: 2px;">{{ api }}</span>
-    <a href="#" id="refresh-button" class="btn btn-link" style="align-self: center;" onclick="refreshApi()">
-        <i class="fas fa-sync-alt"></i>
-    </a>
-</li>
+                                        <span class="display-26 text-secondary me-2 font-weight-600">API:</span>
+                                        <span id="api-display"
+                                              style="margin-left: 5px; margin-bottom: 1px; margin-top: 2px;">{{ api }}</span>
+                                        <a href="#" id="refresh-button" class="btn btn-link" style="align-self: center;"
+                                           data-toggle="modal" data-target="#generate_api_modal">
+                                            <i class="fas fa-sync-alt"></i>
+                                        </a>
+                                    </li>
                                     <li class="mb-2 mb-xl-3 display-28">
                                         <div class="d-flex align-items-center justify-content-between">
                                             <div>
-                                                <span class="display-26 text-secondary me-2 font-weight-600" style="font-size: 18px;">Receiver Usage:</span>
+                                                <span class="display-26 text-secondary me-2 font-weight-600"
+                                                      style="font-size: 18px;">Receiver Usage:</span>
                                             </div>
                                             <div>
                                                 <span class="text-muted">{{ receiver_usage }}/{{ receiver_limit }}</span>
@@ -236,32 +247,13 @@
                 </div>
             </div>
 
-            <div class="col-lg-12">
+            <div class="col-lg-12" style="align-items: center">
                 <div class="row">
                     <div class="col-lg-12 mb-4 mb-sm-5">
                         <div class="mb-4 mb-sm-5">
-                            <span class="section-title text-primary mb-3 mb-sm-4">Usage</span>
-                            <p>Connected receivers</p>
-                            {% for client in clients %}
-                                <div id="api-content" style="display: block">
-                                    <div class="api-container d-flex">
-                                        <div class="api-content-box p-3"
-                                             style="width: 100%; background-color: lightgray;">
-                                            <!-- Display the API content here -->
-                                            <div class="d-flex align-items-center">
-                                                <div class="flex-grow-1">
-                                                    <p class="m-0" id="api-text">{{ client.client_id }}</p>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            {% empty %}
-                                <div class="text-center">
-                                    <p>No receiver available</p>
-                                </div>    {% endfor %}
+                            <span class="section-title text-primary mb-3 mb-sm-4">Registered</span>
+                            <span class="section-title text-secondary mb-3 mb-sm-4">Receivers</span>
 
-                            <p>Registered receivers</p>
                             {% for client in clients %}
                                 <div id="api-content" style="display: block">
                                     <div class="api-container d-flex">
@@ -273,7 +265,7 @@
                                                     <p class="m-0" id="api-text">{{ client.client_id }}</p>
                                                 </div>
                                                 <button class="btn btn-secondary btn-sm ml-2" id="copy-api"
-                                                        style="margin-left: 20px !important;">
+                                                        style="margin-left: 20px !important;" data-toggle="modal" data-target="#exampleModalCenter">
                                                     <i class="fas fa-trash"></i>
                                                 </button>
                                             </div>
@@ -308,7 +300,7 @@
                                 </div>
                             {% empty %}
                                 <div class="text-center">
-                                    <p>No receiver available</p>
+                                    <h6>No receiver available</h6>
                                 </div>    {% endfor %}
                         </div>
                     </div>
@@ -316,6 +308,31 @@
             </div>
         </div>
     </div>
+
+<!-- Modal -->
+                                <div class="modal fade" id="generate_api_modal" tabindex="-1" role="dialog"
+                                     aria-labelledby="exampleModalCenterTitle" aria-hidden="true">
+                                    <div class="modal-dialog modal-dialog-centered" role="document">
+                                        <div class="modal-content">
+                                            <div class="modal-header">
+                                                <h5 class="modal-title" id="exampleModalLongTitle">Generate API KEY</h5>
+                                                <button type="button" class="close" data-dismiss="modal"
+                                                        aria-label="Close">
+                                                    <span aria-hidden="true">&times;</span>
+                                                </button>
+                                            </div>
+                                            <div class="modal-body">
+                                                Are you sure you want to generate a new API KEY
+                                            </div>
+                                            <div class="modal-footer">
+                                                <button type="button" class="btn btn-primary" data-dismiss="modal"
+                                                        onclick="refreshApi()">
+                                                    Generate
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
 </section>
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 
@@ -331,31 +348,27 @@
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 
 <script>
-    // Get the toggle button, API content, and copy button elements
-    var copyButton = document.getElementById('copy-api');
-    // Get the button element
-    var launchModalButton = document.getElementById('launchModalButton');
-
-    // Copy the API content to the clipboard
-    copyButton.addEventListener('click', function () {
-        $('#exampleModalCenter').modal('show');
-    });
-
+    var alertBox = document.getElementById("alert");
     function refreshApi() {
-    // Make an AJAX request to regenerate the API key
-    $.ajax({
-        url: '{% url 'regenerate_api' %}',  // Replace with the appropriate URL for the API key refresh endpoint
-        method: 'POST',
-        success: function(response) {
-            // Update the API display with the new API key
-            $('#api-display').text(response.api);
-        },
-        error: function() {
-            // Handle any error that occurs during the AJAX request
-            console.log('Error occurred during API key refresh.');
-        }
-    });
-}
+        // Make an AJAX request to regenerate the API key
+        $.ajax({
+            url: '{% url 'regenerate_api' %}',  // Replace with the appropriate URL for the API key refresh endpoint
+            method: 'POST',
+            success: function (response) {
+                // Update the API display with the new API key
+                $('#api-display').text(response.api);
+                $('#alert').show()
+            },
+            error: function () {
+                // Handle any error that occurs during the AJAX request
+                console.log('Error occurred during API key refresh.');
+            }
+        });
+    }
+
+    function hideAlert() {
+        alertBox.style.display = "none";
+    }
 
 </script>
 </body>
