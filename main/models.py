@@ -28,7 +28,7 @@ class UserProfile(models.Model):
     def get_user(api):
         try:
             user_profile = UserProfile.objects.get(api=api)
-            return user_profile
+            return user_profile.user
         except UserProfile.DoesNotExist:
             return None
 

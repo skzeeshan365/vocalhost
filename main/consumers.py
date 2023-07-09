@@ -122,7 +122,7 @@ class MyWebSocketConsumer(AsyncWebsocketConsumer):
         try:
             if cls.connected_clients[client_id]['status'] == 'idle' and cls.user == user:
                 return cls.connected_clients[client_id]['websocket']
-            raise ClientBusyException('Client is busy')
+            raise ClientBusyException('Client is not available or busy')
         except KeyError:
             return None
 
