@@ -62,7 +62,8 @@ class MyWebSocketConsumer(AsyncWebsocketConsumer):
         self.connected_clients[client_id] = {
             'websocket': self,
             'status': 'idle',
-            'response_queue': asyncio.Queue()
+            'response_queue': asyncio.Queue(),
+            'user': self.user
         }
 
         # Set the client ID as an attribute of the WebSocket instance
@@ -120,7 +121,7 @@ class MyWebSocketConsumer(AsyncWebsocketConsumer):
     @classmethod
     def get_client(cls, client_id, user):
         try:
-            if cls.connected_clients[client_id]['status'] == 'idle' and cls.user == user:
+            if cls.connected_clients[client_id]['status'] == 'idle' and cls.connected_clients[client_id]['user'] == user:
                 return cls.connected_clients[client_id]['websocket']
             raise ClientBusyException('Client is not available or busy')
         except KeyError:
