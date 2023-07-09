@@ -37,7 +37,7 @@ async def connect(request, client_id):
         user = await UserProfile.get_user(request.headers.get('Authorization'))
         if user is not None:
             try:
-                client = MyWebSocketConsumer.get_client(client_id=client_id)
+                client = MyWebSocketConsumer.get_client(client_id=client_id, user=user)
                 if client:
                     data = request.body
                     timeout = int(request.headers.get('Timeout'))
