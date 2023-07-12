@@ -238,10 +238,3 @@ def regenerate_api(request):
         'api': new_api_key
     }
     return JsonResponse(response_data)
-
-
-def test(request):
-    user = request.user
-    user.userprofile.max_receiver = 2
-    user.userprofile.save()
-    return HttpResponse('Response')
