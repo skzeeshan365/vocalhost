@@ -77,23 +77,9 @@ class MyWebSocketConsumer(AsyncWebsocketConsumer):
 
         # Remove the client ID from the UserProfile's connected clients
         if self.user is not None:
-            await self.remove_client_id_from_user_profile(self.user, self.client_id)
+            await self.user.userprofile.remove_client(client_id=self.client_id)
 
         raise StopConsumer()
-
-    @staticmethod
-    @database_sync_to_async
-    def remove_client_id_from_user_profile(user, client_id):
-        try:
-            user_profile = UserProfile.objects.get(user=user)
-            client_instance = Client.objects.get(client_id=client_id)
-            if client_instance in user_profile.connected_clients.all():
-                client_instance.delete()
-                user_profile.save()
-        except UserProfile.DoesNotExist:
-            pass
-        except Client.DoesNotExist:
-            pass
 
     async def receive(self, text_data=None, bytes_data=None):
         # Process the received message from the client

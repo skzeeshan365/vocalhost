@@ -196,7 +196,7 @@ def profile(request):
     email = user.email
     api = user.userprofile.api
     clients = user.userprofile.connected_clients.all()
-    receiver_limit = AuthBackend.MAX_CLIENTS_LIMIT
+    receiver_limit = user.userprofile.max_receiver
     receiver_percentage = (clients.count() / receiver_limit) * 100
 
     context = {'username': username, 'email': email, 'api': api, 'clients': clients, 'receiver_usage': clients.count(),

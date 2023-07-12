@@ -3,6 +3,7 @@ import uuid
 
 from channels.db import database_sync_to_async
 from django.contrib.auth.models import User
+from django.core.validators import MaxValueValidator
 from django.db import models
 
 
@@ -10,6 +11,7 @@ class UserProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
     api = models.CharField(max_length=255, blank=True)
     connected_clients = models.ManyToManyField('Client', blank=True)
+    max_receiver = models.IntegerField(validators=[MaxValueValidator(10)], default=1)
 
     def save(self, *args, **kwargs):
         if not self.api:
@@ -17,6 +19,12 @@ class UserProfile(models.Model):
             self.api = str(uuid.uuid4())
 
         super().save(*args, **kwargs)
+
+    def add_connected_client(self, client):
+        if self.connected_clients.count() < self.max_receiver:
+            self.connected_clients.get_or_create(client_id=client)
+            return True
+        return False
 
     def regenerate_api_key(self):
         # Regenerate the API key
@@ -31,6 +39,14 @@ class UserProfile(models.Model):
             return user_profile.user
         except UserProfile.DoesNotExist:
             return None
+
+    @database_sync_to_async
+    def remove_client(self, client_id):
+        client_instance = Client.objects.get(client_id=client_id)
+        if client_instance in self.connected_clients.all():
+            client_instance.delete()
+            self.save()
+        return
 
     # Create a user profile for each user
     def create_user_profile(sender, instance, created, **kwargs):

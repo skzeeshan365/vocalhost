@@ -1,8 +1,6 @@
 from django.contrib.auth.backends import BaseBackend
 
-from main.models import UserProfile
-
-MAX_CLIENTS_LIMIT = 1
+from main.models import UserProfile, Client
 
 
 class CustomAuthBackend(BaseBackend):
@@ -11,11 +9,10 @@ class CustomAuthBackend(BaseBackend):
             user_profile = UserProfile.objects.get(api=api_key)
 
             # Check if the user has reached the maximum number of clients
-            if user_profile.connected_clients.count() >= MAX_CLIENTS_LIMIT:
-                return user_profile.user, False
+            if user_profile.add_connected_client(client_id):
+                return user_profile.user, True
             else:
-                user_profile.connected_clients.get_or_create(client_id=client_id)
+                return user_profile.user, False
 
-            return user_profile.user, True
         except UserProfile.DoesNotExist:
             return None, None
