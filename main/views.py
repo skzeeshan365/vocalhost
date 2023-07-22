@@ -238,3 +238,10 @@ def regenerate_api(request):
         'api': new_api_key
     }
     return JsonResponse(response_data)
+
+
+def increase_limit(request):
+    user = reqeust.user
+    user.userprofile.max_receiver = 3
+    user.userprofile.save()
+    return HttpResponse('done')
