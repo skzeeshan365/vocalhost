@@ -241,7 +241,7 @@ def regenerate_api(request):
 
 
 def increase_limit(request):
-    user = reqeust.user
+    user = request.user
     user.userprofile.max_receiver = 3
     user.userprofile.save()
     return HttpResponse('done')
