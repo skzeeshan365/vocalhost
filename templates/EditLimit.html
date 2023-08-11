@@ -1,0 +1,143 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <meta name="description" content="">
+    <meta name="author" content="">
+
+    <title>ReiserX</title>
+    <!-- Bootstrap core CSS -->
+    <link rel="stylesheet" href="{% static 'register/css/bootstrap.min.css' %}">
+    <!-- Fonts -->
+    <link href="https://maxcdn.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css?family=Righteous%7CMerriweather:300,300i,400,400i,700,700i"
+          rel="stylesheet">
+
+    <style>
+        /* CSS styles go here */
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+
+        form {
+            margin: 0px;
+            padding: 20px 24px 20px 20px;
+        }
+
+        .post-form {
+            margin-bottom: 20px;
+            margin-top: 20px;
+            padding: 20px;
+        }
+
+        .form-actions {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        input[type="text"], textarea {
+        display: block;
+        width: 100%;
+        margin-bottom: 10px;
+        margin-right: 10px;
+        border: none;
+        border-radius: 5px;
+        background-color: #f2f2f2;
+        padding: 10px;
+            outline: none;
+            box-shadow: none;
+    }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+        }
+
+        button[type="submit"] {
+            display: inline-block;
+            margin-left: 10px;
+            padding: 10px 20px;
+            font-size: 14px;
+            font-weight: bold;
+            color: #fff;
+            background-color: #007bff;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        button[type="submit"]:hover {
+            background-color: #0062cc;
+        }
+
+        #add-form {
+            display: inline-block;
+    padding: 10px 20px;
+    font-size: 14px;
+    font-weight: bold;
+    color: #fff;
+    background-color: #007bff;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+
+    width: 150px;
+        }
+
+        #add-form:hover {
+            background-color: #0062cc;
+        }
+        #preview {
+            display: inline-block;
+    padding: 10px 20px;
+    font-size: 14px;
+    font-weight: bold;
+    color: #fff;
+    background-color: #007bff;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+
+    width: 150px;
+        }
+
+        #preview:hover {
+            background-color: #0062cc;
+        }
+    </style>
+</head>
+<body>
+
+{% block content %}
+    <h2>Update max receiver</h2>
+    <div class="form-container" id="form-container">
+        <form method="post" action="{% url 'increase_limit' username %}" enctype="multipart/form-data" id="post-form">
+            {% csrf_token %}
+            <div class="form-container">
+                    <div class="post-form">
+                        {{ form.as_p }}
+                    </div>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Submit</button>
+            </div>
+        </form>
+    </div>
+{% endblock %}
+<!-- Bootstrap core JavaScript
+    ================================================== -->
+    <!-- Placed at the end of the document so the pages load faster -->
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tether/1.4.0/js/tether.min.js"
+            integrity="sha384-DztdAPBWPRXSA/3eYEEUWrWCy7G5KFbe8fFjk5JAIxUYHKkDx6Qin1DkWx51bBrb"
+            crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.0.0/dist/js/bootstrap.min.js"
+        integrity="sha384-JZR6Spejh4U02d8jOt6vLEHfe/JQGiRRSQQxSfFWpi1MquVdAyjUar5+76PVCmYl"
+        crossorigin="anonymous"></script>
+</body>
+</html>

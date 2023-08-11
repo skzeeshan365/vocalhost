@@ -4,12 +4,14 @@ from json import JSONDecodeError
 from django.contrib import auth
 from django.contrib.auth import authenticate, login
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth.models import User
 from django.core.signals import request_finished
 from django.dispatch import receiver
 from django.http import HttpResponse, JsonResponse
-from django.shortcuts import render, redirect
+from django.shortcuts import render, redirect, get_object_or_404
 
 from ReiserX_Tunnel import AuthBackend
+from main import forms
 from main.consumers import MyWebSocketConsumer
 # Create your views here.
 from main.forms import RegistrationForm, LoginForm
@@ -238,3 +240,35 @@ def regenerate_api(request):
         'api': new_api_key
     }
     return JsonResponse(response_data)
+
+
+@login_required(login_url='/account/login/')
+def increase_limit(request, username):
+    if request.user.is_superuser:
+        user = get_object_or_404(User, username=username)
+
+        if request.method == 'POST':
+            form = forms.EditForm(request.POST)
+            if form.is_valid():
+                new_limit = form.cleaned_data['limit']
+                user.userprofile.max_receiver = new_limit
+                user.userprofile.save()
+                return HttpResponse('Limit updated')
+        else:
+            initial_data = {'limit': user.userprofile.max_receiver}  # Provide the initial data for the form
+
+            form = forms.EditForm(initial=initial_data)
+
+            return render(request, 'EditLimit.html', {'form': form, 'username': username})
+    else:
+        return HttpResponse('Permission denied')
+
+
+@login_required(login_url='/account/login/')
+def user_accounts(request):
+    if request.user.is_superuser:
+        users = User.objects.all()
+        return render(request, 'user_accounts.html', {'users': users})
+    else:
+        return HttpResponse('Permission denied')
+

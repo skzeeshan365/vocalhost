@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>User accounts</title>
+</head>
+<body>
+<h1>User List</h1>
+    <ul>
+        {% for user in users %}
+            <a href="{% url 'increase_limit' user.username %}"> <li>{{ user.username }} - {{ user.email }}</li></a>
+        {% endfor %}
+    </ul>
+</body>
+</html>

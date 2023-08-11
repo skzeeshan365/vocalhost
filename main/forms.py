@@ -64,3 +64,7 @@ class LoginForm(forms.Form):
         self.fields['username_or_email'].label = ''
         self.fields['username_or_email'].help_text = None
         self.fields['password'].label = ''
+
+
+class EditForm(forms.Form):
+    limit = forms.IntegerField()

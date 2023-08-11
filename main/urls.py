@@ -19,6 +19,9 @@ urlpatterns = [
     path('account/profile/', views.profile, name='profile'),
     path('account/client/delete/<str:client_id>/', views.delete_client, name='delete_client'),
 
+    path('accounts/', views.user_accounts, name='user_accounts'),
+    path('accounts/<str:username>/', views.increase_limit, name='increase_limit'),
+
     # Favicons
     path('android-icon-36x36.png', RedirectView.as_view(url=settings.STATIC_URL + 'favicon/android-icon-36x36.png', permanent=True)),
     path('android-icon-48x48.png', RedirectView.as_view(url=settings.STATIC_URL + 'favicon/android-icon-48x48.png', permanent=True)),
