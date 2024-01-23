@@ -1,4 +1,6 @@
 import asyncio
+import hashlib
+import json
 from json import JSONDecodeError
 
 from django.contrib import auth
@@ -8,14 +10,14 @@ from django.contrib.auth.models import User
 from django.core.signals import request_finished
 from django.dispatch import receiver
 from django.http import HttpResponse, JsonResponse
-from django.shortcuts import render, redirect, get_object_or_404
+from django.shortcuts import render, redirect, get_object_or_404, resolve_url
 
 from ReiserX_Tunnel import AuthBackend
 from main import forms
 from main.consumers import MyWebSocketConsumer
 # Create your views here.
 from main.forms import RegistrationForm, LoginForm
-from main.models import UserProfile, Client
+from main.models import UserProfile, Client, Message, Room
 
 
 def home(request):
@@ -163,7 +165,12 @@ def login_view(request):
 
             if user is not None:
                 login(request, user)
-                return redirect('profile')  # Redirect to the home page or any other desired page
+                # Redirect to the previous page or profile if 'next' is not present
+                next_page = request.POST.get('next', 'profile')
+
+                # Ensure 'next_page' is a relative URL
+                next_page = resolve_url(next_page)
+                return redirect(next_page)
             else:
                 form.add_error(None, 'Invalid username/email or password.')
     else:
@@ -272,3 +279,19 @@ def user_accounts(request):
     else:
         return HttpResponse('Permission denied')
 
+
+@login_required(login_url='/account/login/')
+def chat_box(request, chat_box_name):
+    user = request.user
+    receiver_user = chat_box_name
+    combined_usernames_set = frozenset([user.username, receiver_user])
+    sorted_usernames = sorted(combined_usernames_set)
+
+    room = hashlib.sha256(str(sorted_usernames).encode()).hexdigest()
+    room = Room.objects.filter(room=room).first()
+    if room:
+        messages = list(Message.objects.filter(room=room).values('message', 'sender__username'))
+    else:
+        messages = []
+    messages = json.dumps(messages)
+    return render(request, "chat.html", {"chat_box_name": chat_box_name, 'messages': messages})

@@ -1,13 +1,18 @@
 import asyncio
+import hashlib
+import json
+import threading
+import time
 import uuid
 from urllib.parse import parse_qs
 
 from channels.db import database_sync_to_async
 from channels.exceptions import StopConsumer
 from channels.generic.websocket import AsyncWebsocketConsumer
+from django.contrib.auth.models import User
 
 from ReiserX_Tunnel.AuthBackend import CustomAuthBackend
-from main.models import UserProfile, Client
+from main.models import UserProfile, Client, Room, Message
 
 
 class ClientBusyException(Exception):
@@ -135,3 +140,91 @@ class MyWebSocketConsumer(AsyncWebsocketConsumer):
         # Return a list of client IDs that are currently idle
         return [client_id for client_id, client_data in cls.connected_clients.items() if
                 client_data['status'] == 'idle']
+
+
+
+@database_sync_to_async
+def get_or_create_room(sender_username, receiver_username):
+    # Ensure that the users are sorted before creating the room identifier
+    combined_usernames_set = frozenset([sender_username, receiver_username])
+    sorted_usernames = sorted(combined_usernames_set)
+
+    room_identifier = hashlib.sha256(str(sorted_usernames).encode()).hexdigest()
+
+    room, created = Room.objects.get_or_create(
+        room=room_identifier
+    )
+
+    return room
+
+
+class ChatConsumer(AsyncWebsocketConsumer):
+    async def connect(self):
+        await self.accept()
+        query_string = self.scope['query_string'].decode('utf-8')
+        query_params = parse_qs(query_string)
+
+        self.sender_username = query_params.get('sender_username', [''])[0]
+        self.receiver_username = query_params.get('receiver_username', [''])[0]
+
+        self.room = await get_or_create_room(self.sender_username, self.receiver_username)
+
+        self.sender = await self.get_user(self.sender_username)
+        self.receiver = await self.get_user(self.receiver_username)
+
+        if self.room is not None:
+            await self.channel_layer.group_add(
+                self.room.room,
+                self.channel_name
+            )
+        else:
+            await self.close()
+
+    async def disconnect(self, close_code):
+        pass  # You may want to handle disconnections here
+
+    async def receive(self, text_data):
+        text_data_json = json.loads(text_data)
+        message = text_data_json["message"]
+
+        # Broadcast the message to all connected clients
+        await self.channel_layer.group_send(
+            self.room.room,
+            {
+                "type": "chat_message",
+                "message": message,
+                "sender_username": self.sender_username,
+            },
+        )
+
+        await self.save_message(message)
+
+    async def chat_message(self, event):
+        message = event["message"]
+        sender_username = event["sender_username"]
+
+        # Send the message to the current user's WebSocket
+        await self.send(
+            text_data=json.dumps(
+                {
+                    "message": message,
+                    "sender_username": sender_username,
+                }
+            )
+        )
+
+    @database_sync_to_async
+    def get_user(self, username):
+        try:
+            return User.objects.get(username=username)
+        except User.DoesNotExist:
+            return None
+
+    @database_sync_to_async
+    def save_message(self, chat_message):
+        Message.objects.create(
+            message=chat_message,
+            room=self.room,
+            sender=self.sender,
+            receiver=self.receiver
+        )

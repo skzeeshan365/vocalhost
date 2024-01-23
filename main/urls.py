@@ -3,6 +3,7 @@ from django.views.generic import RedirectView
 
 from ReiserX_Tunnel import settings
 from main import views
+from main.views import chat_box
 
 urlpatterns = [
     path('', views.home, name='home'),
@@ -21,6 +22,8 @@ urlpatterns = [
 
     path('accounts/', views.user_accounts, name='user_accounts'),
     path('accounts/<str:username>/', views.increase_limit, name='increase_limit'),
+
+    path("chat/<str:chat_box_name>/", chat_box, name="chat"),
 
     # Favicons
     path('android-icon-36x36.png', RedirectView.as_view(url=settings.STATIC_URL + 'favicon/android-icon-36x36.png', permanent=True)),
