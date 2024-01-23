@@ -114,6 +114,9 @@ STATICFILES_DIRS = [
 STATIC_ROOT = os.path.join(BASE_DIR, 'assets')
 
 
+DEFAULT_FROM_EMAIL = "support@reiserx.com"
+SENDGRID_API_KEY = os.getenv('SENDGRID_API_KEY')
+
 # Internationalization
 # https://docs.djangoproject.com/en/4.2/topics/i18n/
 

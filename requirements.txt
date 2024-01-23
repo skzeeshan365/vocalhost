@@ -3,3 +3,4 @@ python-dotenv==1.0.0
 asgiref~=3.7.2
 channels~=4.0.0
 daphne==4.0.0
+sendgrid~=6.11.0

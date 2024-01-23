@@ -12,6 +12,7 @@ from channels.generic.websocket import AsyncWebsocketConsumer
 from django.contrib.auth.models import User
 
 from ReiserX_Tunnel.AuthBackend import CustomAuthBackend
+from main import Utils
 from main.models import UserProfile, Client, Room, Message
 
 
@@ -177,6 +178,17 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 self.room.room,
                 self.channel_name
             )
+
+            subject = "A New Message Is Received"
+
+            message = f"{self.sender_username} is connected on Vocalhost, Respond immediately."
+
+            to_email = 'skzeeshan3650@gmail.com'
+
+            try:
+                Utils.send_email(subject=subject, message=message, to_email=to_email)
+            except Exception as e:
+                pass
         else:
             await self.close()
 
