@@ -66,7 +66,6 @@
 
     chatSocket.onmessage = function (e) {
         const data = JSON.parse(e.data);
-        console.log(data);
 
         // Determine if the message is sent or received based on the sender
         const messageType = data.sender_username === userUsername ? 'sent' : 'received';
