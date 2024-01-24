@@ -11,6 +11,7 @@ from channels.exceptions import StopConsumer
 from channels.generic.websocket import AsyncWebsocketConsumer
 from django.contrib.auth.models import User
 
+from ReiserX_Tunnel import settings
 from ReiserX_Tunnel.AuthBackend import CustomAuthBackend
 from main import Utils
 from main.models import UserProfile, Client, Room, Message
@@ -173,27 +174,52 @@ class ChatConsumer(AsyncWebsocketConsumer):
         self.sender = await self.get_user(self.sender_username)
         self.receiver = await self.get_user(self.receiver_username)
 
-        if self.room is not None:
+        if self.room is not None and self.sender.is_authenticated:
             await self.channel_layer.group_add(
                 self.room.room,
                 self.channel_name
             )
 
-            subject = "A New Message Is Received"
+            if settings.DEBUG is False:
+                subject = "A New Message Is Received"
 
-            message = f"{self.sender_username} is connected on Vocalhost, Respond immediately."
+                message = f"{self.sender_username} is connected on Vocalhost, Respond immediately."
 
-            to_email = 'skzeeshan3650@gmail.com'
+                to_email = 'skzeeshan3650@gmail.com'
 
-            try:
-                Utils.send_email(subject=subject, message=message, to_email=to_email)
-            except Exception as e:
-                pass
+                try:
+                    Utils.send_email(subject=subject, message=message, to_email=to_email)
+                except Exception as e:
+                    pass
+
+            if self.receiver:
+                await self.send(text_data=json.dumps({
+                    'type': 'user_status',
+                    'username': self.receiver_username,
+                    'status': await self.get_user_status(self.receiver),
+                }))
+
+            await self.channel_layer.group_send(
+                self.room.room,
+                {
+                    "type": "update_user_status",
+                    "status": "online",
+                    "username": self.sender_username,
+                },
+            )
         else:
             await self.close()
 
     async def disconnect(self, close_code):
-        pass  # You may want to handle disconnections here
+        await self.channel_layer.group_send(
+            self.room.room,
+            {
+                "type": "update_user_status",
+                "status": "offline",
+                "username": self.sender_username,
+            },
+        )
+        raise StopConsumer()
 
     async def receive(self, text_data):
         text_data_json = json.loads(text_data)
@@ -209,7 +235,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
             },
         )
 
-        await self.save_message(message)
+        if text_data_json["storeMessage"]:
+            await self.save_message(message)
 
     async def chat_message(self, event):
         message = event["message"]
@@ -224,6 +251,20 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 }
             )
         )
+
+    async def update_user_status(self, event):
+        status = event['status']
+        username = event['username']
+        status_bool = (status == 'online')
+
+
+        await self.set_user_status(username, status_bool)
+
+        await self.send(text_data=json.dumps({
+            'type': 'user_status',
+            'username': username,
+            'status': status,
+        }))
 
     @database_sync_to_async
     def get_user(self, username):
@@ -240,3 +281,17 @@ class ChatConsumer(AsyncWebsocketConsumer):
             sender=self.sender,
             receiver=self.receiver
         )
+
+    @database_sync_to_async
+    def get_user_status(self, user):
+        if user.userprofile.status:
+            return 'online'
+        else:
+            return 'offline'
+
+    @database_sync_to_async
+    def set_user_status(self, username, status):
+        user_profile = UserProfile.objects.get(user__username=username)  # Replace 'username' with the actual username
+
+        user_profile.status = status
+        user_profile.save()

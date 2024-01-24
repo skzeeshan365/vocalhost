@@ -295,3 +295,18 @@ def chat_box(request, chat_box_name):
         messages = []
     messages = json.dumps(messages)
     return render(request, "chat.html", {"chat_box_name": chat_box_name, 'messages': messages})
+
+
+@login_required(login_url='/account/login/')
+def delete_messages(request, receiver):
+    user = request.user
+    receiver_user = receiver
+    combined_usernames_set = frozenset([user.username, receiver_user])
+    sorted_usernames = sorted(combined_usernames_set)
+
+    room = hashlib.sha256(str(sorted_usernames).encode()).hexdigest()
+    room = Room.objects.filter(room=room).first()
+
+    if room:
+        room.delete_all_messages()
+    return redirect('chat', chat_box_name=receiver)

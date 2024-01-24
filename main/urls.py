@@ -24,6 +24,7 @@ urlpatterns = [
     path('accounts/<str:username>/', views.increase_limit, name='increase_limit'),
 
     path("chat/<str:chat_box_name>/", chat_box, name="chat"),
+    path("chat/delete/<str:receiver>/", views.delete_messages, name="delete_messages"),
 
     # Favicons
     path('android-icon-36x36.png', RedirectView.as_view(url=settings.STATIC_URL + 'favicon/android-icon-36x36.png', permanent=True)),

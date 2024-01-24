@@ -13,6 +13,7 @@ class UserProfile(models.Model):
     api = models.CharField(max_length=255, blank=True)
     connected_clients = models.ManyToManyField('Client', blank=True)
     max_receiver = models.IntegerField(validators=[MaxValueValidator(10)], default=1)
+    status = models.BooleanField(default=False)
 
     def save(self, *args, **kwargs):
         if not self.api:
@@ -71,6 +72,10 @@ class Room(models.Model):
 
     def __str__(self):
         return f'{self.room}'
+
+    def delete_all_messages(self):
+        # Delete all messages associated with this room
+        Message.objects.filter(room=self).delete()
 
 
 class Message(models.Model):
