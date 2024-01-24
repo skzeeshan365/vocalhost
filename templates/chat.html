@@ -138,7 +138,7 @@
         chatText.scrollTop = chatText.scrollHeight;
     });
     const chatSocket = new WebSocket(
-        'ws://' + window.location.host + `/ws/chat/?sender_username=${userUsername}&receiver_username={{ chat_box_name }}`
+        'wss://' + window.location.host + `/ws/chat/?sender_username=${userUsername}&receiver_username={{ chat_box_name }}`
     );
 
     chatSocket.onmessage = function (e) {
