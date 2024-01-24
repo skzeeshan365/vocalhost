@@ -1,6 +1,6 @@
 from django.contrib.auth.backends import BaseBackend
 
-from main.models import UserProfile, Client
+from main.models import UserProfile
 
 
 class CustomAuthBackend(BaseBackend):
@@ -16,3 +16,16 @@ class CustomAuthBackend(BaseBackend):
 
         except UserProfile.DoesNotExist:
             return None, None
+
+    def authenticate_api(self, api_key=None):
+        try:
+            user_profile = UserProfile.objects.get(api=api_key)
+
+            # Check if the user has reached the maximum number of clients
+            if user_profile is not None:
+                return user_profile.user
+            else:
+                return None
+
+        except UserProfile.DoesNotExist:
+            return None

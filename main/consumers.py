@@ -1,8 +1,6 @@
 import asyncio
 import hashlib
 import json
-import threading
-import time
 import uuid
 from urllib.parse import parse_qs
 
@@ -14,7 +12,7 @@ from django.contrib.auth.models import User
 from ReiserX_Tunnel import settings
 from ReiserX_Tunnel.AuthBackend import CustomAuthBackend
 from main import Utils
-from main.models import UserProfile, Client, Room, Message
+from main.models import UserProfile, Room, Message
 
 
 class ClientBusyException(Exception):
@@ -37,7 +35,7 @@ class MyWebSocketConsumer(AsyncWebsocketConsumer):
     user = None
 
     @database_sync_to_async
-    def authenticate(self, api_key, client, client_id):
+    def authenticate(self, api_key, client_id):
         # Call your custom authentication backend's authenticate method
         return CustomAuthBackend().authenticate(request=None, api_key=api_key, client_id=client_id)
 
@@ -52,7 +50,7 @@ class MyWebSocketConsumer(AsyncWebsocketConsumer):
         api_key = query_params.get('api_key', [''])[0]
 
         # Authenticate the user based on the provided client_id and api_key
-        self.user, limit = await self.authenticate(api_key=api_key, client_id=client_id, client=self)
+        self.user, limit = await self.authenticate(api_key=api_key, client_id=client_id)
 
         if self.user is None:
             await self.close(4000)
@@ -144,7 +142,6 @@ class MyWebSocketConsumer(AsyncWebsocketConsumer):
                 client_data['status'] == 'idle']
 
 
-
 @database_sync_to_async
 def get_or_create_room(sender_username, receiver_username):
     # Ensure that the users are sorted before creating the room identifier
@@ -161,20 +158,61 @@ def get_or_create_room(sender_username, receiver_username):
 
 
 class ChatConsumer(AsyncWebsocketConsumer):
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.room = None
+        self.sender = None
+        self.receiver = None
+        self.sender_username = None
+        self.receiver_username = None
+        self.api = None
+
+
+    @database_sync_to_async
+    def authenticate(self, api_key):
+        # Call your custom authentication backend's authenticate method
+        return CustomAuthBackend().authenticate_api(api_key=api_key)
+
     async def connect(self):
         await self.accept()
         query_string = self.scope['query_string'].decode('utf-8')
         query_params = parse_qs(query_string)
 
-        self.sender_username = query_params.get('sender_username', [''])[0]
-        self.receiver_username = query_params.get('receiver_username', [''])[0]
+        sender_username = query_params.get('sender_username', None)
+        receiver_username = query_params.get('receiver_username', None)
+        api = query_params.get('api', None)
 
-        self.room = await get_or_create_room(self.sender_username, self.receiver_username)
+        if receiver_username is not None and api is not None:
+            sender = await self.authenticate(api[0])
+            sender_username = sender.get_username()
+            receiver_username = receiver_username[0]
 
-        self.sender = await self.get_user(self.sender_username)
-        self.receiver = await self.get_user(self.receiver_username)
+            if sender is not None:
+                await self.connect_chat(sender_username=sender_username, receiver_username=receiver_username, sender=sender)
+            else:
+                await self.close()
+        elif receiver_username is not None and sender_username is not None:
+            sender_username = sender_username[0]
+            receiver_username = receiver_username[0]
+            sender = await self.get_user(sender_username)
+            if sender.is_authenticated:
+                await self.connect_chat(sender_username=sender_username, receiver_username=receiver_username, sender=sender)
+            else:
+                await self.close()
 
-        if self.room is not None and self.sender.is_authenticated:
+        else:
+            await self.close()
+
+    async def connect_chat(self, sender_username, receiver_username, sender):
+        self.room = await get_or_create_room(sender_username, receiver_username)
+        self.sender_username = sender_username
+        self.receiver_username = receiver_username
+
+        self.sender = sender
+        self.receiver = await self.get_user(receiver_username)
+
+        if self.room is not None:
             await self.channel_layer.group_add(
                 self.room.room,
                 self.channel_name
@@ -183,7 +221,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             if settings.DEBUG is False:
                 subject = "A New Message Is Received"
 
-                message = f"{self.sender_username} is connected on Vocalhost, Respond immediately."
+                message = f"{sender_username} is connected on Vocalhost, Respond immediately."
 
                 to_email = 'skzeeshan3650@gmail.com'
 
@@ -195,7 +233,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             if self.receiver:
                 await self.send(text_data=json.dumps({
                     'type': 'user_status',
-                    'username': self.receiver_username,
+                    'username': receiver_username,
                     'status': await self.get_user_status(self.receiver),
                 }))
 
@@ -204,21 +242,22 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 {
                     "type": "update_user_status",
                     "status": "online",
-                    "username": self.sender_username,
+                    "username": sender_username,
                 },
             )
         else:
             await self.close()
 
     async def disconnect(self, close_code):
-        await self.channel_layer.group_send(
-            self.room.room,
-            {
-                "type": "update_user_status",
-                "status": "offline",
-                "username": self.sender_username,
-            },
-        )
+        if self.room is not None:
+            await self.channel_layer.group_send(
+                self.room.room,
+                {
+                    "type": "update_user_status",
+                    "status": "offline",
+                    "username": self.sender_username,
+                },
+            )
         raise StopConsumer()
 
     async def receive(self, text_data):
@@ -256,7 +295,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
         status = event['status']
         username = event['username']
         status_bool = (status == 'online')
-
 
         await self.set_user_status(username, status_bool)
 
