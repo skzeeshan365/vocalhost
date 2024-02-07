@@ -1,5 +1,4 @@
 # Create your models here.
-import hashlib
 import uuid
 
 from channels.db import database_sync_to_async
@@ -79,8 +78,10 @@ class Room(models.Model):
 
 
 class Message(models.Model):
+    message_id = models.CharField(primary_key=True, max_length=16)
     message = models.TextField(max_length=10000)
     timestamp = models.DateTimeField(auto_now_add=True)
     room = models.ForeignKey(Room, on_delete=models.CASCADE, related_name='rooms')
     sender = models.ForeignKey(User, on_delete=models.CASCADE, related_name='sender_rooms')
     receiver = models.ForeignKey(User, on_delete=models.CASCADE, related_name='receiver_rooms')
+    reply_id = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='replies', default=None)

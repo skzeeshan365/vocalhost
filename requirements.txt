@@ -1,5 +1,5 @@
-Django==4.2.2
-python-dotenv==1.0.0
+Django==5.0.1
+python-dotenv==1.0.1
 asgiref~=3.7.2
 channels~=4.0.0
 daphne==4.0.0

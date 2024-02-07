@@ -1,13 +1,18 @@
 import asyncio
 import hashlib
 import json
+import struct
+import time
 import uuid
+from io import BytesIO
 from urllib.parse import parse_qs
 
+from PIL import Image
 from channels.db import database_sync_to_async
 from channels.exceptions import StopConsumer
 from channels.generic.websocket import AsyncWebsocketConsumer
 from django.contrib.auth.models import User
+from django.db import IntegrityError
 
 from ReiserX_Tunnel import settings
 from ReiserX_Tunnel.AuthBackend import CustomAuthBackend
@@ -112,7 +117,8 @@ class MyWebSocketConsumer(AsyncWebsocketConsumer):
     @classmethod
     def get_client(cls, client_id, user):
         try:
-            if cls.connected_clients[client_id]['status'] == 'idle' and cls.connected_clients[client_id]['user'] == user:
+            if cls.connected_clients[client_id]['status'] == 'idle' and cls.connected_clients[client_id][
+                'user'] == user:
                 return cls.connected_clients[client_id]['websocket']
             raise ClientBusyException('Client is not available or busy')
         except KeyError:
@@ -168,7 +174,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
         self.receiver_username = None
         self.api = None
 
-
     @database_sync_to_async
     def authenticate(self, api_key):
         # Call your custom authentication backend's authenticate method
@@ -189,15 +194,18 @@ class ChatConsumer(AsyncWebsocketConsumer):
             receiver_username = receiver_username[0]
 
             if sender is not None:
-                await self.connect_chat(sender_username=sender_username, receiver_username=receiver_username, sender=sender)
+                await self.connect_chat(sender_username=sender_username, receiver_username=receiver_username,
+                                        sender=sender)
             else:
                 await self.close()
         elif receiver_username is not None and sender_username is not None:
             sender_username = sender_username[0]
             receiver_username = receiver_username[0]
             sender = await self.get_user(sender_username)
+
             if sender.is_authenticated:
-                await self.connect_chat(sender_username=sender_username, receiver_username=receiver_username, sender=sender)
+                await self.connect_chat(sender_username=sender_username, receiver_username=receiver_username,
+                                        sender=sender)
             else:
                 await self.close()
 
@@ -249,7 +257,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             await self.close()
 
     async def disconnect(self, close_code):
-        if self.room is not None:
+        if self.room.room is not None:
             await self.channel_layer.group_send(
                 self.room.room,
                 {
@@ -260,33 +268,176 @@ class ChatConsumer(AsyncWebsocketConsumer):
             )
         raise StopConsumer()
 
-    async def receive(self, text_data):
-        text_data_json = json.loads(text_data)
-        message = text_data_json["message"]
+    async def receive(self, text_data=None, bytes_data=None):
+        if text_data is not None:
+            text_data_json = json.loads(text_data)
+            type = text_data_json.get('type')
+            message = text_data_json.get("message")
+            message_id = text_data_json.get('message_id')
+            reply_id = text_data_json.get('reply_id')
+            storeMessage = text_data_json.get("storeMessage")
 
-        # Broadcast the message to all connected clients
-        await self.channel_layer.group_send(
-            self.room.room,
-            {
-                "type": "chat_message",
-                "message": message,
-                "sender_username": self.sender_username,
-            },
-        )
+            if type == 'reply_message':
+                # Generate message_id
+                message_id = int(time.time() * 1000)
+                await self.channel_layer.group_send(
+                    self.room.room,
+                    {
+                        "type": "chat_message",
+                        "message": message,
+                        "message_id": message_id,
+                        'reply_id': reply_id,
+                        "sender_username": self.sender_username,
+                    },
+                )
+                if storeMessage:
+                    await self.save_message_db(message, message_id, reply_id)
+            elif type == 'message':
+                # Generate message_id
+                message_id = int(time.time() * 1000)
+                await self.channel_layer.group_send(
+                    self.room.room,
+                    {
+                        "type": "chat_message",
+                        "message": message,
+                        "message_id": message_id,
+                        "sender_username": self.sender_username,
+                    },
+                )
+                if storeMessage:
+                    await self.save_message_db(message, message_id, reply_id)
+            elif type == 'save_message':
+                save_message = text_data_json.get("save_message")
+                sender = text_data_json.get("sender")
+                receiver = text_data_json.get("receiver")
+                await self.channel_layer.group_send(
+                    self.room.room,
+                    {
+                        "type": "save_message",
+                        "message_id": message_id,
+                        'save_message': save_message
+                    },
+                )
+                if save_message:
+                    await self.save_message_db(message, message_id, sender, receiver, reply_id)
+                else:
+                    await self.delete_message_db(message_id)
+            elif type == 'delete_message':
+                sender_username = text_data_json.get("sender_username")
+                permission = await self.delete_permission_db(message_id, sender_username)
+                if permission:
+                    await self.delete_message_db(message_id)
+                    await self.channel_layer.group_send(
+                        self.room.room,
+                        {
+                            "type": "delete_message",
+                            "message_id": message_id,
+                        },
+                    )
 
-        if text_data_json["storeMessage"]:
-            await self.save_message(message)
+        if bytes_data:
+            json_end = bytes_data.index(b'}') + 1
+            json_data = bytes_data[:json_end].decode('utf-8')
+            data = json.loads(json_data)
+
+            text_message = data.get("message")
+            message_id = int(time.time() * 1000)
+
+            # Extract binary image data
+            image_data = bytes_data[json_end:]
+
+            await self.channel_layer.group_send(
+                self.room.room,
+                {
+                    "type": "image_bytes_data",
+                    "message": text_message,
+                    "image_data": image_data,
+                    'message_id': message_id,
+                    "sender_username": self.sender_username,
+                }
+            )
+            if data.get("storeMessage"):
+                await self.save_message_db(text_message, message_id)
 
     async def chat_message(self, event):
-        message = event["message"]
         sender_username = event["sender_username"]
+        message = event["message"]
+        message_id = event['message_id']
+        reply_id = event.get('reply_id', None)
+        if reply_id:
+            await self.send(
+                text_data=json.dumps(
+                    {
+                        "message": message,
+                        'message_id': message_id,
+                        'reply_id': reply_id,
+                        "sender_username": sender_username,
+                    }
+                )
+            )
+        else:
+            await self.send(
+                text_data=json.dumps(
+                    {
+                        "message": message,
+                        'message_id': message_id,
+                        "sender_username": sender_username,
+                    }
+                )
+            )
 
-        # Send the message to the current user's WebSocket
+        # await self.send(
+        #     text_data=json.dumps(
+        #         {
+        #             "type": 'message_sent',
+        #         }
+        #     )
+        # )
+
+    async def image_bytes_data(self, event):
+        sender_username = event["sender_username"]
+        message_id = event['message_id']
+        print(message_id)
+
         await self.send(
             text_data=json.dumps(
                 {
-                    "message": message,
-                    "sender_username": sender_username,
+                    "type": 'message_sent',
+                    'message_id': message_id,
+                    'data_type': 'bytes'
+                }
+            )
+        )
+
+        if sender_username != self.sender_username:
+            image_data = event["image_data"]
+
+            message = event["message"]
+            combined_data = f"{message_id}\n{message}\n{sender_username}\n".encode('utf-8') + b'\n' + image_data
+
+            # Send the combined data as bytes_data
+            await self.send(bytes_data=combined_data)
+
+    async def save_message(self, event):
+        message_id = event['message_id']
+        save_message = event.get("save_message")
+        await self.send(
+            text_data=json.dumps(
+                {
+                    "type": "save_message",
+                    "message_id": message_id,
+                    'save_message': save_message
+                }
+            )
+        )
+
+    async def delete_message(self, event):
+        message_id = event['message_id']
+        await self.send(
+            text_data=json.dumps(
+                {
+                    "type": "delete_message",
+                    "message_id": message_id,
                 }
             )
         )
@@ -312,13 +463,53 @@ class ChatConsumer(AsyncWebsocketConsumer):
             return None
 
     @database_sync_to_async
-    def save_message(self, chat_message):
-        Message.objects.create(
-            message=chat_message,
-            room=self.room,
-            sender=self.sender,
-            receiver=self.receiver
-        )
+    def save_message_db(self, chat_message, message_id, sender=None, receiver=None, reply_id=None):
+        if sender is None:
+            sender = self.sender
+        else:
+            sender = User.objects.get(username=sender)
+        if receiver is None:
+            receiver = self.receiver
+        else:
+            receiver = User.objects.get(username=receiver)
+        try:
+            if reply_id:
+                reply_message = Message.objects.get(message_id=reply_id)
+            else:
+                reply_message = None
+        except Message.DoesNotExist:
+            reply_message = None
+        if chat_message is not None and chat_message != '' and message_id is not None:
+            try:
+                Message.objects.create(
+                    message=chat_message,
+                    room=self.room,
+                    sender=sender,
+                    receiver=receiver,
+                    message_id=message_id,
+                    reply_id=reply_message
+                )
+            except IntegrityError:
+                pass
+
+    @database_sync_to_async
+    def delete_message_db(self, message_id):
+        try:
+            message = Message.objects.get(message_id=message_id)
+            message.delete()
+        except Message.DoesNotExist:
+            pass
+
+    @database_sync_to_async
+    def delete_permission_db(self, message_id, sender_username):
+        try:
+            message = Message.objects.get(message_id=message_id)
+            if message.sender.username == sender_username:
+                return True
+            else:
+                return False
+        except Message.DoesNotExist:
+            return True
 
     @database_sync_to_async
     def get_user_status(self, user):

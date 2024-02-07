@@ -52,6 +52,30 @@
     <!-- Favicon -->
 
     <style>
+        body {
+            background-color: #1f1f1f;
+            overflow: hidden;
+        }
+
+        .snap-ui-container {
+            flex-grow: 1;
+            flex-shrink: 1;
+            overflow-y: auto;
+            background-color: #0b0b0b;
+        }
+
+        .snap-ui-container-holder {
+            flex-grow: 1;
+            flex-shrink: 1;
+            overflow-y: auto;
+            background-color: #0b0b0b;
+        }
+
+        .input-box-container {
+            display: flex;
+        }
+
+
         .action_buttons {
             height: 30px;
             font-size: 14px;
@@ -59,54 +83,312 @@
             align-items: center;
             align-content: center;
         }
+
+        .form-control {
+            background-color: #0b0b0b;
+            color: #ffffff;
+        }
+
+        input#input {
+            border: 1px solid #000000;
+            border-radius: 8px;
+            color: #FFFFFF;
+        }
+
+        .chat-image {
+            max-width: 50%; /* Ensure the image doesn't exceed its container width */
+            height: auto; /* Maintain aspect ratio */
+            border-radius: 5px; /* Add rounded corners if desired */
+            margin: 15px;
+        }
+
+        .image_chooser {
+            padding: 20px;
+            width: 30px;
+            height: 30px;
+        }
+
+        img:hover {
+            opacity: 0.7;
+        }
+
+        /* The Modal (background) */
+        #image-viewer {
+            display: none;
+            position: fixed;
+            z-index: 1;
+            padding-top: 100px;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgb(0, 0, 0);
+            background-color: rgba(0, 0, 0, 0.9);
+        }
+
+        .modal-content {
+            margin: auto;
+            display: block;
+            width: 80%;
+            max-width: 700px;
+        }
+
+        .modal-content {
+            animation-name: zoom;
+            animation-duration: 0.6s;
+        }
+
+        @keyframes zoom {
+            from {
+                transform: scale(0)
+            }
+            to {
+                transform: scale(1)
+            }
+        }
+
+        #image-viewer .close {
+            position: absolute;
+            top: 15px;
+            right: 35px;
+            color: #f1f1f1;
+            font-size: 40px;
+            font-weight: bold;
+            transition: 0.3s;
+        }
+
+        #image-viewer .close:hover,
+        #image-viewer .close:focus {
+            color: #bbb;
+            text-decoration: none;
+            cursor: pointer;
+        }
+
+        @media only screen and (max-width: 700px) {
+            .modal-content {
+                width: 100%;
+            }
+        }
+
+        .btn-primary {
+            border-color: #1C9963;
+        }
+
+        .btn-primary:hover {
+            background-color: #0f7349;
+        !important;
+            border-color: #1C9963;
+        !important;
+        }
+
+        snap-ui {
+            flex-shrink: 0;
+            overflow-y: auto; /* Enable vertical scrolling when content exceeds the max height */
+            position: relative;
+            background-color: #0b0b0b;
+        }
+
+        snap-ui:not(:defined) {
+            display: block;
+            margin: auto;
+            padding: 10px;
+            width: 75%;
+        }
+
+        snap-message:not(:defined),
+        snap-notice:not(:defined) {
+            margin: 10px auto;
+            display: block;
+        }
+
+        @media screen and (min-width: 750px) {
+            body {
+                padding: 25px 0;
+                flex-direction: row;
+                justify-content: center;
+                gap: 100px;
+            }
+
+            snap-ui {
+                margin: auto 0;
+            }
+        }
+
+        #snap-ui-container::-webkit-scrollbar {
+            width: 0; /* Set the width of the scrollbar to 0 */
+        }
+
+        input#input:focus {
+            background-color: #000000 !important;
+        }
+
+        .form_class {
+            background-color: #000000;
+            border-radius: 12px;
+        }
+
+        /* Style for the context menu */
+        .context-menu {
+            display: none;
+            position: absolute;
+            background-color: #1f1f1f; /* Custom background color */
+            color: #fff; /* Custom text color */
+            border: 1px solid #6c6c6c; /* Custom border color */
+            box-shadow: 2px 2px 5px rgba(89, 89, 89, 0.3);
+            border-radius: 8px;
+            z-index: 1000;
+            width: 200px;
+        }
+
+        .context-menu-item {
+            padding: 8px 16px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+        }
+
+        .context-menu-item:hover {
+            background-color: #383838; /* Custom hover background color */
+        }
+
+        .context-menu-item i {
+            margin-right: 8px;
+        }
+
+        /* Additional styling for Font Awesome icons */
+        .context-menu-item .fa {
+            font-size: 18px;
+        }
+
+        .reply_message_holder {
+            background-color: #0b0b0b;
+            padding-right: 8px;
+            padding-left: 8px;
+            border: 1px solid #949494;
+            border-radius: 12px;
+            position: relative;
+        }
+
+        .close-icon {
+            position: absolute;
+            top: 5px;
+            right: 12px;
+            cursor: pointer;
+            background-color: transparent;
+            border: none;
+            font-size: 20px;
+            color: #a8a8a8; /* Adjust the color as needed */
+            display: none;
+        }
     </style>
 </head>
 
 <body>
-
-<div class="content">
-    <div class="container">
-        <div class="row justify-content-center">
-            <div class="col-md-12">
-                <div class="row align-items-center">
-                    <div class="col-lg-8 mb-5 mb-lg-0">
-                        <h3 class="mb-5">Message <span id="user_status" class="preview"
-                                                       style="font-size: 14px; color: rgb(117, 117, 117);">Preview</span>
-                        </h3>
-                        <form action="" class="border-right pr-5 mb-5" method="POST" id="contactForm"
-                              name="contactForm">
-                            <div class="form-group">
-                                <textarea class="form-control" id="chat-text" readonly rows="10"></textarea>
+<div class="container" style="max-width: 98%; padding: unset;" id="chat_container">
+    <div class="row">
+        <div class="col-lg-3">
+            <h3 class="mb-4" style="color:#fff0ff;">Let's talk about everything.</h3>
+            <p style="color:#fff0ff;">Why did the alien break up with the moon?</p>
+            <p style="color:#fff0ff;">Because it was always spacey and never gave it enough atmosphere!</p>
+            <a href="{% url 'delete_messages' chat_box_name %}"
+               class="btn btn-primary py-1 px-2 action_buttons" id="submit" type="button"
+               style="background-color: #1C9963; color: #FFFFFF; border-color: #1C9963;">Clear message</a>
+            <hr>
+            <!-- Bootstrap checkbox for storing messages -->
+            <div class="custom-control custom-checkbox">
+                <input type="checkbox" class="custom-control-input" id="storeCheckbox">
+                <label style="color:#fff0ff;" class="custom-control-label" for="storeCheckbox">Save my messages</label>
+            </div>
+        </div>
+        <div class="col-lg-9 ml-auto">
+            <h4 id="heading_name" class="mb-2" style="color:#fff0ff;">
+                <span id="user_status" class="preview"
+                      style="font-size: 14px; color: rgb(117, 117, 117);">
+                    Preview
+                </span>
+            </h4>
+            <form action="" class="form_class"
+                  style="margin-right: 0px; display: flex; flex-direction: column;" method="POST"
+                  id="contactForm"
+                  name="contactForm">
+                <snap-ui class="form-group snap-ui-container-holder snap-ui-container" id="snap-ui-container"
+                         style="height: 80vh; margin-bottom: 5px; flex-grow: 1;">
+                    <snap-notice id="no_message" style="display: none;">No messages available</snap-notice>
+                </snap-ui>
+                <div class="row input-box-container" id="input-box-container"
+                     style="position: fixed; bottom: 0; width: 100%; padding-left: 2px;">
+                    <div class="col-md-8">
+                        <div class="form-group">
+                            <div class="reply_message_holder" id="reply_message_holder">
+                                <span id="close_reply" class="close-icon close_reply"
+                                      onclick="closeReplyMessageHolder()"><i class="fas fa-times"></i></span>
+                                <input style="height: 40px; width: 100%;" class="form-control"
+                                       placeholder="Type a message" id="input" type="text">
                             </div>
-                            <div class="form-group">
-                                <input class="form-control" placeholder="Type a message" id="input" type="text">
-                            </div>
-                            <div class="row">
-                                <div class="col-md-12">
-                                    <button class="btn btn-primary py-2 px-4" id="submit" type="button"
-                                            style="background-color: #1C9963; color: #FFFFFF; border-color: #1C9963;">
-                                        Send Message <i id="loading" class="fas fa-spinner fa-spin"
-                                                        style="display: none;"></i>
-                                    </button>
-                                </div>
-                            </div>
-                        </form>
-                        <div id="form-messages"></div>
+                        </div>
                     </div>
-                    <div class="col-lg-4 ml-auto">
-                        <h3 class="mb-4">Let's talk about everything.</h3>
-                        <p>Why did the alien break up with the moon?</p>
-                        <p>Because it was always spacey and never gave it enough atmosphere!</p>
-                        <a href="{% url 'delete_messages' chat_box_name %}" class="btn btn-primary py-1 px-2 action_buttons" id="submit" type="button"
-                           style="background-color: #1C9963; color: #FFFFFF; border-color: #1C9963;">Clear message</a>
-                        <hr>
-                        <!-- Bootstrap checkbox for storing messages -->
-                        <div class="custom-control custom-checkbox">
-                            <input type="checkbox" class="custom-control-input" id="storeCheckbox" checked>
-                            <label class="custom-control-label" for="storeCheckbox">Save Messages</label>
+
+                    <!-- Temporary submit button -->
+                    <button onclick="sendMessage()" class="btn btn-primary py-1 px-1" id="submit" type="button"
+                            style="background-color: #1C9963; color: #FFFFFF; border-color: #1C9963; display: none">
+                        Send<i id="loading" class="fas fa-spinner fa-spin"
+                               style="display: none;"></i>
+                    </button>
+                    <!-- Temporary submit button -->
+                    <div class="col-md-1">
+                        <div class="form-group">
+                            <!-- File input for image -->
+                            <label data-toggle="modal" data-target="#exampleModalCenter" class="btn btn-primary"
+                                   style="background: #FFFFFF; width: 45px; height: 40px; display: flex; align-items: center;"><i
+                                    class="fas fa-image"
+                                    style="font-size: 20px; color: #0c5460"></i></label>
                         </div>
                     </div>
                 </div>
+            </form>
+            <div id="form-messages"></div>
+        </div>
+    </div>
+
+    <div id="image-viewer">
+        <span class="close" id="close-button">&times;</span>
+        <img class="modal-content" id="full-image" alt="" src="">
+    </div>
+</div>
+
+<!-- Context menu container -->
+<div id="contextMenu" class="context-menu">
+    <div id="save_text" class="context-menu-item" onclick="handleContextMenu('save')">
+        <i class="fa fa-save"></i> Save in chat
+    </div>
+    <div class="context-menu-item" onclick="handleContextMenu('reply')">
+        <i class="fa fa-reply"></i> Reply
+    </div>
+    <div id="delete_message_context" class="context-menu-item" onclick="handleContextMenu('delete')">
+        <i class="fa fa-trash"></i> Delete
+    </div>
+</div>
+
+<!-- Modal -->
+<div class="modal fade bd-example-modal-xl" id="exampleModalCenter" tabindex="-1" role="dialog"
+     aria-labelledby="exampleModalCenterTitle" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-xl" role="document">
+        <div class="modal-content" style="background-color: #1f1f1f">
+            <div class="modal-body" style="display: flex; justify-content: center; align-items: center;">
+                <!-- File input for image -->
+                <label id="image_input_label" for="imageInput" class="btn btn-primary"
+                       style="background: #FFFFFF; width: 80px; height: 80px; display: flex; align-items: center; justify-content: center; border-radius: 50%; cursor: pointer;">
+                    <i class="fas fa-plus" id="imageInputIcon" style="font-size: 40px; color: #d9d9d9"></i>
+                </label>
+                <input type="file" id="imageInput" accept="image/*" class="form-control-file"
+                       onchange="updateImageLabelIcon(this)" style="display: none;">
+
+                <img id="selectedImage" src="" alt="Selected Image" style="display: none; max-width: 50%; max-height: 50%;">
+
+            </div>
+            <div class="modal-footer">
+                <button type="button" style="background-color: #1f1f1f; border: 1px solid #9a9a9a" class="btn btn-primary" onclick="sendMessage()" data-dismiss="modal">Send</button>
             </div>
         </div>
     </div>
@@ -115,55 +397,254 @@
 <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.6/dist/umd/popper.min.js"></script>
 <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+<script src="{% static 'chat/js/main.js' %}"></script>
 
 <script>
-    var messages = {{ messages|safe }};
+
+    let messages = {{ messages|safe }};
     const userUsername = "{{ request.user.username }}";
+    const chatContainer = document.getElementById('chat_container');
+
+    let bytes_webpBlob = null;
+    let bytes_message = null;
+
     document.addEventListener('DOMContentLoaded', function () {
-        const chatText = document.querySelector('#chat-text');
+        displayImages();
 
-        // Clear the existing content in case there are extra spaces
-        chatText.value = '';
+        // Group messages by date
+        const messagesByDate = groupMessagesByDate(messages);
 
-        // Loop through the messages and append them to the textarea
-        messages.forEach(function (message) {
-            // Determine if the message is sent or received based on the sender
-            const messageType = message.sender__username === userUsername ? 'you' : '{{chat_box_name}}';
+        let todayAppended = false;
 
-            // Display the message with the appropriate indicator
-            document.querySelector('#chat-text').value += `${messageType}: ${message.message}\n`;
-        });
+        // Check if there are no messages at all
+        if (Object.keys(messagesByDate).length === 0) {
+            const currentDate = new Date();
+            const formattedCurrentDate = currentDate.toLocaleDateString();
+            addSnapNotice(formattedCurrentDate);
+            todayAppended = true;
+        }
+
+        // Loop through the grouped messages and append them to the chat container
+        for (const [date, messagesInDate] of Object.entries(messagesByDate)) {
+            let dateAppended = false;  // Flag to track whether the date has been appended
+
+            const messagesForDate = messagesInDate.sort((a, b) => a.message_id - b.message_id);
+
+
+            messagesForDate.forEach(function (message, index) {
+                // Determine if the message is sent or received based on the sender
+                const messageType = message.sender__username === userUsername ? 'you' : '{{chat_box_name}}';
+
+                // Display the date section only once for the first message in the group
+                if (index === 0 && !dateAppended) {
+                    // Append the date
+                    addSnapNotice(date);
+                    dateAppended = true;  // Set the flag to true once the date is appended
+                }
+
+                // Display the message with the appropriate indicator
+                if (messageType === 'you') {
+                    if (message.reply_id !== null) {
+                        addSnapMessage(message.message_id, message.message, null, true, null, message.reply_id);
+                    } else {
+                        addSnapMessage(message.message_id, message.message, null, true, null, null);
+                    }
+                } else {
+                    if (message.reply_id !== null) {
+                        addSnapMessage(message.message_id, message.message, '{{ chat_box_name }}', true, null, message.reply_id);
+                    } else {
+                        addSnapMessage(message.message_id, message.message, '{{ chat_box_name }}', true, null, null);
+                    }
+                }
+            });
+
+            const currentDate = new Date();
+            const formattedCurrentDate = currentDate.toLocaleDateString();
+
+            if (!todayAppended && messagesByDate[formattedCurrentDate].length === 0) {
+                addSnapNotice(formattedCurrentDate);
+                todayAppended = true;
+            }
+        }
+
 
         // Scroll to the bottom
-        chatText.scrollTop = chatText.scrollHeight;
+        chatContainer.scrollTop = chatContainer.scrollHeight;
     });
+
+
+    // Function to group messages by date
+    function groupMessagesByDate(messages) {
+        return messages.reduce(function (accumulator, currentMessage) {
+            const date = new Date(currentMessage.timestamp).toLocaleDateString();
+            console.log(date)
+            accumulator[date] = accumulator[date] || [];
+            accumulator[date].push(currentMessage);
+            return accumulator;
+        }, {});
+    }
+
+    function getMessageElementById(messageId) {
+        // Retrieve the HTML element with the specified ID
+        const repliedMessageElement = document.getElementById(messageId);
+
+        // Check if the element is found
+        if (repliedMessageElement) {
+            return {
+                element: repliedMessageElement
+            };
+        } else {
+            /// Return an object with textContent as null, other attributes as null, and the HTML element as null
+            return {
+                element: null
+            };
+        }
+    }
+
+    function getMessageContentByID(message_id) {
+        const result = getMessageElementById(message_id);
+        if (result) {
+            return Array.from(result.element.childNodes)
+                .filter(node => node.nodeType === Node.TEXT_NODE)
+                .map(node => node.textContent)
+                .join('')
+        } else {
+            return null;
+        }
+    }
+
     const chatSocket = new WebSocket(
-        'wss://' + window.location.host + `/ws/chat/?sender_username=${userUsername}&receiver_username={{ chat_box_name }}`
+        '{{ protocol }}://' + window.location.host + `/ws/chat/?sender_username=${userUsername}&receiver_username={{ chat_box_name }}`
     );
 
-    chatSocket.onmessage = function (e) {
-        const data = JSON.parse(e.data);
+    chatSocket.binaryType = 'blob'
 
-        if (data.type === 'user_status') {
-            // Handle user status update, for example, update a user list
-            if (data.username === '{{ chat_box_name }}') {
-                const user_status = document.querySelector('#user_status');
-                user_status.innerHTML = `${data.username} is ${data.status}\n`;
-            }
+    chatSocket.onmessage = async function (e) {
+        if (e.data instanceof Blob) {
+            const reader = new FileReader();
+
+            reader.onload = function (event) {
+                const binaryData = new Uint8Array(event.target.result);
+
+                // Find delimiter indices
+                const delimiterIndex1 = binaryData.indexOf('\n'.charCodeAt(0));
+                const delimiterIndex2 = binaryData.indexOf('\n'.charCodeAt(0), delimiterIndex1 + 1);
+
+                // Extract text data
+                const message_id = new TextDecoder().decode(binaryData.subarray(0, delimiterIndex1));
+                const message = new TextDecoder().decode(binaryData.subarray(delimiterIndex1 + 1, delimiterIndex2));
+                const sender_username = new TextDecoder().decode(binaryData.subarray(delimiterIndex2 + 1));
+                console.log(message_id)
+
+                // Find the starting point of the image data
+                const startIndex = binaryData.indexOf('RIFF'.charCodeAt(0));
+                // Extract binary data
+                const actualBinaryData = binaryData.subarray(startIndex);
+
+                const imageBlob = new Blob([actualBinaryData], {type: 'image/webp'});
+
+                const messageType = sender_username === userUsername ? 'you' : '{{ chat_box_name }}';
+
+                // Display the message with the appropriate indicator
+
+                if (messageType === "you") {
+                    updateImage(imageBlob, null, message_id);
+                } else {
+                    updateImage(imageBlob, '{{ chat_box_name }}', message_id);
+                }
+
+                if (message !== '') {
+
+                    if (messageType === "you") {
+                        addSnapMessage(message_id, message, null, null, null, null)
+                    } else {
+                        addSnapMessage(message_id, message, '{{ chat_box_name }}', null, null, null)
+                    }
+                }
+
+                // Scroll to the bottom
+                var snapUiContainer = document.getElementById('snap-ui-container');
+                snapUiContainer.scrollTop = snapUiContainer.scrollHeight;
+
+
+                // Hide the loading icon after receiving a message
+                const loadingIcon = document.getElementById('loading');
+                loadingIcon.style.display = 'none';
+            };
+
+            // Read the entire e.data as ArrayBuffer
+            reader.readAsArrayBuffer(e.data);
         } else {
-            // Determine if the message is sent or received based on the sender
-            const messageType = data.sender_username === userUsername ? 'you' : '{{ chat_box_name }}';
+            const data = JSON.parse(e.data);
 
-            // Display the message with the appropriate indicator
-            document.querySelector('#chat-text').value += `${messageType}: ${data.message}\n`;
+            if (data.type === 'user_status') {
+                // Handle user status update, for example, update a user list
+                if (data.username === '{{ chat_box_name }}') {
+                    const heading_name = document.getElementById('heading_name');
+                    heading_name.innerHTML = `${data.username}`;
 
-            // Scroll to the bottom
-            const chatText = document.querySelector('#chat-text');
-            chatText.scrollTop = chatText.scrollHeight;
+                    const newUserStatusSpan = document.createElement('span');
+                    newUserStatusSpan.className = 'preview';
+                    newUserStatusSpan.style.fontSize = '14px'; // Set the desired style
+                    newUserStatusSpan.style.color = 'rgb(117, 117, 117)'; // Set the desired style
+                    newUserStatusSpan.style.marginLeft = 8;
+                    newUserStatusSpan.textContent = `${data.status}`;
 
-            // Hide the loading icon after receiving a message
-            const loadingIcon = document.getElementById('loading');
-            loadingIcon.style.display = 'none';
+// Append the new user_status span to the heading_name element
+                    heading_name.appendChild(newUserStatusSpan);
+                }
+            } else if (data.type === 'message_sent') {
+                if (data.data_type === 'bytes') {
+                    updateImage(bytes_webpBlob, null, data.message_id)
+                    updateSentMessage(bytes_message, data.message_id);
+                    bytes_webpBlob = null;
+                    bytes_message = null;
+                }
+                const loadingIcon = document.getElementById('loading');
+                loadingIcon.style.display = 'none';
+            } else if (data.type === 'save_message') {
+                const message_element = getMessageElementById(data.message_id)
+                if (message_element) {
+                    if (data.save_message) {
+                        message_element.element.setAttribute('saved', '');
+                    } else {
+                        message_element.element.removeAttribute('saved');
+                    }
+                }
+            } else if (data.type === 'delete_message') {
+                const result = getMessageElementById(data.message_id)
+                let deleted = null;
+
+                let from = result.element.getAttribute('from')
+                if (from === 'Me') {
+                    deleted = "You deleted a message";
+                } else {
+                    deleted = '{{ chat_box_name }} deleted a message';
+                }
+
+                const snapNoticeElement = document.createElement('snap-notice');
+                snapNoticeElement.textContent = deleted;
+                result.element.replaceWith(snapNoticeElement);
+            } else {
+                // Determine if the message is sent or received based on the sender
+                const messageType = data.sender_username === userUsername ? 'you' : '{{ chat_box_name }}';
+
+                // Display the message with the appropriate indicator
+                if (messageType === "you") {
+                    addSnapMessage(data.message_id, data.message, null, null, null, data.reply_id || null)
+                } else {
+                    addSnapMessage(data.message_id, data.message, '{{ chat_box_name }}', null, null, data.reply_id || null)
+                }
+
+                // Scroll to the bottom
+                var snapUiContainer = document.getElementById('snap-ui-container');
+                snapUiContainer.scrollTop = snapUiContainer.scrollHeight;
+
+
+                // Hide the loading icon after receiving a message
+                const loadingIcon = document.getElementById('loading');
+                loadingIcon.style.display = 'none';
+            }
         }
     }
 
@@ -172,30 +653,80 @@
         const messageInput = document.querySelector('#input');
         const message = messageInput.value.trim();
 
-        if (message !== '') {
+        if (message !== '' || imageInput.files.length > 0) {
             $('#form-messages').hide();
             const loadingIcon = document.getElementById('loading');
             loadingIcon.style.display = 'inline-block';
 
             const storeCheckbox = document.getElementById('storeCheckbox');
-    const storeMessage = storeCheckbox.checked;
+            const storeMessage = storeCheckbox.checked;
 
-            chatSocket.send(JSON.stringify({
-                'message': message,
-                'storeMessage': storeMessage,
-            }));
+            // Check if there is an image selected
+            if (imageInput.files.length > 0) {
+                const file = imageInput.files[0];
+                const img = new Image();
+                img.src = URL.createObjectURL(file);
+
+                img.onload = function () {
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+
+                    // Step 1: Reduce Quality
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    canvas.toBlob((webpBlob) => {
+                        // Send the WebP image data (webpBlob) to the server
+
+                        // Create a new Blob containing text and binary data
+                        const combinedBlob = new Blob([JSON.stringify({
+                            message: message,
+                            storeMessage: storeMessage,
+                        }), webpBlob]);
+                        chatSocket.send(combinedBlob);
+
+                        imageInput.value = '';
+                        imageInput.type = 'file';
+
+                        bytes_webpBlob = webpBlob;
+                        bytes_message = message;
+                        updateImageLabelIcon(imageInput)
+                    }, 'image/webp', 0.7); // Adjust quality as needed
+                };
+            } else {
+                var replyMessageHolder = document.getElementById('reply_message_holder');
+
+                var containsSnapMessage = replyMessageHolder.querySelector('snap-message') !== null;
+
+                if (containsSnapMessage) {
+                    const reply_id = replyMessageHolder.querySelector('snap-message').id;
+                    // Send only the message if no image is selected
+                    chatSocket.send(JSON.stringify({
+                        'type': 'reply_message',
+                        'message': message,
+                        'storeMessage': storeMessage,
+                        'reply_id': reply_id,
+                    }));
+                } else {
+                    // Send only the message if no image is selected
+                    chatSocket.send(JSON.stringify({
+                        'type': 'message',
+                        'message': message,
+                        'storeMessage': storeMessage,
+                    }));
+                }
+            }
 
             // Scroll to the bottom after sending a message
-            const chatText = document.querySelector('#chat-text');
-            chatText.scrollTop = chatText.scrollHeight;
+            var snapUiContainer = document.getElementById('snap-ui-container');
+            snapUiContainer.scrollTop = snapUiContainer.scrollHeight;
+
 
             messageInput.value = '';
         } else {
             $('#form-messages').html('<div class="alert alert-danger" role="alert">' + "Please type a message" + '</div>');
         }
     }
-    // Event listener for the "Send" button click
-    document.querySelector('#submit').onclick = sendMessage;
 
     // Event listener for the Enter key press in the input field
     document.querySelector('#input').addEventListener('keypress', function (event) {
@@ -205,6 +736,376 @@
         }
     });
 
+    const updateSentMessage = function (message, message_id, reply_id = null) {
+
+        if (message !== '') {
+            addSnapMessage(message_id, message, null, null, null, reply_id || null);
+        }
+
+        // Scroll to the bottom
+        var snapUiContainer = document.getElementById('snap-ui-container');
+        snapUiContainer.scrollTop = snapUiContainer.scrollHeight;
+
+        console.log(reply_id)
+        console.log('1')
+        if (reply_id) {
+            console.log('2')
+            closeReplyMessageHolder();
+        }
+    }
+
+    function addSnapMessage(message_id = null, text = null, from = null, saved = null, imageUrl = null, repliedMessage = null) {
+        // Create a new snap-message element
+        var snapMessage = document.createElement('snap-message');
+        // Attach the context menu event listener
+        snapMessage.addEventListener('contextmenu', function (event) {
+            // Pass the snapData to the showContextMenu function
+            event.preventDefault();
+            if (from) {
+                showContextMenu(event, text, from, message_id, imageUrl || null, repliedMessage || null);
+            } else {
+                showContextMenu(event, text, null, message_id, imageUrl || null, repliedMessage || null);
+            }
+        });
+
+        // Set the text content
+        if (text) {
+            snapMessage.textContent = text;
+        }
+
+        if (message_id) {
+            snapMessage.setAttribute('id', message_id);
+        }
+
+        // Set 'from' attribute if provided
+        if (from) {
+            snapMessage.setAttribute('from', from);
+        }
+
+        // Set 'saved' attribute if provided
+        if (saved) {
+            snapMessage.setAttribute('saved', '');
+        }
+
+        // Check if imageUrl is provided
+        if (imageUrl) {
+            // Create an img element for the image
+            var imageElement = document.createElement('img');
+            imageElement.src = imageUrl; // Set the image URL
+            imageElement.alt = 'Image'; // Set the alt attribute
+            imageElement.width = 200;
+
+            // Append the image element to the snap-message element
+            snapMessage.appendChild(imageElement);
+
+            imageElement.onload = function () {
+                var snapUiContainer = document.getElementById('snap-ui-container');
+                snapUiContainer.scrollTop = snapUiContainer.scrollHeight;
+            };
+        }
+
+        if (repliedMessage) {
+            const result = getMessageElementById(repliedMessage);
+
+            if (result) {
+                const imgElement = result.element.querySelector(':scope > img');
+
+                if (imgElement) {
+                    const clonedElement = document.createElement(result.element.tagName);
+                    clonedElement.className = result.element.className;
+                    clonedElement.id = result.element.id;
+                    clonedElement.setAttribute('from', result.element.getAttribute('from'));
+
+                    const clonedImageElement = imgElement.cloneNode(true);
+                    clonedImageElement.style.width = '100px';
+                    // Append the cloned image element to the snapMessage
+                    clonedElement.prepend(clonedImageElement);
+                    snapMessage.prepend(clonedElement)
+
+                    // Handle other properties of the snap-message element if needed
+                } else {
+
+                    // Handle non-image elements
+                    const clonedElement = document.createElement(result.element.tagName);
+                    clonedElement.className = result.element.className;
+                    clonedElement.id = result.element.id;
+
+                    const textNode = document.createTextNode(getMessageContentByID(result.element.id));
+
+                    clonedElement.appendChild(textNode);
+                    clonedElement.setAttribute('from', result.element.getAttribute('from'));
+
+                    snapMessage.prepend(clonedElement);
+                }
+            } else {
+                const no_message = document.createElement('snap-message');
+                no_message.removeAttribute('from');
+                no_message.textContent = 'This message was deleted';
+
+                snapMessage.prepend(no_message);
+            }
+        }
+
+        // Get the Snap UI container
+        var snapUiContainer = document.getElementById('snap-ui-container');
+
+        snapUiContainer.appendChild(snapMessage);
+        snapUiContainer.scrollTop = snapUiContainer.scrollHeight;
+
+        closeReplyMessageHolder();
+    }
+
+    function addSnapNotice(date) {
+        var snapUiContainer = document.getElementById('snap-ui-container');
+        var snap_notice = document.createElement('snap-notice')
+        if (date) {
+            const dateString = createMessageDateString(date);
+            snap_notice.textContent = dateString;
+        }
+
+        snapUiContainer.appendChild(snap_notice);
+    }
+
+    const updateImage = function (image, from, message_id, input) {
+        // Create an object URL from the Blob
+        const imageUrl = URL.createObjectURL(image);
+        if (from) {
+            addSnapMessage(message_id, null, from, null, imageUrl, null)
+        } else {
+            addSnapMessage(message_id, null, null, null, imageUrl, null)
+        }
+        updateImageLabelIcon(input)
+    }
+
+    const displayImages = function () {
+        const imageContainer = document.getElementById('snap-ui-container');
+
+        imageContainer.addEventListener('click', function (event) {
+            const imageUrl = getImageUrl(event.target);
+
+            if (imageUrl !== null) {
+                const modalElement = document.getElementById('image-viewer');
+                modalElement.style.display = 'block';
+
+                const fullImageElement = document.getElementById('full-image');
+                fullImageElement.src = imageUrl;
+            }
+        });
+
+        function getImageUrl(element) {
+            // Check if the clicked element is an image or a child of an image
+            const isImage = element.tagName === 'IMG' || element.closest('img');
+
+            // If it's an image, return the src, otherwise return null
+            return isImage ? element.src : null;
+        }
+
+        const closeButtonElement = document.getElementById('close-button');
+        closeButtonElement.addEventListener('click', function () {
+            // Hide the modal
+            const modalElement = document.getElementById('image-viewer');
+            modalElement.style.display = 'none';
+        });
+    }
+
+    function updateImageLabelIcon(input) {
+        // Get the file input and its value
+        if (input && input.files && input.files[0]) {
+            var fileName = input.files[0].name;
+            var imageUrl = URL.createObjectURL(input.files[0]);
+            console.log(imageUrl);
+
+            // Change the label icon based on whether an image is selected
+            if (fileName) {
+                document.getElementById('image_input_label').style.display = 'none';
+                document.getElementById('selectedImage').src = imageUrl;
+                document.getElementById('selectedImage').style.display = 'block';
+            } else {
+                document.getElementById('image_input_label').style.display = 'block';
+                document.getElementById('selectedImage').style.display = 'none';
+            }
+        }
+    }
+</script>
+
+<script>
+    const saveTextElement = document.getElementById('save_text');
+    const delete_message_context = document.getElementById('delete_message_context');
+
+    let text = null;
+    let from = null;
+    let message_id = null;
+    let imageUrl = null;
+    let reply_id = null;
+
+    function showContextMenu(event, texts, froms, message_id_arg, image_url, reply_ids) {
+        event.preventDefault();
+
+        // Access the context menu directly
+        const contextMenu = document.getElementById('contextMenu');
+        const result = getMessageElementById(message_id_arg);
+
+
+        if (result.element.getAttribute('saved') === '') {
+            saveTextElement.innerHTML = '<i class="fa fa-save"></i> Unsave';
+            saveTextElement.onclick = () => handleContextMenu('unsave');
+        } else {
+            saveTextElement.innerHTML = '<i class="fa fa-save"></i> Save in chat';
+            saveTextElement.onclick = () => handleContextMenu('save');
+        }
+
+        let from = result.element.getAttribute('from')
+        if (from === 'Me') {
+            delete_message_context.style.display = 'block';
+        } else {
+            delete_message_context.style.display = 'none';
+        }
+
+        // Set the position of the context menu
+        contextMenu.style.display = 'block';
+        contextMenu.style.left = event.pageX + 'px';
+        contextMenu.style.top = event.pageY + 'px';
+
+        if (texts) {
+            text = texts;
+        }
+
+        if (froms) {
+            from = froms;
+        }
+
+        if (message_id_arg) {
+            message_id = message_id_arg;
+        }
+
+        if (image_url) {
+            imageUrl = image_url;
+            saveTextElement.setAttribute('disabled', true);
+            saveTextElement.style.pointerEvents = 'none'; // This will prevent the element from being clickable
+            saveTextElement.style.opacity = '0.5'
+        }
+
+        if (reply_ids) {
+            reply_id = reply_ids;
+        }
+
+        // Hide the context menu when clicking outside
+        document.addEventListener('click', hideContextMenu);
+    }
+
+    // Handle context menu item click
+    function handleContextMenu(option) {
+        if (option === 'reply') {
+
+            var snapMessage = document.createElement('snap-message');
+
+            snapMessage.textContent = text;
+
+            if (from) {
+                snapMessage.setAttribute('from', from);
+            }
+
+            if (message_id) {
+                snapMessage.setAttribute('id', message_id);
+            }
+
+            if (imageUrl) {
+                // Create an img element for the image
+                var imageElement = document.createElement('img');
+                imageElement.src = imageUrl; // Set the image URL
+                imageElement.alt = 'Image'; // Set the alt attribute
+                imageElement.width = 100;
+
+                // Append the image element to the snap-message element
+                snapMessage.appendChild(imageElement);
+            }
+
+            var reply_message_holder = document.getElementById('reply_message_holder');
+            var close_reply = document.getElementById('close_reply');
+            close_reply.style.display = 'block';
+            var specific_element_to_remove = reply_message_holder.querySelector('snap-message');
+            if (specific_element_to_remove) {
+                reply_message_holder.removeChild(specific_element_to_remove);
+            }
+            reply_message_holder.prepend(snapMessage);
+        } else if (option === 'save') {
+            saveMessageToServer(message_id, true, reply_id || null)
+        } else if (option === 'unsave') {
+            saveMessageToServer(message_id, false, null)
+        } else if (option === 'delete') {
+            deleteMessage(message_id);
+        }
+        text = null;
+        from = null;
+        message_id = null;
+        imageUrl = null;
+        reply_id = null;
+        hideContextMenu();
+    }
+
+    // Hide the context menu
+    function hideContextMenu() {
+        const contextMenu = document.getElementById('contextMenu');
+        contextMenu.style.display = 'none';
+
+        // Remove the click event listener
+        document.removeEventListener('click', hideContextMenu);
+    }
+
+    function saveMessageToServer(message_id, isSave, reply_id) {
+        const message = getMessageContentByID(message_id)
+        const result = getMessageElementById(message_id)
+
+        let from = result.element.getAttribute('from')
+        let sender = null;
+        let receiver = null;
+        if (from !== 'Me') {
+            sender = from;
+            receiver = userUsername;
+        } else {
+            sender = userUsername;
+            receiver = '{{ chat_box_name }}'
+        }
+
+        if (isSave) {
+            chatSocket.send(JSON.stringify({
+                'type': 'save_message',
+                'save_message': isSave,
+                'message_id': message_id,
+                'message': message,
+                'reply_id': reply_id || null,
+                'sender': sender,
+                'receiver': receiver,
+            }));
+        } else {
+            chatSocket.send(JSON.stringify({
+                'type': 'save_message',
+                'save_message': isSave,
+                'message_id': message_id,
+            }));
+        }
+    }
+
+    function closeReplyMessageHolder() {
+        var replyMessageHolder = document.getElementById('reply_message_holder');
+        if (replyMessageHolder) {
+            // Find and remove the snap-message element
+            var snapMessage = replyMessageHolder.querySelector('snap-message');
+            if (snapMessage) {
+                snapMessage.remove();
+            }
+        }
+        var close_reply = document.getElementById('close_reply');
+        close_reply.style.display = 'none';
+    }
+
+    function deleteMessage(message_id) {
+        chatSocket.send(JSON.stringify({
+            'type': 'delete_message',
+            'message_id': message_id,
+            'sender_username': userUsername,
+        }));
+    }
 </script>
 </body>
 </html>

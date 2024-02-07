@@ -7,13 +7,16 @@ from django.contrib import auth
 from django.contrib.auth import authenticate, login
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
+from django.core.serializers.json import DjangoJSONEncoder
 from django.core.signals import request_finished
 from django.dispatch import receiver
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render, redirect, get_object_or_404, resolve_url
+from django.views.decorators.csrf import csrf_exempt
 
-from ReiserX_Tunnel import AuthBackend
+from ReiserX_Tunnel import settings
 from main import forms
+from main.Utils import save_message
 from main.consumers import MyWebSocketConsumer
 # Create your views here.
 from main.forms import RegistrationForm, LoginForm
@@ -290,11 +293,15 @@ def chat_box(request, chat_box_name):
     room = hashlib.sha256(str(sorted_usernames).encode()).hexdigest()
     room = Room.objects.filter(room=room).first()
     if room:
-        messages = list(Message.objects.filter(room=room).values('message', 'sender__username'))
+        messages = list(Message.objects.filter(room=room).values('message', 'sender__username', 'message_id', 'reply_id', 'timestamp'))
     else:
         messages = []
-    messages = json.dumps(messages)
-    return render(request, "chat.html", {"chat_box_name": chat_box_name, 'messages': messages})
+    messages = json.dumps(messages, cls=DjangoJSONEncoder)
+    if settings.DEBUG is False:
+        protocol = 'wss'
+    else:
+        protocol = 'ws'
+    return render(request, "chat.html", {"chat_box_name": chat_box_name, 'messages': messages, 'protocol': protocol})
 
 
 @login_required(login_url='/account/login/')
@@ -310,3 +317,31 @@ def delete_messages(request, receiver):
     if room:
         room.delete_all_messages()
     return redirect('chat', chat_box_name=receiver)
+
+
+@login_required(login_url='/account/login/')
+def save_messages(request):
+    print(f'req: {request}')
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            chat_message = data.get('message')
+            message_id = data.get('message_id')
+            sender = request.user
+            receiver_user = data.get('receiver')
+            reply_id = data.get('reply_id')
+
+            combined_usernames_set = frozenset([sender.username, receiver_user])
+            sorted_usernames = sorted(combined_usernames_set)
+
+            room = hashlib.sha256(str(sorted_usernames).encode()).hexdigest()
+            room = Room.objects.filter(room=room).first()
+
+            receiver = User.objects.get(username=receiver_user)
+            save_message(chat_message, message_id, room, sender, receiver, reply_id)
+
+            return JsonResponse({'status': 'success'})
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'error_message': str(e)})
+
+    return JsonResponse({'status': 'error', 'error_message': 'Invalid request method'})

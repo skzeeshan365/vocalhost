@@ -52,7 +52,7 @@ h3 {
 	height: 55px;
 }
 form.border-right {
-	padding-right: 6rem!important;
+
 	@include media-breakpoint-down(md) {
 		padding-right: 0!important;
 		border-right: none!important;

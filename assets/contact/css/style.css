@@ -41,7 +41,8 @@ h3 {
   height: 55px; }
 
 form.border-right {
-  padding-right: 6rem !important; }
+
+}
   @media (max-width: 991.98px) {
     form.border-right {
       padding-right: 0 !important;
