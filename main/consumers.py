@@ -229,10 +229,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
             if settings.DEBUG is False:
                 subject = "A New Message Is Received"
 
-                message = f"{sender_username} is connected on Vocalhost, Respond immediately."
+                message = f"{sender_username} has added you on Vocalhost chat."
 
-                to_email = 'skzeeshan3650@gmail.com'
-
+                to_email = self.receiver.email
                 try:
                     Utils.send_email(subject=subject, message=message, to_email=to_email)
                 except Exception as e:

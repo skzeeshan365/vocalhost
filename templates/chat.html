@@ -62,6 +62,7 @@
             flex-shrink: 1;
             overflow-y: auto;
             background-color: #0b0b0b;
+            height: 85vh;
         }
 
         .snap-ui-container-holder {
@@ -73,6 +74,15 @@
 
         .input-box-container {
             display: flex;
+            background-color: #0b0b0b;
+            position: fixed;
+            bottom: 0;
+            width: 95%;
+            padding-left: 2px;
+        }
+
+        .chat_parent_holder {
+            background-color: #0b0b0b;
         }
 
 
@@ -89,7 +99,7 @@
             color: #ffffff;
         }
 
-        input#input {
+        textarea#input {
             border: 1px solid #000000;
             border-radius: 8px;
             color: #FFFFFF;
@@ -219,13 +229,16 @@
             width: 0; /* Set the width of the scrollbar to 0 */
         }
 
-        input#input:focus {
+        textarea#input:focus {
             background-color: #000000 !important;
         }
 
         .form_class {
             background-color: #000000;
             border-radius: 12px;
+            margin-right: 0px;
+            display: flex;
+            flex-direction: column;
         }
 
         /* Style for the context menu */
@@ -281,14 +294,74 @@
             color: #a8a8a8; /* Adjust the color as needed */
             display: none;
         }
+
+        .container {
+            max-width: 98%;
+        }
+
+        .left_bar {
+                display: block;
+            margin-top: 8px;
+            }
+
+        @media only screen and (max-width: 767px) {
+            .form_class {
+                background-color: #000000;
+                border-radius: 12px;
+                margin-right: 0px;
+                display: block;
+                flex-direction: column;
+            }
+
+            .left_bar {
+                display: none;
+            }
+
+            .input_holder {
+                width: 90%;
+            }
+
+            .snap-ui-container {
+                flex-grow: 1;
+                flex-shrink: 1;
+                overflow-y: auto;
+                background-color: #0b0b0b;
+                height: 80vh;
+            }
+
+            .input-box-container {
+                width: 100%;
+                position: relative;
+            }
+
+            body {
+                padding: 0px;
+                overflow: hidden;
+                background-color: #0b0b0b;
+            }
+
+            .container {
+                max-width: 92%;
+            }
+
+            .chat_parent_holder {
+                padding: unset;
+            }
+
+            h4 {
+                margin-left: 8px;
+                font-size: 16px;
+                margin-top: 5px;
+            }
+        }
     </style>
 </head>
 
-<body>
-<div class="container" style="max-width: 98%; padding: unset;" id="chat_container">
+<body style="padding: unset;">
+<div class="container" style="padding: unset;" id="chat_container">
     <div class="row">
-        <div class="col-lg-3">
-            <h3 class="mb-4" style="color:#fff0ff;">Let's talk about everything.</h3>
+        <div class="col-lg-3 col-md-3 col-sm-3 left_bar">
+            <h3 class="mb-4 username" style="color:#fff0ff;">Let's talk about everything.</h3>
             <p style="color:#fff0ff;">Why did the alien break up with the moon?</p>
             <p style="color:#fff0ff;">Because it was always spacey and never gave it enough atmosphere!</p>
             <a href="{% url 'delete_messages' chat_box_name %}"
@@ -301,34 +374,42 @@
                 <label style="color:#fff0ff;" class="custom-control-label" for="storeCheckbox">Save my messages</label>
             </div>
         </div>
-        <div class="col-lg-9 ml-auto">
+        <div class="col-lg-9 ml-auto chat_parent_holder">
             <h4 id="heading_name" class="mb-2" style="color:#fff0ff;">
                 <span id="user_status" class="preview"
                       style="font-size: 14px; color: rgb(117, 117, 117);">
                     Preview
                 </span>
             </h4>
-            <form action="" class="form_class"
-                  style="margin-right: 0px; display: flex; flex-direction: column;" method="POST"
+            <form action="" class="form_class" method="POST"
                   id="contactForm"
                   name="contactForm">
                 <snap-ui class="form-group snap-ui-container-holder snap-ui-container" id="snap-ui-container"
-                         style="height: 80vh; margin-bottom: 5px; flex-grow: 1;">
+                         style="flex-grow: 1;">
                     <snap-notice id="no_message" style="display: none;">No messages available</snap-notice>
                 </snap-ui>
-                <div class="row input-box-container" id="input-box-container"
-                     style="position: fixed; bottom: 0; width: 100%; padding-left: 2px;">
-                    <div class="col-md-8">
+                <div class="row input-box-container" id="input-box-container">
+                    <div class="col-md-9 input_holder">
                         <div class="form-group">
                             <div class="reply_message_holder" id="reply_message_holder">
                                 <span id="close_reply" class="close-icon close_reply"
                                       onclick="closeReplyMessageHolder()"><i class="fas fa-times"></i></span>
-                                <input style="height: 40px; width: 100%;" class="form-control"
-                                       placeholder="Type a message" id="input" type="text">
+                                <textarea class="form-control" placeholder="Type a message" id="input" rows="1"
+                                          style="resize: none; overflow: hidden;"
+                                          maxlength="380"></textarea>
+
                             </div>
                         </div>
                     </div>
-
+                    <div class="col-sm-0">
+                        <div class="form-group">
+                            <!-- File input for image -->
+                            <label data-toggle="modal" data-target="#exampleModalCenter" class="btn btn-primary"
+                                   style="background: #FFFFFF; width: 35px; height: 35px; display: flex; align-items: center; padding-left: 8px;"><i
+                                    class="fas fa-image"
+                                    style="font-size: 18px; color: #0c5460"></i></label>
+                        </div>
+                    </div>
                     <!-- Temporary submit button -->
                     <button onclick="sendMessage()" class="btn btn-primary py-1 px-1" id="submit" type="button"
                             style="background-color: #1C9963; color: #FFFFFF; border-color: #1C9963; display: none">
@@ -336,15 +417,6 @@
                                style="display: none;"></i>
                     </button>
                     <!-- Temporary submit button -->
-                    <div class="col-md-1">
-                        <div class="form-group">
-                            <!-- File input for image -->
-                            <label data-toggle="modal" data-target="#exampleModalCenter" class="btn btn-primary"
-                                   style="background: #FFFFFF; width: 45px; height: 40px; display: flex; align-items: center;"><i
-                                    class="fas fa-image"
-                                    style="font-size: 20px; color: #0c5460"></i></label>
-                        </div>
-                    </div>
                 </div>
             </form>
             <div id="form-messages"></div>
@@ -384,11 +456,14 @@
                 <input type="file" id="imageInput" accept="image/*" class="form-control-file"
                        onchange="updateImageLabelIcon(this)" style="display: none;">
 
-                <img id="selectedImage" src="" alt="Selected Image" style="display: none; max-width: 50%; max-height: 50%;">
+                <img id="selectedImage" src="" alt="Selected Image"
+                     style="display: none; max-width: 50%; max-height: 50%;">
 
             </div>
             <div class="modal-footer">
-                <button type="button" style="background-color: #1f1f1f; border: 1px solid #9a9a9a" class="btn btn-primary" onclick="sendMessage()" data-dismiss="modal">Send</button>
+                <button type="button" style="background-color: #1f1f1f; border: 1px solid #9a9a9a"
+                        class="btn btn-primary" onclick="sendMessage()" data-dismiss="modal">Send
+                </button>
             </div>
         </div>
     </div>
@@ -408,20 +483,61 @@
     let bytes_webpBlob = null;
     let bytes_message = null;
 
+    function adjustChatHeight(reduce) {
+        const isMobile = window.innerWidth <= 767;
+        if (reduce) {
+            const inputBoxHeight = document.getElementById('input-box-container').offsetHeight;
+            const chatContainer = document.getElementById('snap-ui-container');
+            if (isMobile) {
+                chatContainer.style.height = `calc(80vh - ${inputBoxHeight}px)`;
+
+            } else {
+                chatContainer.style.height = `calc(85vh - ${inputBoxHeight}px)`;
+            }
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+
+        } else {
+            const chatContainer = document.getElementById('snap-ui-container');
+            if (isMobile) {
+                chatContainer.style.height = '80vh';
+            } else {
+                chatContainer.style.height = '85vh';
+            }
+            // Scroll to the bottom
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+    }
+
+    document.getElementById('input').addEventListener('input', function () {
+        resizeTextarea();
+    });
+
+    function resizeTextarea() {
+        var textarea = document.getElementById('input');
+        var lineHeight = parseFloat(window.getComputedStyle(textarea).lineHeight);
+
+        // Calculate the maximum height for 3 rows
+        var maxHeight = lineHeight * 3;
+
+        textarea.style.height = 'auto'; // Reset height to auto to calculate the actual height
+        textarea.style.height = (textarea.scrollHeight > maxHeight) ? maxHeight + 'px' : textarea.scrollHeight + 'px';
+    }
+
+
     document.addEventListener('DOMContentLoaded', function () {
         displayImages();
+        const snapUiContainer = document.getElementById('snap-ui-container');
+        snapUiContainer.addEventListener('mouseover', handleHover);
+        snapUiContainer.addEventListener('mouseout', handleHoverEnd);
 
         // Group messages by date
         const messagesByDate = groupMessagesByDate(messages);
-
-        let todayAppended = false;
 
         // Check if there are no messages at all
         if (Object.keys(messagesByDate).length === 0) {
             const currentDate = new Date();
             const formattedCurrentDate = currentDate.toLocaleDateString();
             addSnapNotice(formattedCurrentDate);
-            todayAppended = true;
         }
 
         // Loop through the grouped messages and append them to the chat container
@@ -429,7 +545,6 @@
             let dateAppended = false;  // Flag to track whether the date has been appended
 
             const messagesForDate = messagesInDate.sort((a, b) => a.message_id - b.message_id);
-
 
             messagesForDate.forEach(function (message, index) {
                 // Determine if the message is sent or received based on the sender
@@ -445,26 +560,18 @@
                 // Display the message with the appropriate indicator
                 if (messageType === 'you') {
                     if (message.reply_id !== null) {
-                        addSnapMessage(message.message_id, message.message, null, true, null, message.reply_id);
+                        addSnapMessage(message.message_id, message.message, null, true, null, message.reply_id, message.timestamp);
                     } else {
-                        addSnapMessage(message.message_id, message.message, null, true, null, null);
+                        addSnapMessage(message.message_id, message.message, null, true, null, null, message.timestamp);
                     }
                 } else {
                     if (message.reply_id !== null) {
-                        addSnapMessage(message.message_id, message.message, '{{ chat_box_name }}', true, null, message.reply_id);
+                        addSnapMessage(message.message_id, message.message, '{{ chat_box_name }}', true, null, message.reply_id, message.timestamp);
                     } else {
-                        addSnapMessage(message.message_id, message.message, '{{ chat_box_name }}', true, null, null);
+                        addSnapMessage(message.message_id, message.message, '{{ chat_box_name }}', true, null, null, message.timestamp);
                     }
                 }
             });
-
-            const currentDate = new Date();
-            const formattedCurrentDate = currentDate.toLocaleDateString();
-
-            if (!todayAppended && messagesByDate[formattedCurrentDate].length === 0) {
-                addSnapNotice(formattedCurrentDate);
-                todayAppended = true;
-            }
         }
 
 
@@ -476,10 +583,17 @@
     // Function to group messages by date
     function groupMessagesByDate(messages) {
         return messages.reduce(function (accumulator, currentMessage) {
-            const date = new Date(currentMessage.timestamp).toLocaleDateString();
-            console.log(date)
-            accumulator[date] = accumulator[date] || [];
-            accumulator[date].push(currentMessage);
+            const date = new Date(currentMessage.timestamp);
+            const formattedDate = date.toISOString().split('T')[0]; // Format as YYYY-MM-DD
+
+            console.log("Adding message to date:", formattedDate);
+
+            // Check if there's a section for the date, if not, create it
+            if (!accumulator[formattedDate]) {
+                accumulator[formattedDate] = [];
+            }
+
+            accumulator[formattedDate].push(currentMessage);
             return accumulator;
         }, {});
     }
@@ -502,7 +616,7 @@
     }
 
     function getMessageContentByID(message_id) {
-        const result = getMessageElementById(message_id);
+        var result = getMessageElementById(message_id)
         if (result) {
             return Array.from(result.element.childNodes)
                 .filter(node => node.nodeType === Node.TEXT_NODE)
@@ -746,17 +860,15 @@
         var snapUiContainer = document.getElementById('snap-ui-container');
         snapUiContainer.scrollTop = snapUiContainer.scrollHeight;
 
-        console.log(reply_id)
-        console.log('1')
         if (reply_id) {
-            console.log('2')
             closeReplyMessageHolder();
         }
     }
 
-    function addSnapMessage(message_id = null, text = null, from = null, saved = null, imageUrl = null, repliedMessage = null) {
+    function addSnapMessage(message_id = null, text = null, from = null, saved = null, imageUrl = null, repliedMessage = null, timestamp) {
         // Create a new snap-message element
         var snapMessage = document.createElement('snap-message');
+
         // Attach the context menu event listener
         snapMessage.addEventListener('contextmenu', function (event) {
             // Pass the snapData to the showContextMenu function
@@ -771,6 +883,7 @@
         // Set the text content
         if (text) {
             snapMessage.textContent = text;
+            snapMessage.style.wordBreak = 'break-all';
         }
 
         if (message_id) {
@@ -785,6 +898,16 @@
         // Set 'saved' attribute if provided
         if (saved) {
             snapMessage.setAttribute('saved', '');
+        }
+
+        if (timestamp) {
+            const date = new Date(timestamp);
+            const time = date.toLocaleTimeString('en-US', {hour: 'numeric', minute: 'numeric', hour12: true});
+            snapMessage.setAttribute('timestamp', time);
+        } else {
+            const date = new Date(message_id);
+            const time = date.toLocaleTimeString('en-US', {hour: 'numeric', minute: 'numeric', hour12: true});
+            snapMessage.setAttribute('timestamp', time);
         }
 
         // Check if imageUrl is provided
@@ -997,9 +1120,12 @@
     function handleContextMenu(option) {
         if (option === 'reply') {
 
+            adjustChatHeight(true);
+
             var snapMessage = document.createElement('snap-message');
 
             snapMessage.textContent = text;
+            snapMessage.style.wordBreak = 'break-all';
 
             if (from) {
                 snapMessage.setAttribute('from', from);
@@ -1087,6 +1213,7 @@
     }
 
     function closeReplyMessageHolder() {
+        adjustChatHeight(false)
         var replyMessageHolder = document.getElementById('reply_message_holder');
         if (replyMessageHolder) {
             // Find and remove the snap-message element
@@ -1105,6 +1232,65 @@
             'message_id': message_id,
             'sender_username': userUsername,
         }));
+    }
+
+    function handleHover(event) {
+        const hoveredElement = event.target;
+
+        // Find the direct parent (container) of the snap-message elements
+        const container = hoveredElement.parentNode;
+
+        // Find all snap-message elements in the container
+        const snapMessages = container.querySelectorAll('snap-message');
+
+        // Find the index of the hovered element among its siblings
+        const index = Array.from(snapMessages).indexOf(hoveredElement);
+
+        // Traverse the chain to find the actual first element
+        let actualFirstElement = hoveredElement;
+        for (let i = index; i > 0; i--) {
+            const sibling = snapMessages[i - 1];
+            if (sibling.classList.contains('hasFollower')) {
+                actualFirstElement = sibling;
+            } else {
+                break;
+            }
+        }
+
+        // Access the shadow DOM of the snap-message element
+        const shadowRoot = actualFirstElement.shadowRoot;
+
+        // Check if the shadow DOM is available
+        if (shadowRoot) {
+            // Retrieve the value of the 'additional-text' attribute inside the shadow DOM
+            const additionalText = shadowRoot.querySelector('.additional-text');
+
+            if (additionalText) {
+                additionalText.style.display = 'inline';
+                additionalText.textContent = hoveredElement.getAttribute('timestamp')
+            }
+        }
+    }
+
+    function handleHoverEnd(event) {
+        const hoveredElement = event.target;
+
+        // Find the direct parent (container) of the snap-message elements
+        const container = hoveredElement.parentNode;
+
+        // Find all snap-message elements in the container
+        const snapMessages = container.querySelectorAll('snap-message');
+
+        // Iterate over each snap-message element and hide additional text
+        snapMessages.forEach((snapMessage) => {
+            const shadowRoot = snapMessage.shadowRoot;
+            if (shadowRoot) {
+                const additionalText = shadowRoot.querySelector('.additional-text');
+                if (additionalText) {
+                    additionalText.style.display = 'none';
+                }
+            }
+        });
     }
 </script>
 </body>
