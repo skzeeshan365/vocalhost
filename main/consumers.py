@@ -12,11 +12,12 @@ from channels.db import database_sync_to_async
 from channels.exceptions import StopConsumer
 from channels.generic.websocket import AsyncWebsocketConsumer
 from django.contrib.auth.models import User
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 
 from ReiserX_Tunnel import settings
 from ReiserX_Tunnel.AuthBackend import CustomAuthBackend
 from main import Utils
+from main.Utils import get_sender_receiver
 from main.models import UserProfile, Room, Message
 
 
@@ -157,7 +158,9 @@ def get_or_create_room(sender_username, receiver_username):
     room_identifier = hashlib.sha256(str(sorted_usernames).encode()).hexdigest()
 
     room, created = Room.objects.get_or_create(
-        room=room_identifier
+        room=room_identifier,
+        sender_username=sorted_usernames[0],
+        receiver_username=sorted_usernames[1]
     )
 
     return room
@@ -257,6 +260,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     async def disconnect(self, close_code):
         if self.room.room is not None:
+            await self.set_room_user_status(self.sender_username, False)
             await self.channel_layer.group_send(
                 self.room.room,
                 {
@@ -265,7 +269,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     "username": self.sender_username,
                 },
             )
-        raise StopConsumer()
 
     async def receive(self, text_data=None, bytes_data=None):
         if text_data is not None:
@@ -291,6 +294,11 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 )
                 if storeMessage:
                     await self.save_message_db(message, message_id, reply_id)
+                else:
+                    status = await self.get_room_user_status(self.receiver_username)
+                    if not status:
+                        await self.save_message_db(message=message, message_id=message_id, reply_id=reply_id,
+                                                   temp=self.receiver)
             elif type == 'message':
                 # Generate message_id
                 message_id = int(time.time() * 1000)
@@ -305,6 +313,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 )
                 if storeMessage:
                     await self.save_message_db(message, message_id, reply_id)
+                else:
+                    status = await self.get_room_user_status(self.receiver_username)
+                    if not status:
+                        await self.save_message_db(message=message, message_id=message_id, temp=self.receiver)
             elif type == 'save_message':
                 save_message = text_data_json.get("save_message")
                 sender = text_data_json.get("sender")
@@ -357,6 +369,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
             )
             if data.get("storeMessage"):
                 await self.save_message_db(text_message, message_id)
+            else:
+                status = await self.get_room_user_status(self.receiver_username)
+                if not status:
+                    await self.save_message_db(message=text_message, message_id=message_id, temp=self.receiver)
 
     async def chat_message(self, event):
         sender_username = event["sender_username"]
@@ -448,6 +464,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         await self.set_user_status(username, status_bool)
 
+        await self.set_room_user_status(username, status_bool)
+
         await self.send(text_data=json.dumps({
             'type': 'user_status',
             'username': username,
@@ -462,7 +480,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             return None
 
     @database_sync_to_async
-    def save_message_db(self, chat_message, message_id, sender=None, receiver=None, reply_id=None):
+    def save_message_db(self, message=None, message_id=None, sender=None, receiver=None, reply_id=None, temp=None):
         if sender is None:
             sender = self.sender
         else:
@@ -478,15 +496,16 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 reply_message = None
         except Message.DoesNotExist:
             reply_message = None
-        if chat_message is not None and chat_message != '' and message_id is not None:
+        if message is not None and message != '' and message_id is not None:
             try:
                 Message.objects.create(
-                    message=chat_message,
+                    message=message,
                     room=self.room,
                     sender=sender,
                     receiver=receiver,
                     message_id=message_id,
-                    reply_id=reply_message
+                    reply_id=reply_message,
+                    temp=temp
                 )
             except IntegrityError:
                 pass
@@ -518,8 +537,26 @@ class ChatConsumer(AsyncWebsocketConsumer):
             return 'offline'
 
     @database_sync_to_async
+    def get_room_user_status(self, username):
+        if self.room.sender_username == username:
+            return self.room.sender_status
+        elif self.room.receiver_username == username:
+            return self.room.receiver_status
+        else:
+            return False
+
+    @database_sync_to_async
     def set_user_status(self, username, status):
         user_profile = UserProfile.objects.get(user__username=username)  # Replace 'username' with the actual username
 
         user_profile.status = status
         user_profile.save()
+
+    @database_sync_to_async
+    def set_room_user_status(self, username=None, status=False):
+        if self.room.sender_username == username:
+            self.room.sender_status = status
+            self.room.save()
+        elif self.room.receiver_username == username:
+            self.room.receiver_status = status
+            self.room.save()

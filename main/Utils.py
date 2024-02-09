@@ -1,8 +1,10 @@
+import hashlib
+
 from django.db import IntegrityError
 from sendgrid import SendGridAPIClient, Mail
 
 from ReiserX_Tunnel import settings
-from main.models import Message
+from main.models import Message, Room
 
 
 def send_email(subject, message, to_email):
@@ -38,3 +40,18 @@ def save_message(chat_message, message_id, room, sender, receiver, reply_id=None
             )
         except IntegrityError:
             pass
+
+
+def getRoom(sender_username, receiver_username):
+    combined_usernames_set = frozenset([sender_username, receiver_username])
+    sorted_usernames = sorted(combined_usernames_set)
+
+    room = hashlib.sha256(str(sorted_usernames).encode()).hexdigest()
+    room = Room.objects.filter(room=room).first()
+    return room
+
+
+def get_sender_receiver(sender_username, receiver_username):
+    combined_usernames_set = frozenset([sender_username, receiver_username])
+    sorted_usernames = sorted(combined_usernames_set)
+    return sorted_usernames[0], sorted_usernames[1]

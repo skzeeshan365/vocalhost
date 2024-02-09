@@ -19,6 +19,7 @@
 
     <!-- Style -->
     <link rel="stylesheet" href="{% static 'contact/css/style.css' %}">
+    <link rel="stylesheet" href="{% static 'chat/css/styles.css' %}">
 
     <title>Message</title>
     <!-- Favicon -->
@@ -73,7 +74,7 @@
         }
 
         .input-box-container {
-            display: flex;
+            display: none;
             background-color: #0b0b0b;
             position: fixed;
             bottom: 0;
@@ -300,9 +301,10 @@
         }
 
         .left_bar {
-                display: block;
+            display: block;
             margin-top: 8px;
-            }
+            padding: unset;
+        }
 
         @media only screen and (max-width: 767px) {
             .form_class {
@@ -364,7 +366,7 @@
             <h3 class="mb-4 username" style="color:#fff0ff;">Let's talk about everything.</h3>
             <p style="color:#fff0ff;">Why did the alien break up with the moon?</p>
             <p style="color:#fff0ff;">Because it was always spacey and never gave it enough atmosphere!</p>
-            <a href="{% url 'delete_messages' chat_box_name %}"
+            <a href=""
                class="btn btn-primary py-1 px-2 action_buttons" id="submit" type="button"
                style="background-color: #1C9963; color: #FFFFFF; border-color: #1C9963;">Clear message</a>
             <hr>
@@ -373,8 +375,32 @@
                 <input type="checkbox" class="custom-control-input" id="storeCheckbox">
                 <label style="color:#fff0ff;" class="custom-control-label" for="storeCheckbox">Save my messages</label>
             </div>
+
+            <ul class="people">
+                {% for user in users %}
+                    <li onclick="load_chat('{{ user.user.username }}')" class="person"
+                        data-chat={{ user.user.username }}>
+                        <img src="https://s3-us-west-2.amazonaws.com/s.cdpn.io/382994/thomas.jpg" alt=""/>
+                        {% if user.user.get_full_name %}
+                            <span class="name">{{ user.user.get_full_name }}</span>
+                        {% else %}
+                            <span class="name">{{ user.user.username }}</span>
+                        {% endif %}
+                        <span class="time">2:09 PM</span>
+                        {% if user.last_message %}
+                            {% if user.new %}
+                                <span style="color: #00ff92" class="preview">{{ user.last_message }}</span>
+                            {% else %}
+                                <span class="preview">{{ user.last_message }}</span>
+                            {% endif %}
+                        {% else %}
+                            <span class="preview">Tap to chat</span>
+                        {% endif %}
+                    </li>
+                {% endfor %}
+            </ul>
         </div>
-        <div class="col-lg-9 ml-auto chat_parent_holder">
+        <div class="col-lg-9 ml-auto chat_parent_holder" style="height: 100vh;">
             <h4 id="heading_name" class="mb-2" style="color:#fff0ff;">
                 <span id="user_status" class="preview"
                       style="font-size: 14px; color: rgb(117, 117, 117);">
@@ -473,15 +499,143 @@
 <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.6/dist/umd/popper.min.js"></script>
 <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
 <script src="{% static 'chat/js/main.js' %}"></script>
+<script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
 
 <script>
 
-    let messages = {{ messages|safe }};
     const userUsername = "{{ request.user.username }}";
     const chatContainer = document.getElementById('chat_container');
+    let chatSocket = null;
 
     let bytes_webpBlob = null;
     let bytes_message = null;
+
+    function load_chat(userName) {
+        resetActiveness();
+        var snapUiContainer = document.getElementById('snap-ui-container');
+
+        while (snapUiContainer.firstChild) {
+            snapUiContainer.removeChild(snapUiContainer.firstChild);
+        }
+        var inputBoxContainer = document.getElementById('input-box-container');
+        inputBoxContainer.style.display = 'none';
+        document.querySelector(`.person[data-chat=${userName}]`).classList.add('active')
+
+        if (userName) {
+            if (chatSocket) {
+                chatSocket.close();
+                chatSocket.onmessage = null;
+            }
+            chatSocket = null;
+            chatSocket = new WebSocket(
+                '{{ protocol }}://' + window.location.host + `/ws/chat/?sender_username=${userUsername}&receiver_username=${userName}`
+            );
+            chatSocket.binaryType = 'blob'
+            initialize_socket();
+        }
+        $.ajax({
+            type: 'POST',
+            url: `/chat/load/messages/${userName}/`,  // Adjust the URL based on your Django URL configuration
+            dataType: 'json',
+            success: function (response) {
+                if (response.status === 'success') {
+                    // Handle the received messages
+                    var messages = JSON.parse(response.data);
+                    load_chat_message(messages);
+                } else {
+                    console.error('Error loading messages:', response.message);
+                }
+            },
+            error: function (error) {
+                console.error('Error loading messages:', error);
+            }
+        });
+    }
+
+    function load_chat_message(messages) {
+        var inputBoxContainer = document.getElementById('input-box-container');
+        inputBoxContainer.style.display = 'flex';
+
+        const snapUiContainer = document.getElementById('snap-ui-container');
+        snapUiContainer.addEventListener('mouseover', handleHover);
+        snapUiContainer.addEventListener('mouseout', handleHoverEnd);
+        // Group messages by date
+        const messagesByDate = groupMessagesByDate(messages);
+
+        // Check if there are no messages at all
+        if (Object.keys(messagesByDate).length === 0) {
+            const currentDate = new Date();
+            const formattedCurrentDate = currentDate.toLocaleDateString();
+            addSnapNotice(formattedCurrentDate);
+        }
+
+        let newMessage = true;
+
+        // Loop through the grouped messages and append them to the chat container
+        for (const [date, messagesInDate] of Object.entries(messagesByDate)) {
+            let dateAppended = false;  // Flag to track whether the date has been appended
+
+            const messagesForDate = messagesInDate.sort((a, b) => a.message_id - b.message_id);
+
+            messagesForDate.forEach(function (message, index) {
+                // Determine if the message is sent or received based on the sender
+                const messageType = message.sender__username === userUsername ? 'you' : getActivePerson();
+
+                // Display the date section only once for the first message in the group
+                if (index === 0 && !dateAppended) {
+                    // Append the date
+                    addSnapNotice(date);
+                    dateAppended = true;  // Set the flag to true once the date is appended
+                }
+
+                // Display the message with the appropriate indicator
+                const save = message.temp__username === null
+                if (newMessage) {
+                    if (message.temp__username === userUsername) {
+                        addSnapNotice(null, "New message")
+                    }
+                    newMessage = false;
+                }
+                if (messageType === 'you') {
+                    if (message.reply_id !== null) {
+                        addSnapMessage(message.message_id, message.message, null, save, null, message.reply_id, message.timestamp);
+                    } else {
+                        addSnapMessage(message.message_id, message.message, null, save, null, null, message.timestamp);
+                    }
+                } else {
+                    if (message.reply_id !== null) {
+                        addSnapMessage(message.message_id, message.message, getActivePerson(), save, null, message.reply_id, message.timestamp);
+                    } else {
+                        addSnapMessage(message.message_id, message.message, getActivePerson(), save, null, null, message.timestamp);
+                    }
+                }
+            });
+        }
+
+
+        // Scroll to the bottom
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+
+    function getActivePerson() {
+        var activePersonElement = document.querySelector('.person.active');
+
+        if (activePersonElement) {
+            return activePersonElement.getAttribute('data-chat');
+        } else {
+            return null;
+        }
+    }
+
+    function resetActiveness() {
+        // Get all elements with the class 'person'
+        const personElements = document.querySelectorAll('.person');
+
+        // Remove the 'active' class from each element
+        personElements.forEach((person) => {
+            person.classList.remove('active');
+        });
+    }
 
     function adjustChatHeight(reduce) {
         const isMobile = window.innerWidth <= 767;
@@ -526,57 +680,6 @@
 
     document.addEventListener('DOMContentLoaded', function () {
         displayImages();
-        const snapUiContainer = document.getElementById('snap-ui-container');
-        snapUiContainer.addEventListener('mouseover', handleHover);
-        snapUiContainer.addEventListener('mouseout', handleHoverEnd);
-
-        // Group messages by date
-        const messagesByDate = groupMessagesByDate(messages);
-
-        // Check if there are no messages at all
-        if (Object.keys(messagesByDate).length === 0) {
-            const currentDate = new Date();
-            const formattedCurrentDate = currentDate.toLocaleDateString();
-            addSnapNotice(formattedCurrentDate);
-        }
-
-        // Loop through the grouped messages and append them to the chat container
-        for (const [date, messagesInDate] of Object.entries(messagesByDate)) {
-            let dateAppended = false;  // Flag to track whether the date has been appended
-
-            const messagesForDate = messagesInDate.sort((a, b) => a.message_id - b.message_id);
-
-            messagesForDate.forEach(function (message, index) {
-                // Determine if the message is sent or received based on the sender
-                const messageType = message.sender__username === userUsername ? 'you' : '{{chat_box_name}}';
-
-                // Display the date section only once for the first message in the group
-                if (index === 0 && !dateAppended) {
-                    // Append the date
-                    addSnapNotice(date);
-                    dateAppended = true;  // Set the flag to true once the date is appended
-                }
-
-                // Display the message with the appropriate indicator
-                if (messageType === 'you') {
-                    if (message.reply_id !== null) {
-                        addSnapMessage(message.message_id, message.message, null, true, null, message.reply_id, message.timestamp);
-                    } else {
-                        addSnapMessage(message.message_id, message.message, null, true, null, null, message.timestamp);
-                    }
-                } else {
-                    if (message.reply_id !== null) {
-                        addSnapMessage(message.message_id, message.message, '{{ chat_box_name }}', true, null, message.reply_id, message.timestamp);
-                    } else {
-                        addSnapMessage(message.message_id, message.message, '{{ chat_box_name }}', true, null, null, message.timestamp);
-                    }
-                }
-            });
-        }
-
-
-        // Scroll to the bottom
-        chatContainer.scrollTop = chatContainer.scrollHeight;
     });
 
 
@@ -585,9 +688,6 @@
         return messages.reduce(function (accumulator, currentMessage) {
             const date = new Date(currentMessage.timestamp);
             const formattedDate = date.toISOString().split('T')[0]; // Format as YYYY-MM-DD
-
-            console.log("Adding message to date:", formattedDate);
-
             // Check if there's a section for the date, if not, create it
             if (!accumulator[formattedDate]) {
                 accumulator[formattedDate] = [];
@@ -627,137 +727,133 @@
         }
     }
 
-    const chatSocket = new WebSocket(
-        '{{ protocol }}://' + window.location.host + `/ws/chat/?sender_username=${userUsername}&receiver_username={{ chat_box_name }}`
-    );
+    function initialize_socket() {
+        chatSocket.onmessage = async function (e) {
+            if (e.data instanceof Blob) {
+                const reader = new FileReader();
 
-    chatSocket.binaryType = 'blob'
+                reader.onload = function (event) {
+                    const binaryData = new Uint8Array(event.target.result);
 
-    chatSocket.onmessage = async function (e) {
-        if (e.data instanceof Blob) {
-            const reader = new FileReader();
+                    // Find delimiter indices
+                    const delimiterIndex1 = binaryData.indexOf('\n'.charCodeAt(0));
+                    const delimiterIndex2 = binaryData.indexOf('\n'.charCodeAt(0), delimiterIndex1 + 1);
 
-            reader.onload = function (event) {
-                const binaryData = new Uint8Array(event.target.result);
+                    // Extract text data
+                    const message_id = new TextDecoder().decode(binaryData.subarray(0, delimiterIndex1));
+                    const message = new TextDecoder().decode(binaryData.subarray(delimiterIndex1 + 1, delimiterIndex2));
+                    const sender_username = new TextDecoder().decode(binaryData.subarray(delimiterIndex2 + 1));
+                    console.log(message_id)
 
-                // Find delimiter indices
-                const delimiterIndex1 = binaryData.indexOf('\n'.charCodeAt(0));
-                const delimiterIndex2 = binaryData.indexOf('\n'.charCodeAt(0), delimiterIndex1 + 1);
+                    // Find the starting point of the image data
+                    const startIndex = binaryData.indexOf('RIFF'.charCodeAt(0));
+                    // Extract binary data
+                    const actualBinaryData = binaryData.subarray(startIndex);
 
-                // Extract text data
-                const message_id = new TextDecoder().decode(binaryData.subarray(0, delimiterIndex1));
-                const message = new TextDecoder().decode(binaryData.subarray(delimiterIndex1 + 1, delimiterIndex2));
-                const sender_username = new TextDecoder().decode(binaryData.subarray(delimiterIndex2 + 1));
-                console.log(message_id)
+                    const imageBlob = new Blob([actualBinaryData], {type: 'image/webp'});
 
-                // Find the starting point of the image data
-                const startIndex = binaryData.indexOf('RIFF'.charCodeAt(0));
-                // Extract binary data
-                const actualBinaryData = binaryData.subarray(startIndex);
+                    const messageType = sender_username === userUsername ? 'you' : getActivePerson();
 
-                const imageBlob = new Blob([actualBinaryData], {type: 'image/webp'});
-
-                const messageType = sender_username === userUsername ? 'you' : '{{ chat_box_name }}';
-
-                // Display the message with the appropriate indicator
-
-                if (messageType === "you") {
-                    updateImage(imageBlob, null, message_id);
-                } else {
-                    updateImage(imageBlob, '{{ chat_box_name }}', message_id);
-                }
-
-                if (message !== '') {
+                    // Display the message with the appropriate indicator
 
                     if (messageType === "you") {
-                        addSnapMessage(message_id, message, null, null, null, null)
+                        updateImage(imageBlob, null, message_id);
                     } else {
-                        addSnapMessage(message_id, message, '{{ chat_box_name }}', null, null, null)
+                        updateImage(imageBlob, getActivePerson(), message_id);
                     }
-                }
 
-                // Scroll to the bottom
-                var snapUiContainer = document.getElementById('snap-ui-container');
-                snapUiContainer.scrollTop = snapUiContainer.scrollHeight;
+                    if (message !== '') {
+
+                        if (messageType === "you") {
+                            addSnapMessage(message_id, message, null, null, null, null)
+                        } else {
+                            addSnapMessage(message_id, message, getActivePerson(), null, null, null)
+                        }
+                    }
+
+                    // Scroll to the bottom
+                    var snapUiContainer = document.getElementById('snap-ui-container');
+                    snapUiContainer.scrollTop = snapUiContainer.scrollHeight;
 
 
-                // Hide the loading icon after receiving a message
-                const loadingIcon = document.getElementById('loading');
-                loadingIcon.style.display = 'none';
-            };
+                    // Hide the loading icon after receiving a message
+                    const loadingIcon = document.getElementById('loading');
+                    loadingIcon.style.display = 'none';
+                };
 
-            // Read the entire e.data as ArrayBuffer
-            reader.readAsArrayBuffer(e.data);
-        } else {
-            const data = JSON.parse(e.data);
+                // Read the entire e.data as ArrayBuffer
+                reader.readAsArrayBuffer(e.data);
+            } else {
+                const data = JSON.parse(e.data);
 
-            if (data.type === 'user_status') {
-                // Handle user status update, for example, update a user list
-                if (data.username === '{{ chat_box_name }}') {
-                    const heading_name = document.getElementById('heading_name');
-                    heading_name.innerHTML = `${data.username}`;
+                if (data.type === 'user_status') {
+                    // Handle user status update, for example, update a user list
+                    if (data.username === getActivePerson()) {
+                        const heading_name = document.getElementById('heading_name');
+                        heading_name.innerHTML = `${data.username}`;
 
-                    const newUserStatusSpan = document.createElement('span');
-                    newUserStatusSpan.className = 'preview';
-                    newUserStatusSpan.style.fontSize = '14px'; // Set the desired style
-                    newUserStatusSpan.style.color = 'rgb(117, 117, 117)'; // Set the desired style
-                    newUserStatusSpan.style.marginLeft = 8;
-                    newUserStatusSpan.textContent = `${data.status}`;
+                        const newUserStatusSpan = document.createElement('span');
+                        newUserStatusSpan.className = 'preview';
+                        newUserStatusSpan.style.fontSize = '14px'; // Set the desired style
+                        newUserStatusSpan.style.color = 'rgb(117, 117, 117)'; // Set the desired style
+                        newUserStatusSpan.style.marginLeft = 8;
+                        newUserStatusSpan.textContent = `${data.status}`;
 
 // Append the new user_status span to the heading_name element
-                    heading_name.appendChild(newUserStatusSpan);
-                }
-            } else if (data.type === 'message_sent') {
-                if (data.data_type === 'bytes') {
-                    updateImage(bytes_webpBlob, null, data.message_id)
-                    updateSentMessage(bytes_message, data.message_id);
-                    bytes_webpBlob = null;
-                    bytes_message = null;
-                }
-                const loadingIcon = document.getElementById('loading');
-                loadingIcon.style.display = 'none';
-            } else if (data.type === 'save_message') {
-                const message_element = getMessageElementById(data.message_id)
-                if (message_element) {
-                    if (data.save_message) {
-                        message_element.element.setAttribute('saved', '');
-                    } else {
-                        message_element.element.removeAttribute('saved');
+                        heading_name.appendChild(newUserStatusSpan);
                     }
-                }
-            } else if (data.type === 'delete_message') {
-                const result = getMessageElementById(data.message_id)
-                let deleted = null;
+                } else if (data.type === 'message_sent') {
+                    if (data.data_type === 'bytes') {
+                        updateImage(bytes_webpBlob, null, data.message_id)
+                        updateSentMessage(bytes_message, data.message_id);
+                        bytes_webpBlob = null;
+                        bytes_message = null;
+                    }
+                    const loadingIcon = document.getElementById('loading');
+                    loadingIcon.style.display = 'none';
+                } else if (data.type === 'save_message') {
+                    const message_element = getMessageElementById(data.message_id)
+                    if (message_element) {
+                        if (data.save_message) {
+                            message_element.element.setAttribute('saved', '');
+                        } else {
+                            message_element.element.removeAttribute('saved');
+                        }
+                    }
+                } else if (data.type === 'delete_message') {
+                    const result = getMessageElementById(data.message_id)
+                    let deleted = null;
 
-                let from = result.element.getAttribute('from')
-                if (from === 'Me') {
-                    deleted = "You deleted a message";
+                    let from = result.element.getAttribute('from')
+                    if (from === 'Me') {
+                        deleted = "You deleted a message";
+                    } else {
+                        deleted = `${getActivePerson()} deleted a message`;
+                    }
+
+                    const snapNoticeElement = document.createElement('snap-notice');
+                    snapNoticeElement.textContent = deleted;
+                    result.element.replaceWith(snapNoticeElement);
                 } else {
-                    deleted = '{{ chat_box_name }} deleted a message';
+                    // Determine if the message is sent or received based on the sender
+                    const messageType = data.sender_username === userUsername ? 'you' : getActivePerson();
+
+                    // Display the message with the appropriate indicator
+                    if (messageType === "you") {
+                        addSnapMessage(data.message_id, data.message, null, null, null, data.reply_id || null)
+                    } else {
+                        addSnapMessage(data.message_id, data.message, getActivePerson(), null, null, data.reply_id || null)
+                    }
+
+                    // Scroll to the bottom
+                    var snapUiContainer = document.getElementById('snap-ui-container');
+                    snapUiContainer.scrollTop = snapUiContainer.scrollHeight;
+
+
+                    // Hide the loading icon after receiving a message
+                    const loadingIcon = document.getElementById('loading');
+                    loadingIcon.style.display = 'none';
                 }
-
-                const snapNoticeElement = document.createElement('snap-notice');
-                snapNoticeElement.textContent = deleted;
-                result.element.replaceWith(snapNoticeElement);
-            } else {
-                // Determine if the message is sent or received based on the sender
-                const messageType = data.sender_username === userUsername ? 'you' : '{{ chat_box_name }}';
-
-                // Display the message with the appropriate indicator
-                if (messageType === "you") {
-                    addSnapMessage(data.message_id, data.message, null, null, null, data.reply_id || null)
-                } else {
-                    addSnapMessage(data.message_id, data.message, '{{ chat_box_name }}', null, null, data.reply_id || null)
-                }
-
-                // Scroll to the bottom
-                var snapUiContainer = document.getElementById('snap-ui-container');
-                snapUiContainer.scrollTop = snapUiContainer.scrollHeight;
-
-
-                // Hide the loading icon after receiving a message
-                const loadingIcon = document.getElementById('loading');
-                loadingIcon.style.display = 'none';
             }
         }
     }
@@ -978,7 +1074,7 @@
         closeReplyMessageHolder();
     }
 
-    function addSnapNotice(date) {
+    function addSnapNotice(date, message) {
         var snapUiContainer = document.getElementById('snap-ui-container');
         var snap_notice = document.createElement('snap-notice')
         if (date) {
@@ -986,6 +1082,9 @@
             snap_notice.textContent = dateString;
         }
 
+        if (message) {
+            snap_notice.textContent = message;
+        }
         snapUiContainer.appendChild(snap_notice);
     }
 
@@ -1190,7 +1289,7 @@
             receiver = userUsername;
         } else {
             sender = userUsername;
-            receiver = '{{ chat_box_name }}'
+            receiver = getActivePerson()
         }
 
         if (isSave) {

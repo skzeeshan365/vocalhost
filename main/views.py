@@ -16,11 +16,12 @@ from django.views.decorators.csrf import csrf_exempt
 
 from ReiserX_Tunnel import settings
 from main import forms
-from main.Utils import save_message
+from main.Utils import save_message, getRoom, get_sender_receiver
 from main.consumers import MyWebSocketConsumer
 # Create your views here.
 from main.forms import RegistrationForm, LoginForm
 from main.models import UserProfile, Client, Message, Room
+from django.db.models import Q
 
 
 def home(request):
@@ -284,24 +285,69 @@ def user_accounts(request):
 
 
 @login_required(login_url='/account/login/')
-def chat_box(request, chat_box_name):
+def chat_box(request):
     user = request.user
-    receiver_user = chat_box_name
-    combined_usernames_set = frozenset([user.username, receiver_user])
-    sorted_usernames = sorted(combined_usernames_set)
+    users = User.objects.exclude(username=user.username)
 
-    room = hashlib.sha256(str(sorted_usernames).encode()).hexdigest()
-    room = Room.objects.filter(room=room).first()
-    if room:
-        messages = list(Message.objects.filter(room=room).values('message', 'sender__username', 'message_id', 'reply_id', 'timestamp'))
-    else:
-        messages = []
-    messages = json.dumps(messages, cls=DjangoJSONEncoder)
     if settings.DEBUG is False:
         protocol = 'wss'
     else:
         protocol = 'ws'
-    return render(request, "chat.html", {"chat_box_name": chat_box_name, 'messages': messages, 'protocol': protocol})
+    room_messages_info = []
+
+    for other_user in users:
+        room = getRoom(user.username, other_user.username)
+
+        # Get the count of messages
+        messages_count = Message.objects.filter(
+            room=room,
+            temp=user,
+        ).count()
+
+        last_message = Message.objects.filter(
+            room=room,
+        ).order_by('-timestamp').first()
+
+        new_message = None
+        if last_message:
+            if last_message.temp == user:
+                new_message = True
+            else:
+                new_message = False
+
+        room_messages_info.append({
+            'user': other_user,
+            'message_count': messages_count,
+            'last_message': last_message.message if last_message else None,
+            'new': new_message
+        })
+    return render(request, "chat.html", {'protocol': protocol, 'users': room_messages_info})
+
+
+@login_required(login_url='/account/login/')
+def load_messages(request, receiver):
+    if request.method == 'POST':
+        user = request.user
+        receiver_user = receiver
+        combined_usernames_set = frozenset([user.username, receiver_user])
+        sorted_usernames = sorted(combined_usernames_set)
+
+        room = hashlib.sha256(str(sorted_usernames).encode()).hexdigest()
+        room = Room.objects.filter(room=room).first()
+        if room:
+            messages_db = Message.objects.filter(room=room)
+            messages = list(
+                messages_db.values('message', 'sender__username', 'message_id', 'reply_id',
+                                   'timestamp', 'temp__username'))
+
+            messages_db = Message.objects.filter(room=room).filter(Q(temp=user))
+            messages_db.delete()
+        else:
+            messages = []
+        messages = json.dumps(messages, cls=DjangoJSONEncoder)
+        return JsonResponse({'status': 'success', 'data': messages})
+    else:
+        return JsonResponse({'status': 'error', 'message': 'Invalid request'})
 
 
 @login_required(login_url='/account/login/')
@@ -321,7 +367,6 @@ def delete_messages(request, receiver):
 
 @login_required(login_url='/account/login/')
 def save_messages(request):
-    print(f'req: {request}')
     if request.method == 'POST':
         try:
             data = json.loads(request.body)

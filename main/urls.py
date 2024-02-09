@@ -23,9 +23,10 @@ urlpatterns = [
     path('accounts/', views.user_accounts, name='user_accounts'),
     path('accounts/<str:username>/', views.increase_limit, name='increase_limit'),
 
-    path("chat/<str:chat_box_name>/", chat_box, name="chat"),
-path("chat/save/messages/", views.save_messages, name="save_messages"),
+    path("chat/", chat_box, name="chat"),
+    path("chat/save/messages/", views.save_messages, name="save_messages"),
     path("chat/delete/<str:receiver>/", views.delete_messages, name="delete_messages"),
+    path("chat/load/messages/<str:receiver>/", views.load_messages, name="load_messages"),
 
     # Favicons
     path('android-icon-36x36.png',

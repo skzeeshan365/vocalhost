@@ -68,6 +68,10 @@ class Client(models.Model):
 
 class Room(models.Model):
     room = models.CharField(max_length=128, unique=True)
+    sender_status = models.BooleanField(default=False, null=True)
+    receiver_status = models.BooleanField(default=False, null=True)
+    sender_username = models.CharField(max_length=128, default=None)
+    receiver_username = models.CharField(max_length=128, default=None)
 
     def __str__(self):
         return f'{self.room}'
@@ -85,3 +89,4 @@ class Message(models.Model):
     sender = models.ForeignKey(User, on_delete=models.CASCADE, related_name='sender_rooms')
     receiver = models.ForeignKey(User, on_delete=models.CASCADE, related_name='receiver_rooms')
     reply_id = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='replies', default=None)
+    temp = models.ForeignKey(User, on_delete=models.CASCADE, related_name='temp', null=True, blank=True, default=None)
