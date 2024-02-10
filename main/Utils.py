@@ -40,5 +40,9 @@ def send_message_to_device(user, title, message, timestamp=None):
         )
 
         device.send_message(message=message)
-    except FCMDevice.DoesNotExist:
-        pass
+    except Exception as e:
+        if "DoesNotExist" in str(e):
+            # Handle the case when the FCMDevice for the user does not exist
+            pass
+        else:
+            pass

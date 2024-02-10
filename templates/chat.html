@@ -87,10 +87,10 @@
                         {% if user.last_message %}
                             {% if user.new %}
                                 <span style="color: #00ff92" class="time">2:09 PM</span>
-                                <span style="color: #00ff92" class="preview">{{ user.last_message }}</span>
+                                <span style="color: #00ff92" class="preview">{{ user.last_message }} <p style="margin-left: 10px;"> {{ user.message_count }}</p></span>
                             {% else %}
                                 <span class="time">2:09 PM</span>
-                                <span class="preview">{{ user.last_message }}</span>
+                                <span class="preview">{{ user.last_message }} <p style="margin-left: 10px;"> {{ user.message_count }}</p>
                             {% endif %}
                         {% else %}
                             <span class="time">12:00 PM</span>

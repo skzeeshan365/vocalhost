@@ -298,6 +298,8 @@ def chat_box(request):
 
     for other_user in users:
         room = getRoom(user.username, other_user.username)
+        if room is None:
+            continue
 
         # Get the count of messages
         messages_count = Message.objects.filter(
@@ -318,7 +320,7 @@ def chat_box(request):
 
         room_messages_info.append({
             'user': other_user,
-            'message_count': messages_count,
+            'message_count': str(messages_count) if messages_count > 0 else '',
             'last_message': last_message.message if last_message else None,
             'new': new_message
         })
