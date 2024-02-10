@@ -17,11 +17,16 @@ Including another URLconf
 from django.contrib import admin
 from django.contrib.sitemaps.views import sitemap
 from django.urls import path, include
+from django.views.generic import RedirectView, TemplateView
+from django.views.static import serve
 
+from ReiserX_Tunnel import settings
 from main.sitemap import sitemaps
+from main.views import showFirebaseJS
 
 urlpatterns = [
     path('', include('main.urls')),
     path('admin/', admin.site.urls),
     path('sitemap.xml/', sitemap, {'sitemaps': sitemaps}, name='django.contrib.sitemaps.views.sitemap'),
+    path('firebase-messaging-sw.js',showFirebaseJS,name="show_firebase_js"),
 ]

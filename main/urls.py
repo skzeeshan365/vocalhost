@@ -1,5 +1,6 @@
 from django.urls import path
 from django.views.generic import RedirectView
+from django.views.static import serve
 
 from ReiserX_Tunnel import settings
 from main import views
@@ -23,10 +24,13 @@ urlpatterns = [
     path('accounts/', views.user_accounts, name='user_accounts'),
     path('accounts/<str:username>/', views.increase_limit, name='increase_limit'),
 
+    path('chat/firebase-messaging-sw.js', serve,
+         {'document_root': 'static', 'path': 'chat/js/firebase-messaging-sw.js', 'show_indexes': True}),
+
     path("chat/", chat_box, name="chat"),
-    path("chat/save/messages/", views.save_messages, name="save_messages"),
     path("chat/delete/<str:receiver>/", views.delete_messages, name="delete_messages"),
     path("chat/load/messages/<str:receiver>/", views.load_messages, name="load_messages"),
+    path("push/register_device/", views.register_device, name='register_device'),
 
     # Favicons
     path('android-icon-36x36.png',

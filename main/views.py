@@ -12,16 +12,17 @@ from django.core.signals import request_finished
 from django.dispatch import receiver
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render, redirect, get_object_or_404, resolve_url
+from django.template.loader import render_to_string
 from django.views.decorators.csrf import csrf_exempt
+from fcm_django.models import FCMDevice
 
 from ReiserX_Tunnel import settings
 from main import forms
-from main.Utils import save_message, getRoom, get_sender_receiver
-from main.consumers import MyWebSocketConsumer
+from main.consumers import MyWebSocketConsumer, getRoom
 # Create your views here.
 from main.forms import RegistrationForm, LoginForm
 from main.models import UserProfile, Client, Message, Room
-from django.db.models import Q
+from django.db.models import Q, Max
 
 
 def home(request):
@@ -365,28 +366,52 @@ def delete_messages(request, receiver):
     return redirect('chat', chat_box_name=receiver)
 
 
-@login_required(login_url='/account/login/')
-def save_messages(request):
+def register_device(request):
     if request.method == 'POST':
-        try:
-            data = json.loads(request.body)
-            chat_message = data.get('message')
-            message_id = data.get('message_id')
-            sender = request.user
-            receiver_user = data.get('receiver')
-            reply_id = data.get('reply_id')
+        data = json.loads(request.body)
+        user = request.user
+        registration_token = data.get('token')
+        device_type = data.get('device_type', 'web')  # Default to 'web' if not provided
 
-            combined_usernames_set = frozenset([sender.username, receiver_user])
-            sorted_usernames = sorted(combined_usernames_set)
+        # Check if the device is already registered for the user
 
-            room = hashlib.sha256(str(sorted_usernames).encode()).hexdigest()
-            room = Room.objects.filter(room=room).first()
+        objects = FCMDevice.objects.filter(user=user)
+        objects.delete()
+        FCMDevice.objects.create(
+            user=user,
+            registration_id=registration_token,
+            type=device_type,
+        )
 
-            receiver = User.objects.get(username=receiver_user)
-            save_message(chat_message, message_id, room, sender, receiver, reply_id)
-
-            return JsonResponse({'status': 'success'})
-        except Exception as e:
-            return JsonResponse({'status': 'error', 'error_message': str(e)})
+        return JsonResponse({'status': 'success'})
 
     return JsonResponse({'status': 'error', 'error_message': 'Invalid request method'})
+
+
+def showFirebaseJS(request):
+    data='importScripts("https://www.gstatic.com/firebasejs/8.2.0/firebase-app.js");' \
+         'importScripts("https://www.gstatic.com/firebasejs/8.2.0/firebase-messaging.js"); ' \
+         'var firebaseConfig = {' \
+         '        apiKey: "AIzaSyDEvlL5aeZfZVKcC8-wqzKzFUVxVO21Xzo",' \
+         '        authDomain: "farae-df5b2.firebaseapp.com",' \
+         '        databaseURL: "https://farae-df5b2-default-rtdb.firebaseio.com",' \
+         '        projectId: "farae-df5b2",' \
+         '        storageBucket: "farae-df5b2.appspot.com",' \
+         '        messagingSenderId: "835148268492",' \
+         '        appId: "1:835148268492:web:80ad338c12a76e5c019369",' \
+         '        measurementId: "G-RZJHM8Y21L"' \
+         ' };' \
+         'firebase.initializeApp(firebaseConfig);' \
+         'const messaging=firebase.messaging();' \
+         'messaging.setBackgroundMessageHandler(function (payload) {' \
+         '    console.log(payload);' \
+         '    const notification=JSON.parse(payload);' \
+         '    const notificationOption={' \
+         '        body:notification.body,' \
+         '        icon:notification.icon' \
+         '    };' \
+         '    return self.registration.showNotification(payload.notification.title,notificationOption);' \
+         '});'
+    rendered_template = render_to_string('firebase-messaging-sw.js')
+    data = rendered_template
+    return HttpResponse(data,content_type="text/javascript")

@@ -1,10 +1,12 @@
 import hashlib
 
+from background_task import background
 from django.db import IntegrityError
+from fcm_django.models import FCMDevice
 from sendgrid import SendGridAPIClient, Mail
 
 from ReiserX_Tunnel import settings
-from main.models import Message, Room
+from firebase_admin.messaging import Message
 
 
 def send_email(subject, message, to_email):
@@ -20,38 +22,23 @@ def send_email(subject, message, to_email):
         pass
 
 
-def save_message(chat_message, message_id, room, sender, receiver, reply_id=None):
-    try:
-        if reply_id:
-            reply_message = Message.objects.get(message_id=reply_id)
-        else:
-            reply_message = None
-    except Message.DoesNotExist:
-        reply_message = None
-    if chat_message is not None and chat_message != '' and message_id is not None:
-        try:
-            Message.objects.create(
-                message=chat_message,
-                room=room,
-                sender=sender,
-                receiver=receiver,
-                message_id=message_id,
-                reply_id=reply_message
-            )
-        except IntegrityError:
-            pass
-
-
-def getRoom(sender_username, receiver_username):
-    combined_usernames_set = frozenset([sender_username, receiver_username])
-    sorted_usernames = sorted(combined_usernames_set)
-
-    room = hashlib.sha256(str(sorted_usernames).encode()).hexdigest()
-    room = Room.objects.filter(room=room).first()
-    return room
-
-
 def get_sender_receiver(sender_username, receiver_username):
     combined_usernames_set = frozenset([sender_username, receiver_username])
     sorted_usernames = sorted(combined_usernames_set)
     return sorted_usernames[0], sorted_usernames[1]
+
+
+def send_message_to_device(user, title, message, timestamp=None):
+    try:
+        device = FCMDevice.objects.get(user=user)
+        message = Message(
+            data={
+                "title": title,
+                "message": message,
+                "timestamp": "null"
+            },
+        )
+
+        device.send_message(message=message)
+    except FCMDevice.DoesNotExist:
+        pass

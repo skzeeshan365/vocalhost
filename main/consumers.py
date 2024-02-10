@@ -7,18 +7,19 @@ import uuid
 from io import BytesIO
 from urllib.parse import parse_qs
 
-from PIL import Image
 from channels.db import database_sync_to_async
 from channels.exceptions import StopConsumer
 from channels.generic.websocket import AsyncWebsocketConsumer
 from django.contrib.auth.models import User
+from django.core.serializers.json import DjangoJSONEncoder
 from django.db import IntegrityError, transaction
 
 from ReiserX_Tunnel import settings
 from ReiserX_Tunnel.AuthBackend import CustomAuthBackend
+from ReiserX_Tunnel.settings import pusher_client
 from main import Utils
 from main.Utils import get_sender_receiver
-from main.models import UserProfile, Room, Message
+from main.models import UserProfile, Room, Message, new_signal_message, connected_users
 
 
 class ClientBusyException(Exception):
@@ -166,6 +167,15 @@ def get_or_create_room(sender_username, receiver_username):
     return room
 
 
+def getRoom(sender_username, receiver_username):
+    combined_usernames_set = frozenset([sender_username, receiver_username])
+    sorted_usernames = sorted(combined_usernames_set)
+
+    room = hashlib.sha256(str(sorted_usernames).encode()).hexdigest()
+    room = Room.objects.filter(room=room).first()
+    return room
+
+
 class ChatConsumer(AsyncWebsocketConsumer):
 
     def __init__(self, *args, **kwargs):
@@ -176,7 +186,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
         self.sender_username = None
         self.receiver_username = None
         self.api = None
-
     @database_sync_to_async
     def authenticate(self, api_key):
         # Call your custom authentication backend's authenticate method
@@ -190,6 +199,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         sender_username = query_params.get('sender_username', None)
         receiver_username = query_params.get('receiver_username', None)
         api = query_params.get('api', None)
+        await self.listen_for_signal_messages()
 
         if receiver_username is not None and api is not None:
             sender = await self.authenticate(api[0])
@@ -214,6 +224,19 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         else:
             await self.close()
+
+    async def listen_for_signal_messages(self):
+        async def forward_signal_messages(sender, message, timestamp, sender_username, **kwargs):
+            # Forward the User1 message to User3
+            if sender_username != self.sender_username:
+                await self.send(text_data=json.dumps({
+                    'type': 'new_message_background',
+                    'message': message,
+                    'timestamp': timestamp,
+                    'sender_username': sender_username
+                }, cls=DjangoJSONEncoder))
+
+        new_signal_message.connect(forward_signal_messages)
 
     async def connect_chat(self, sender_username, receiver_username, sender):
         self.room = await get_or_create_room(sender_username, receiver_username)
@@ -255,6 +278,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     "username": sender_username,
                 },
             )
+            connected_users[self.sender_username] = self.sender_username
         else:
             await self.close()
 
@@ -269,6 +293,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     "username": self.sender_username,
                 },
             )
+        if self.sender_username in connected_users:
+            del connected_users[self.sender_username]
+        raise StopConsumer
 
     async def receive(self, text_data=None, bytes_data=None):
         if text_data is not None:

@@ -1,7 +1,11 @@
 import os
 from pathlib import Path
 
+import firebase_admin
+import pusher
 from dotenv import load_dotenv
+
+from firebase_admin import initialize_app, credentials
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -30,6 +34,7 @@ INSTALLED_APPS = [
     "channels",
     "main.apps.MainConfig",
     "django.contrib.sitemaps",
+    "fcm_django",
 ]
 
 MIDDLEWARE = [
@@ -119,3 +124,24 @@ CHANNEL_LAYERS = {
         "BACKEND": "channels.layers.InMemoryChannelLayer"
     }
 }
+
+credentials_path = os.path.join(BASE_DIR, 'ReiserX_Tunnel/credentials.json')
+
+# Initialize the Firebase app
+FIREBASE_APP = initialize_app(credentials.Certificate(credentials_path))
+
+FCM_DJANGO_SETTINGS = {
+"ONE_DEVICE_PER_USER": True,
+     # devices to which notifications cannot be sent,
+     # are deleted upon receiving error response from FCM
+     # default: False
+    "DELETE_INACTIVE_DEVICES": True,
+}
+
+pusher_client = pusher.Pusher(
+  app_id='1754560',
+  key='09abc90556f59733a01c',
+  secret='a9de78e83ef636fe12e8',
+  cluster='ap2',
+  ssl=True
+)
