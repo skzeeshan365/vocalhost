@@ -124,7 +124,7 @@ CHANNEL_LAYERS = {
     }
 }
 
-credentials_path = os.path.join(BASE_DIR, 'ReiserX_Tunnel/credentials.json')
+credentials_path = os.path.join(BASE_DIR, 'ReiserX_Tunnel/credentials_backup.json')
 
 # Initialize the Firebase app
 FIREBASE_APP = initialize_app(credentials.Certificate(credentials_path))
