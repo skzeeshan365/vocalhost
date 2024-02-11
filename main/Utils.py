@@ -1,12 +1,8 @@
-import hashlib
-
-from background_task import background
-from django.db import IntegrityError
 from fcm_django.models import FCMDevice
+from firebase_admin.messaging import Message
 from sendgrid import SendGridAPIClient, Mail
 
 from ReiserX_Tunnel import settings
-from firebase_admin.messaging import Message
 
 
 def send_email(subject, message, to_email):

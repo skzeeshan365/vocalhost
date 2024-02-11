@@ -9,11 +9,11 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.core.serializers.json import DjangoJSONEncoder
 from django.core.signals import request_finished
+from django.db.models import Q
 from django.dispatch import receiver
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render, redirect, get_object_or_404, resolve_url
 from django.template.loader import render_to_string
-from django.views.decorators.csrf import csrf_exempt
 from fcm_django.models import FCMDevice
 
 from ReiserX_Tunnel import settings
@@ -22,7 +22,6 @@ from main.consumers import MyWebSocketConsumer, getRoom
 # Create your views here.
 from main.forms import RegistrationForm, LoginForm
 from main.models import UserProfile, Client, Message, Room
-from django.db.models import Q, Max
 
 
 def home(request):

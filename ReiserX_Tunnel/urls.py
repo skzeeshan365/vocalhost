@@ -17,10 +17,7 @@ Including another URLconf
 from django.contrib import admin
 from django.contrib.sitemaps.views import sitemap
 from django.urls import path, include
-from django.views.generic import RedirectView, TemplateView
-from django.views.static import serve
 
-from ReiserX_Tunnel import settings
 from main.sitemap import sitemaps
 from main.views import showFirebaseJS
 

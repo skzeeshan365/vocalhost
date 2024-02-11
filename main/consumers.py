@@ -1,10 +1,8 @@
 import asyncio
 import hashlib
 import json
-import struct
 import time
 import uuid
-from io import BytesIO
 from urllib.parse import parse_qs
 
 from channels.db import database_sync_to_async
@@ -12,13 +10,11 @@ from channels.exceptions import StopConsumer
 from channels.generic.websocket import AsyncWebsocketConsumer
 from django.contrib.auth.models import User
 from django.core.serializers.json import DjangoJSONEncoder
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError
 
 from ReiserX_Tunnel import settings
 from ReiserX_Tunnel.AuthBackend import CustomAuthBackend
-from ReiserX_Tunnel.settings import pusher_client
 from main import Utils
-from main.Utils import get_sender_receiver
 from main.models import UserProfile, Room, Message, new_signal_message, connected_users
 
 
