@@ -4,7 +4,7 @@ importScripts("https://www.gstatic.com/firebasejs/8.2.0/firebase-app.js");
 
     // Your web app's Firebase configuration
     const firebaseConfig = {
-    apiKey: "AIzaSyDEvlL5aeZfZVKcC8-wqzKzFUVxVO21Xzo",
+    apiKey: '{{api_key}}',
     authDomain: "farae-df5b2.firebaseapp.com",
     databaseURL: "https://farae-df5b2-default-rtdb.firebaseio.com",
     projectId: "farae-df5b2",

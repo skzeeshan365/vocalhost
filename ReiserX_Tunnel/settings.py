@@ -17,7 +17,7 @@ SECRET_KEY = os.getenv('SECRET_KEY')
 CONNECT_KEY = os.getenv('CONNECT_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = False
 
 ALLOWED_HOSTS = ['3.109.62.111', 'vocalhost.reiserx.com', '127.0.0.1', '192.168.0.100']
 
@@ -139,9 +139,11 @@ FCM_DJANGO_SETTINGS = {
 }
 
 pusher_client = pusher.Pusher(
-  app_id='1754560',
-  key='09abc90556f59733a01c',
-  secret='a9de78e83ef636fe12e8',
+  app_id=os.getenv('PUSHER_APP_ID'),
+  key=os.getenv('PUSHER_KEY'),
+  secret=os.getenv('PUSHER_SECRET'),
   cluster='ap2',
   ssl=True
 )
+
+FIREBASE_API_KEY = os.getenv('FIREBASE_API_KEY')

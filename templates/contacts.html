@@ -1,10 +1,90 @@
+{% load static %}
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
+     <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
     <title>Title</title>
+    <!-- Bootstrap CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.2/css/all.min.css"
+          crossorigin="anonymous">
+
+    <link rel="stylesheet" href="{% static 'contact/fonts/icomoon/style.css' %}">
+
+    <link rel="stylesheet" href="{% static 'contact/css/owl.carousel.min.css' %}">
+
+    <!-- Bootstrap CSS -->
+    <link rel="stylesheet" href="{% static 'contact/css/bootstrap.min.css' %}">
+
+    <!-- Style -->
+    <link rel="stylesheet" href="{% static 'contact/css/style.css' %}">
+    <link rel="stylesheet" href="{% static 'chat/css/styles.css' %}">
+    <link rel="stylesheet" href="{% static 'chat/css/base_style.css' %}">
 </head>
 <body>
 
+<div class="container" style="padding: unset;" id="chat_container">
+    <div class="row">
+        <div id="left_bar" class="col-lg-3 col-md-3 col-sm-3 left_bar">
+            <ul class="people">
+                {% for user in users %}
+                    <li class="person" onclick="addPerson('{{ user.user.username }}')" data-chat={{ user.user.username }}>
+                        <img src="https://s3-us-west-2.amazonaws.com/s.cdpn.io/382994/thomas.jpg" alt=""/>
+                        {% if user.user.get_full_name %}
+                            <span class="name">{{ user.user.get_full_name }}</span>
+                        {% else %}
+                            <span class="name">{{ user.user.username }}</span>
+                        {% endif %}
+                        <span class="time">12:00 PM</span>
+                        <span class="preview">Tap to chat</span>
+                    </li>
+                    {% empty %}
+                    <div class="row justify-content-center">
+                    <h5 style="color:#fff;">No chats available</h5>
+                    </div>
+                {% endfor %}
+            </ul>
+        </div>
+        <div class="col-lg-9 ml-auto chat_parent_holder" id="chat_parent_container" style="height: 100vh;">
+            <div class="container_image" id="container_image">
+                <img src="{% static 'img/img.png' %}" alt="Image" style="width: 75%; margin-top: 5%;">
+                <div class="top-left">Welcome aliens</div>
+                <div class="top-right">ReiserX</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.6/dist/umd/popper.min.js"></script>
+<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+<script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
+
+<script>
+    function addPerson(username) {
+        $.ajax({
+            type: 'POST',
+            url: '{% url "add_chat" %}',
+            data: JSON.stringify({
+                'username': username
+            }),
+            contentType: 'application/json',
+            success: function (data) {
+                console.log(data)
+                if (data.success) {
+                    // Set a flag in local storage indicating that the page needs to be refreshed
+                    sessionStorage.setItem('return_from_add_person', 'true');
+                    history.back();
+                } else {
+
+                }
+            },
+            error: function (xhr, status, error) {
+                console.error(error);
+            }
+        });
+    }
+</script>
 </body>
 </html>

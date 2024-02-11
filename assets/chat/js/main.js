@@ -269,7 +269,7 @@ customElements.define("snap-message", class extends HTMLElement {
 
     manageChainedMessages() {
 
-        let previousEl = this.previousElementSibling;
+        let previousEl = this.nextElementSibling;
 
         if (previousEl == null) {
             this.classList.remove("isFollower");
@@ -285,7 +285,7 @@ customElements.define("snap-message", class extends HTMLElement {
             }
         }
 
-        let nextEl = this.nextElementSibling;
+        let nextEl = this.previousElementSibling;
 
         if (nextEl == null) {
             this.classList.remove("hasFollower");
@@ -358,9 +358,7 @@ customElements.define("snap-message", class extends HTMLElement {
     }
 });
 
-// Function to create a date string with human-readable labels
-// Function to create a date string with human-readable labels
-// Function to create a date string with human-readable labels
+
 function createMessageDateString(date) {
     const messageDate = new Date(date);
     const currentDate = new Date();

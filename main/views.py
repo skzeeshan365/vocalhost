@@ -324,7 +324,7 @@ def chat_box(request):
             'last_message': last_message.message if last_message else None,
             'new': new_message
         })
-    return render(request, "chat.html", {'protocol': protocol, 'users': room_messages_info})
+    return render(request, "chat.html", {'protocol': protocol, 'abcf': settings.FIREBASE_API_KEY, 'users': room_messages_info})
 
 
 @login_required(login_url='/account/login/')
@@ -391,29 +391,52 @@ def register_device(request):
 
 
 def showFirebaseJS(request):
-    data='importScripts("https://www.gstatic.com/firebasejs/8.2.0/firebase-app.js");' \
-         'importScripts("https://www.gstatic.com/firebasejs/8.2.0/firebase-messaging.js"); ' \
-         'var firebaseConfig = {' \
-         '        apiKey: "AIzaSyDEvlL5aeZfZVKcC8-wqzKzFUVxVO21Xzo",' \
-         '        authDomain: "farae-df5b2.firebaseapp.com",' \
-         '        databaseURL: "https://farae-df5b2-default-rtdb.firebaseio.com",' \
-         '        projectId: "farae-df5b2",' \
-         '        storageBucket: "farae-df5b2.appspot.com",' \
-         '        messagingSenderId: "835148268492",' \
-         '        appId: "1:835148268492:web:80ad338c12a76e5c019369",' \
-         '        measurementId: "G-RZJHM8Y21L"' \
-         ' };' \
-         'firebase.initializeApp(firebaseConfig);' \
-         'const messaging=firebase.messaging();' \
-         'messaging.setBackgroundMessageHandler(function (payload) {' \
-         '    console.log(payload);' \
-         '    const notification=JSON.parse(payload);' \
-         '    const notificationOption={' \
-         '        body:notification.body,' \
-         '        icon:notification.icon' \
-         '    };' \
-         '    return self.registration.showNotification(payload.notification.title,notificationOption);' \
-         '});'
-    rendered_template = render_to_string('firebase-messaging-sw.js')
+    rendered_template = render_to_string('firebase-messaging-sw.js', {'api_key': settings.FIREBASE_API_KEY})
     data = rendered_template
     return HttpResponse(data,content_type="text/javascript")
+
+
+def get_or_create_room(sender_username, receiver_username):
+    # Ensure that the users are sorted before creating the room identifier
+    combined_usernames_set = frozenset([sender_username, receiver_username])
+    sorted_usernames = sorted(combined_usernames_set)
+
+    room_identifier = hashlib.sha256(str(sorted_usernames).encode()).hexdigest()
+
+    room, created = Room.objects.get_or_create(
+        room=room_identifier,
+        sender_username=sorted_usernames[0],
+        receiver_username=sorted_usernames[1]
+    )
+
+    return room
+
+
+def add_chat(request):
+    if request.method == 'POST':
+        user = request.user
+        data = json.loads(request.body)
+        username = data.get('username')
+
+        room = get_or_create_room(user.username, username)
+        if room:
+            print(room)
+            return JsonResponse({'success': True})
+        else:
+            return JsonResponse({'error': True})
+    else:
+        user = request.user
+        users = User.objects.exclude(username=user.username)
+
+        room_messages_info = []
+
+        for other_user in users:
+            room = getRoom(user.username, other_user.username)
+            if room is not None:
+                continue
+
+            room_messages_info.append({
+                'user': other_user,
+            })
+
+        return render(request, "contacts.html", {'users': room_messages_info})

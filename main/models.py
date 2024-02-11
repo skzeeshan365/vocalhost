@@ -91,8 +91,6 @@ class Room(models.Model):
 
 
 new_signal_message = Signal()
-
-
 connected_users = {}
 
 

@@ -1,0 +1,349 @@
+body {
+    background-color: #1f1f1f;
+    overflow: hidden;
+}
+
+.snap-ui-container {
+    flex-grow: 1;
+    flex-shrink: 1;
+    overflow-y: auto;
+    background-color: #0b0b0b;
+    height: 85vh;
+}
+
+.snap-ui-container-holder {
+    flex-grow: 1;
+    flex-shrink: 1;
+    overflow-y: auto;
+    background-color: #0b0b0b;
+    display: flex;
+    flex-direction: column-reverse;
+}
+
+.input-box-container {
+    display: none;
+    background-color: #0b0b0b;
+    position: fixed;
+    bottom: 0;
+    width: 95%;
+    padding-left: 2px;
+}
+
+.chat_parent_holder {
+    background-color: #0b0b0b;
+}
+
+
+.action_buttons {
+    height: 30px;
+    font-size: 14px;
+    padding: 5px;
+    align-items: center;
+    align-content: center;
+}
+
+.form-control {
+    background-color: #0b0b0b;
+    color: #ffffff;
+}
+
+textarea#input {
+    border: 1px solid #000000;
+    border-radius: 8px;
+    color: #FFFFFF;
+}
+
+.chat-image {
+    max-width: 50%; /* Ensure the image doesn't exceed its container width */
+    height: auto; /* Maintain aspect ratio */
+    border-radius: 5px; /* Add rounded corners if desired */
+    margin: 15px;
+}
+
+.image_chooser {
+    padding: 20px;
+    width: 30px;
+    height: 30px;
+}
+
+/* The Modal (background) */
+#image-viewer {
+    display: none;
+    position: fixed;
+    z-index: 1;
+    padding-top: 100px;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+    background-color: rgb(0, 0, 0);
+    background-color: rgba(0, 0, 0, 0.9);
+}
+
+.modal-content {
+    margin: auto;
+    display: block;
+    width: 80%;
+    max-width: 700px;
+}
+
+.modal-content {
+    animation-name: zoom;
+    animation-duration: 0.6s;
+}
+
+@keyframes zoom {
+    from {
+        transform: scale(0)
+    }
+    to {
+        transform: scale(1)
+    }
+}
+
+#image-viewer .close {
+    position: absolute;
+    top: 15px;
+    right: 35px;
+    color: #f1f1f1;
+    font-size: 40px;
+    font-weight: bold;
+    transition: 0.3s;
+}
+
+#image-viewer .close:hover,
+#image-viewer .close:focus {
+    color: #bbb;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+@media only screen and (max-width: 700px) {
+    .modal-content {
+        width: 100%;
+    }
+}
+
+.btn-primary {
+    border-color: #1C9963;
+}
+
+.btn-primary:hover {
+    background-color: #0f7349;
+!important;
+    border-color: #1C9963;
+!important;
+}
+
+snap-ui {
+    flex-shrink: 0;
+    overflow-y: auto; /* Enable vertical scrolling when content exceeds the max height */
+    position: relative;
+    background-color: #0b0b0b;
+}
+
+snap-ui:not(:defined) {
+    display: block;
+    margin: auto;
+    padding: 10px;
+    width: 75%;
+}
+
+snap-message:not(:defined),
+snap-notice:not(:defined) {
+    margin: 10px auto;
+    display: block;
+}
+
+@media screen and (min-width: 750px) {
+    body {
+        padding: 25px 0;
+        flex-direction: row;
+        justify-content: center;
+        gap: 100px;
+    }
+
+    snap-ui {
+        margin: auto 0;
+    }
+}
+
+#snap-ui-container::-webkit-scrollbar {
+    width: 0; /* Set the width of the scrollbar to 0 */
+}
+
+textarea#input:focus {
+    background-color: #000000 !important;
+}
+
+.form_class {
+    background-color: #000000;
+    border-radius: 12px;
+    margin-right: 0px;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Style for the context menu */
+.context-menu {
+    display: none;
+    position: absolute;
+    background-color: #1f1f1f; /* Custom background color */
+    color: #fff; /* Custom text color */
+    border: 1px solid #6c6c6c; /* Custom border color */
+    box-shadow: 2px 2px 5px rgba(89, 89, 89, 0.3);
+    border-radius: 8px;
+    z-index: 1000;
+    width: 200px;
+}
+
+.context-menu-item {
+    padding: 8px 16px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+}
+
+.context-menu-item:hover {
+    background-color: #383838; /* Custom hover background color */
+}
+
+.context-menu-item i {
+    margin-right: 8px;
+}
+
+/* Additional styling for Font Awesome icons */
+.context-menu-item .fa {
+    font-size: 18px;
+}
+
+.reply_message_holder {
+    background-color: #0b0b0b;
+    padding-right: 8px;
+    padding-left: 8px;
+    border: 1px solid #949494;
+    border-radius: 12px;
+    position: relative;
+}
+
+.close-icon {
+    position: absolute;
+    top: 5px;
+    right: 12px;
+    cursor: pointer;
+    background-color: transparent;
+    border: none;
+    font-size: 20px;
+    color: #a8a8a8; /* Adjust the color as needed */
+    display: none;
+}
+
+.container {
+    max-width: 98%;
+}
+
+.left_bar {
+    display: block;
+    margin-top: 8px;
+    padding: unset;
+}
+
+.back_button {
+        display: none;
+    }
+
+@media only screen and (max-width: 767px) {
+    .form_class {
+        background-color: #000000;
+        border-radius: 12px;
+        margin-right: 0px;
+        display: block;
+        flex-direction: column;
+    }
+
+    .left_bar {
+        display: block;
+    }
+
+    .input_holder {
+        width: 90%;
+    }
+
+    .snap-ui-container {
+        flex-grow: 1;
+        flex-shrink: 1;
+        overflow-y: auto;
+        background-color: #0b0b0b;
+        height: 80vh;
+        display: flex;
+      flex-direction: column-reverse;
+    }
+
+    .input-box-container {
+        width: 100%;
+        position: relative;
+    }
+
+    body {
+        padding: 0px;
+        overflow: hidden;
+        background-color: #0b0b0b;
+    }
+
+    .container {
+        max-width: 92%;
+    }
+
+    .chat_parent_holder {
+        padding: unset;
+        display: none;
+    }
+
+    h4 {
+        margin-left: 8px;
+        font-size: 16px;
+        margin-top: 5px;
+        height: 30px;
+    }
+
+    .container_image {
+    position: relative;
+    text-align: center;
+    color: white;
+    align-content: center;
+        display: none;
+}
+
+    .back_button {
+        display: block;
+    }
+
+}
+
+/* Top left text */
+.top-left {
+    position: absolute;
+    top: 8px;
+    left: 16px;
+    color: #c2c2c2;
+}
+
+/* Top right text */
+.top-right {
+    position: absolute;
+    top: 8px;
+    right: 16px;
+    color: #c2c2c2;
+}
+
+.container_image {
+    position: relative;
+    text-align: center;
+    color: white;
+    align-content: center;
+}
+
+.message_image:hover {
+    opacity: 0.7;
+}
