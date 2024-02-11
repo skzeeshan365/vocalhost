@@ -286,6 +286,9 @@ def user_accounts(request):
 
 @login_required(login_url='/account/login/')
 def chat_box(request):
+    room = Room.objects.all
+    room.delete()
+
     user = request.user
     users = User.objects.exclude(username=user.username)
 
