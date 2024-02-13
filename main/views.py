@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 import json
+from datetime import datetime
 from io import BytesIO
 from json import JSONDecodeError
 
@@ -309,9 +310,7 @@ def chat_box(request):
             temp=user,
         ).count()
 
-        last_message = Message.objects.filter(
-            room=room,
-        ).order_by('-timestamp').first()
+        last_message = room.get_last_message()
 
         new_message = None
         if last_message:
@@ -324,6 +323,7 @@ def chat_box(request):
             'user': other_user,
             'message_count': str(messages_count) if messages_count > 0 else '',
             'last_message': last_message.message if last_message else None,
+            'last_message_timestamp': str(last_message.timestamp) if last_message else None,
             'new': new_message
         })
     return render(request, "chat/chat.html",

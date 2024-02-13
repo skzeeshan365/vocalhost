@@ -90,6 +90,10 @@ class Room(models.Model):
         # Delete all messages associated with this room
         Message.objects.filter(room=self).delete()
 
+    def get_last_message(self):
+        last_message = Message.objects.filter(room=self).order_by('-timestamp').first()
+        return last_message if last_message else None
+
 
 new_signal_message = Signal()
 connected_users = {}

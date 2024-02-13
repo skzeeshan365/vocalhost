@@ -38,7 +38,7 @@
           href="{% static 'favicon/android-icon-192x192.png' %}">
     <link rel="icon" type="image/png" sizes="32x32" href="{% static 'favicon/favicon-32x32.png' %}">
     <link rel="icon" type="image/png" sizes="96x96" href="{% static 'favicon/favicon-96x96.png' %}">
-    <link rel="icon" type="image/png" sizes="16x16" href="{% static 'reiserx/img/favicons/favicon-16x16.png' %}">
+    <link rel="icon" type="image/png" sizes="16x16" href="{% static 'favicon/favicon-16x16.png' %}">
 
     <link rel="icon" type="image/png" sizes="32x32" href="{% static 'favicon/android-icon-36x36.png' %}">
     <link rel="icon" type="image/png" sizes="32x32" href="{% static 'favicon/android-icon-48x48.png' %}">
@@ -110,17 +110,16 @@
                         {% endif %}
                         {% if user.last_message %}
                             {% if user.new %}
-                                <span style="color: #00ff92" class="time">2:09 PM</span>
+                                <span style="color: #00ff92" class="time" data-timestamp="{{ user.last_message_timestamp }}"></span>
                                 <span style="color: #00ff92" class="preview">{{ user.last_message }} <p
                                         style="margin-left: 10px;"> {{ user.message_count }}</p></span>
                             {% else %}
-                                <span class="time">2:09 PM</span>
+                                <span class="time" data-timestamp="{{ user.last_message_timestamp }}"></span>
                                 <span class="preview">{{ user.last_message }}
                                 <p style="margin-left: 10px;"> {{ user.message_count }}</p>
                                 </span>
                             {% endif %}
                         {% else %}
-                            <span class="time"></span>
                             <span class="preview">Tap to chat</span>
                         {% endif %}
                     </li>
@@ -265,7 +264,6 @@
     const _356 = '{{ abcf }}';
     const auto_save = {{ storeMessage|yesno:"true,false" }};
     const storeMessage = (auto_save === 'true');
-    console.log(storeMessage)
 </script>
 <!-- VARIABLE DEFINITION -->
 

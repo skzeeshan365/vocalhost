@@ -126,7 +126,7 @@ SENDGRID_API_KEY = os.getenv('SENDGRID_API_KEY')
 
 LANGUAGE_CODE = "en-us"
 
-TIME_ZONE = "UTC"
+TIME_ZONE = "Asia/Kolkata"
 
 USE_I18N = True
 
@@ -163,3 +163,4 @@ pusher_client = pusher.Pusher(
 )
 
 FIREBASE_API_KEY = os.getenv('FIREBASE_API_KEY')
+

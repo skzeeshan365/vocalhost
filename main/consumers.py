@@ -548,13 +548,17 @@ class ChatConsumer(AsyncWebsocketConsumer):
     @database_sync_to_async
     def delete_permission_db(self, message_id, sender_username):
         try:
-            message = Message.objects.get(message_id=message_id)
-            if message.sender.username == sender_username:
-                return True
+            user = User.objects.get(username=sender_username)
+            if user.is_authenticated:
+                message = Message.objects.get(message_id=message_id, sender=user)
+                if message:
+                    return True
+                else:
+                    return False
             else:
                 return False
-        except Message.DoesNotExist:
-            return True
+        except (Message.DoesNotExist, User.DoesNotExist) as e:
+            return False
 
     @database_sync_to_async
     def get_user_status(self, user):
