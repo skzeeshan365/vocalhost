@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 
+import cloudinary
 import firebase_admin
 import pusher
 from dotenv import load_dotenv
@@ -16,7 +17,7 @@ SECRET_KEY = os.getenv('SECRET_KEY')
 CONNECT_KEY = os.getenv('CONNECT_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = False
+DEBUG = True
 
 ALLOWED_HOSTS = ['3.109.62.111', 'vocalhost.reiserx.com', '127.0.0.1', '192.168.0.100']
 
@@ -34,6 +35,8 @@ INSTALLED_APPS = [
     "main.apps.MainConfig",
     "django.contrib.sitemaps",
     "fcm_django",
+    'cloudinary_storage',
+    'cloudinary',
 ]
 
 MIDDLEWARE = [
@@ -50,8 +53,7 @@ ROOT_URLCONF = "ReiserX_Tunnel.urls"
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [BASE_DIR / 'templates']
-        ,
+        "DIRS": [BASE_DIR / 'templates'],
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
@@ -75,6 +77,20 @@ DATABASES = {
         'NAME': os.path.join(BASE_DIR, 'db.sqlite3'),
     }
 }
+
+CLOUDINARY_STORAGE = {
+    'CLOUD_NAME': os.getenv('CLOUD_NAME'),
+    'API_KEY': os.getenv('API_KEY'),
+    'API_SECRET': os.getenv('API_SECRET'),
+    'FOLDER': 'vocalhost'
+}
+DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
+
+cloudinary.config(
+    cloud_name=CLOUDINARY_STORAGE['CLOUD_NAME'],
+    api_key=CLOUDINARY_STORAGE['API_KEY'],
+    api_secret=CLOUDINARY_STORAGE['API_SECRET'],
+)
 
 CHANNELS_AUTH_BACKEND = 'ReiserX_Tunnel.AuthBackend.CustomAuthBackend'
 

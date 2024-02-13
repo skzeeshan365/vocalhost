@@ -21,6 +21,7 @@
     <link rel="stylesheet" href="{% static 'contact/css/style.css' %}">
     <link rel="stylesheet" href="{% static 'chat/css/styles.css' %}">
     <link rel="stylesheet" href="{% static 'chat/css/base_style.css' %}">
+    <link rel="stylesheet" href="{% static 'chat/css/preloader_style.css' %}">
 
     <title>Message</title>
     <!-- Favicon -->
@@ -52,22 +53,36 @@
     <meta name="msapplication-TileImage" content="{% static 'favicon/ms-icon-144x144.png' %}">
     <meta name="theme-color" content="#ffffff">
     <!-- Favicon -->
+
+    <style>
+        .author-thumb {
+            width: 35px;
+            height: 35px;
+            border-radius: 40%;
+            background-color: #FFFFFF;
+            padding: 1px;
+        }
+    </style>
 </head>
 
 <body style="padding: unset;">
 <div class="container" style="padding: unset;" id="chat_container">
     <div class="row">
         <div id="left_bar" class="col-lg-3 col-md-3 col-sm-3 left_bar">
-            <a href=""
-               class="btn btn-primary py-1 px-2 action_buttons" id="submit" type="button"
-               style="background-color: #1C9963; color: #FFFFFF; border-color: #1C9963; margin-left: 5%; margin-top: 5%;">Clear
-                message</a>
-            <hr>
-            <!-- Bootstrap checkbox for storing messages -->
-            <div style="margin-left: 5%;" class="custom-control custom-checkbox">
-                <input type="checkbox" class="custom-control-input" id="storeCheckbox">
-                <label style="color:#fff0ff;" class="custom-control-label" for="storeCheckbox">Save my messages</label>
-            </div>
+            <!-- Icon in the top right corner -->
+            <a href="{% url 'chat_profile' request.user.username %}" id="user_content" style="elevation: 8deg; position: absolute; top: 4px; left: 2%; cursor: pointer; border-radius: 20px; background-color: #000000; overflow: hidden; height: 40px; padding: 5px; display: flex; align-items: center;">
+
+                    {% if  request.user.userprofile.image %}
+                        <img class="author-thumb" src="{{ request.user.userprofile.image.url }}"
+                             alt="Profile picture">
+                    {% else %}
+                        <img class="author-thumb" src="{% static 'img/user.png' %}" alt="Profile picture">
+                    {% endif %}
+
+                <p id="user_name" style="color:#fff0ff; margin-left: 8px; margin-bottom: unset; margin-top: unset; margin-right: unset;">
+                    <span id="user_status" style="font-size: 16px; color: #fff0ff;">{{ request.user.username }}</span>
+                </p>
+            </a>
 
             <!-- Icon in the top right corner -->
             <a href="{% url 'add_chat' %}">
@@ -76,11 +91,18 @@
                     <i class="fas fa-plus-square" style="font-size: 30px; color: #dcdcdc;"></i>
                 </div>
             </a>
+
+        <hr style="background-color: #838383; margin-top: 60px; height: 1px;">
+
             <ul class="people">
                 {% for user in users %}
-                    <li onclick="load_chat('{{ user.user.username }}')" class="person"
+                    <li onclick="load_chat('{{ user.user.username }}')" class="person context-menu-trigger"
                         data-chat={{ user.user.username }}>
-                        <img src="https://s3-us-west-2.amazonaws.com/s.cdpn.io/382994/thomas.jpg" alt=""/>
+                    {% if user.user.userprofile.image %}
+                        <img id="users_profile_pic" class="users_profile_pic" src="{{ user.user.userprofile.image.url }}" alt="Profile picture"/>
+                        {% else %}
+                        <img id="users_profile_pic" class="users_profile_pic" src="{% static 'img/user.png' %}" alt="Profile picture"/>
+                    {% endif %}
                         {% if user.user.get_full_name %}
                             <span class="name">{{ user.user.get_full_name }}</span>
                         {% else %}
@@ -98,7 +120,7 @@
                                 </span>
                             {% endif %}
                         {% else %}
-                            <span class="time">12:00 PM</span>
+                            <span class="time"></span>
                             <span class="preview">Tap to chat</span>
                         {% endif %}
                     </li>
@@ -106,71 +128,76 @@
             </ul>
         </div>
         <div class="col-lg-9 ml-auto chat_parent_holder" id="chat_parent_container" style="height: 100vh;">
+            <div style="display: none; flex-direction: column; justify-content: center; align-items: center; height: 90vh;" id="preloader">
+                <div class="reverse-spinner"></div>
+            </div>
             <div class="container_image" id="container_image">
                 <img src="{% static 'img/img.png' %}" alt="Image" style="width: 75%; margin-top: 5%;">
                 <div class="top-left">Welcome aliens</div>
                 <div class="top-right">ReiserX</div>
             </div>
-            <div id="header_content" style="margin-top: 5px; padding-top: 5px; padding-bottom: 15px; padding-left: 8px; padding-right: 10px; border-radius: 20px; background-color: #1f1f1f; display: none; height: 40px">
+            <div id="header_content"
+                 style="cursor: pointer; margin-top: 5px; padding: 5px 10px 15px 8px;border-radius: 20px; background-color: #1f1f1f; display: none; height: 40px">
                 <div class="back_butto" style="position: absolute;">
-                    <img src="https://s3-us-west-2.amazonaws.com/s.cdpn.io/382994/thomas.jpg" style="height: 30px; width: 30px; border-radius: 50%; margin-bottom: 8px;" alt=""/>
+                    <img id="header_picture" src="{% static 'img/user.png' %}"
+                         style="height: 30px; width: 30px; border-radius: 50%; margin-bottom: 8px;" alt=""/>
                 </div>
                 <h5 id="heading_name" class="mb-2" style="color:#fff0ff; margin-left: 40px;">
                     <span id="user_status" class="preview" style="font-size: 14px; color: #fff0ff;">Preview</span>
                 </h5>
             </div>
-        <!-- Icon in the top right corner -->
-        <div class="back_button" onclick="close_chat()"
-             style="position: absolute; top: 8px; bottom: 5px; right: 10px;">
-            <!-- FontAwesome chat icon -->
-            <i class="fas fa-arrow-circle-left" style="font-size: 30px; color: #dcdcdc;"></i>
-        </div>
-        <form action="" class="form_class" method="POST"
-              id="contactForm"
-              name="contactForm">
-            <snap-ui class="form-group snap-ui-container-holder snap-ui-container" id="snap-ui-container"
-                     style="flex-grow: 1;">
-                <snap-notice id="no_message" style="display: none;">No messages available</snap-notice>
-            </snap-ui>
-            <div class="row input-box-container" id="input-box-container" style="position: fixed;">
-                <div class="col-md-9 input_holder">
-                    <div class="form-group">
-                        <div class="reply_message_holder" id="reply_message_holder">
+            <!-- Icon in the top right corner -->
+            <div class="back_button" onclick="close_chat()"
+                 style="position: absolute; top: 8px; bottom: 5px; right: 10px;">
+                <!-- FontAwesome chat icon -->
+                <i class="fas fa-arrow-circle-left" style="font-size: 30px; color: #dcdcdc;"></i>
+            </div>
+            <form action="" class="form_class" method="POST"
+                  id="contactForm"
+                  name="contactForm">
+                <snap-ui class="form-group snap-ui-container-holder snap-ui-container" id="snap-ui-container"
+                         style="flex-grow: 1;">
+                    <snap-notice id="no_message" style="display: none;">No messages available</snap-notice>
+                </snap-ui>
+                <div class="row input-box-container" id="input-box-container" style="position: fixed;">
+                    <div class="col-md-9 input_holder">
+                        <div class="form-group">
+                            <div class="reply_message_holder" id="reply_message_holder">
                                 <span id="close_reply" class="close-icon close_reply"
                                       onclick="closeReplyMessageHolder()"><i class="fas fa-times"></i></span>
-                            <textarea class="form-control" placeholder="Type a message" id="input" rows="1"
-                                      style="resize: none; overflow: hidden;"
-                                      maxlength="380"></textarea>
+                                <textarea class="form-control" placeholder="Type a message" id="input" rows="1"
+                                          style="resize: none; overflow: hidden;"
+                                          maxlength="380"></textarea>
 
+                            </div>
                         </div>
                     </div>
-                </div>
-                <div class="col-sm-0">
-                    <div class="form-group">
-                        <!-- File input for image -->
-                        <label data-toggle="modal" data-target="#exampleModalCenter" class="btn btn-primary"
-                               style="background: #FFFFFF; width: 35px; height: 35px; display: flex; align-items: center; padding-left: 8px;"><i
-                                class="fas fa-image"
-                                style="font-size: 18px; color: #0c5460"></i></label>
+                    <div class="col-sm-0">
+                        <div class="form-group">
+                            <!-- File input for image -->
+                            <label data-toggle="modal" data-target="#exampleModalCenter" class="btn btn-primary"
+                                   style="background: #FFFFFF; width: 35px; height: 35px; display: flex; align-items: center; padding-left: 8px;"><i
+                                    class="fas fa-image"
+                                    style="font-size: 18px; color: #0c5460"></i></label>
+                        </div>
                     </div>
+                    <!-- Temporary submit button -->
+                    <button onclick="sendMessage()" class="btn btn-primary py-1 px-1" id="submit" type="button"
+                            style="background-color: #1C9963; color: #FFFFFF; border-color: #1C9963; display: none">
+                        Send<i id="loading" class="fas fa-spinner fa-spin"
+                               style="display: none;"></i>
+                    </button>
+                    <!-- Temporary submit button -->
                 </div>
-                <!-- Temporary submit button -->
-                <button onclick="sendMessage()" class="btn btn-primary py-1 px-1" id="submit" type="button"
-                        style="background-color: #1C9963; color: #FFFFFF; border-color: #1C9963; display: none">
-                    Send<i id="loading" class="fas fa-spinner fa-spin"
-                           style="display: none;"></i>
-                </button>
-                <!-- Temporary submit button -->
-            </div>
-        </form>
-        <div id="form-messages"></div>
+            </form>
+            <div id="form-messages"></div>
+        </div>
     </div>
-</div>
 
-<div id="image-viewer">
-    <span class="close" id="close-button">&times;</span>
-    <img class="modal-content" id="full-image" alt="" src="">
-</div>
+    <div id="image-viewer">
+        <span class="close" id="close-button">&times;</span>
+        <img class="modal-content" id="full-image" alt="" src="">
+    </div>
 </div>
 
 <!-- Context menu container -->
@@ -183,6 +210,18 @@
     </div>
     <div id="delete_message_context" class="context-menu-item" onclick="handleContextMenu('delete')">
         <i class="fa fa-trash"></i> Delete
+    </div>
+</div>
+
+<div id="contextMenu_profile" class="context-menu">
+    <div id="save_text" class="context-menu-item" onclick="handleContextMenu_profile('about')">
+        <i class="fa fa-save"></i> Profile
+    </div>
+    <div class="context-menu-item" onclick="handleContextMenu_profile('clear_chat')">
+        <i class="fa fa-comment"></i> Clear chat
+    </div>
+    <div id="delete_message_context" class="context-menu-item" onclick="handleContextMenu_profile('remove')">
+        <i class="fa fa-trash"></i> Remove
     </div>
 </div>
 
@@ -219,27 +258,27 @@
 <!-- Add this to your HTML file -->
 <script src="https://js.pusher.com/8.2.0/pusher.min.js"></script>
 
+<!-- VARIABLE DEFINITION -->
+<script>
+    const userUsername = "{{ request.user.username }}";
+    const protocol = '{{ protocol }}';
+    const _356 = '{{ abcf }}';
+    const auto_save = {{ storeMessage|yesno:"true,false" }};
+    const storeMessage = (auto_save === 'true');
+    console.log(storeMessage)
+</script>
+<!-- VARIABLE DEFINITION -->
+
 <script src="https://www.gstatic.com/firebasejs/8.6.3/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.6.3/firebase-analytics.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.6.3/firebase-messaging.js"></script>
 <script src="{% static 'chat/js/fcm_main.js' %}"></script>
-
-<!-- VARIABLE DEFINITION -->
-<script>
-    const userUsername = "{{ request.user.username }}";
-    const protocol = '{{ protocol }}'
-    const _356 = '{{ abcf }}'
-</script>
-<!-- VARIABLE DEFINITION -->
 
 <!-- CUSTOM FILES -->
 <script src="{% static 'chat/js/main.js' %}"></script>
 <script src="{% static 'chat/js/base_main.js' %}"></script>
 <!-- CUSTOM FILES -->
 
-<script>
-
-</script>
 <script>
     Pusher.logToConsole = false;
 

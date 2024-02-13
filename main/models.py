@@ -21,6 +21,8 @@ class UserProfile(models.Model):
     connected_clients = models.ManyToManyField('Client', blank=True)
     max_receiver = models.IntegerField(validators=[MaxValueValidator(10)], default=1)
     status = models.BooleanField(default=False)
+    image = models.ImageField(default=None, upload_to='profile_pics/')
+    auto_save = models.BooleanField(default=False)
 
     def save(self, *args, **kwargs):
         if not self.api:
@@ -129,3 +131,9 @@ class Message(models.Model):
             send_message_to_device(self.receiver, f'{self.sender.username}: sent a message', message=self.message)
 
         super().save(*args, **kwargs)
+
+    def get_sender_username(self):
+        return self.sender.username
+
+    def get_receiver_username(self):
+        return self.receiver.username

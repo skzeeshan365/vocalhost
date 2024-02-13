@@ -1,17 +1,20 @@
 import asyncio
 import hashlib
 import json
+from io import BytesIO
 from json import JSONDecodeError
 
+from PIL import Image
 from django.contrib import auth
 from django.contrib.auth import authenticate, login
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.serializers.json import DjangoJSONEncoder
 from django.core.signals import request_finished
 from django.db.models import Q
 from django.dispatch import receiver
-from django.http import HttpResponse, JsonResponse
+from django.http import HttpResponse, JsonResponse, Http404
 from django.shortcuts import render, redirect, get_object_or_404, resolve_url
 from django.template.loader import render_to_string
 from fcm_django.models import FCMDevice
@@ -20,7 +23,7 @@ from ReiserX_Tunnel import settings
 from main import forms
 from main.consumers import MyWebSocketConsumer, getRoom
 # Create your views here.
-from main.forms import RegistrationForm, LoginForm
+from main.forms import RegistrationForm, LoginForm, ImageUploadForm
 from main.models import UserProfile, Client, Message, Room
 
 
@@ -323,7 +326,11 @@ def chat_box(request):
             'last_message': last_message.message if last_message else None,
             'new': new_message
         })
-    return render(request, "chat.html", {'protocol': protocol, 'abcf': settings.FIREBASE_API_KEY, 'users': room_messages_info})
+    return render(request, "chat/chat.html",
+                  {'protocol': protocol,
+                   'abcf': settings.FIREBASE_API_KEY,
+                   'users': room_messages_info,
+                   'storeMessage': user.userprofile.auto_save})
 
 
 @login_required(login_url='/account/login/')
@@ -390,7 +397,7 @@ def register_device(request):
 
 
 def showFirebaseJS(request):
-    rendered_template = render_to_string('firebase-messaging-sw.js', {'api_key': settings.FIREBASE_API_KEY})
+    rendered_template = render_to_string('chat/firebase-messaging-sw.js', {'api_key': settings.FIREBASE_API_KEY})
     data = rendered_template
     return HttpResponse(data,content_type="text/javascript")
 
@@ -438,4 +445,132 @@ def add_chat(request):
                 'user': other_user,
             })
 
-        return render(request, "contacts.html", {'users': room_messages_info})
+        return render(request, "chat/contacts.html", {'users': room_messages_info})
+
+
+def clear_chat(request):
+    if request.method == 'POST':
+        user = request.user
+        data = json.loads(request.body)
+        username = data.get('username')
+        if user is not None and username is not None:
+            try:
+                room = getRoom(user.username, username)
+                if room:
+                    room.delete_all_messages()
+                    return JsonResponse({'success': True})
+                else:
+                    return JsonResponse({'error': 'Failed to clear chat'})
+            except Room.DoesNotExist:
+                return JsonResponse({'error': 'Failed to clear chat'})
+        return JsonResponse({'error': 'Failed to clear chat'})
+    else:
+        return JsonResponse({'error': 'Invalid request'})
+
+
+def remove_chat(request):
+    if request.method == 'POST':
+        user = request.user
+        data = json.loads(request.body)
+        username = data.get('username')
+        if user is not None and username is not None:
+            try:
+                room = getRoom(user.username, username)
+                if room:
+                    room.delete()
+                    return JsonResponse({'success': True})
+                else:
+                    return JsonResponse({'error': 'Failed to remove chat'})
+            except Room.DoesNotExist:
+                return JsonResponse({'error': 'Failed to remove chat'})
+        return JsonResponse({'error': 'Failed to remove chat'})
+    else:
+        return JsonResponse({'error': 'Invalid request'})
+
+
+def chat_profile(request, username):
+    try:
+        if request.user.username == username:
+            user = request.user
+            count = Message.objects.filter(sender=user).count()
+            messages = Message.objects.filter(sender=user).order_by('-timestamp')[:4]
+            form = ImageUploadForm()
+            if user.userprofile.image:
+                image = user.userprofile.image.url
+            else:
+                image = None
+            return render(request, 'chat/profile.html', {'username': user.username,
+                                                         'fullname': user.get_full_name(),
+                                                         'profile_pic': image,
+                                                         'messages': messages,
+                                                         'message_count': count,
+                                                         'form': form,
+                                                         'user': user.pk,
+                                                         'auto_save': user.userprofile.auto_save})
+        else:
+            user = User.objects.get(username=username)
+            if user:
+                room = getRoom(request.user.username, username)
+                count = Message.objects.filter(room=room).count()
+                messages = Message.objects.filter(room=room).order_by('-timestamp')[:4]
+                form = ImageUploadForm()
+                if user.userprofile.image:
+                    image = user.userprofile.image.url
+                else:
+                    image = None
+                return render(request, 'chat/profile.html', {'username': user.username,
+                                                             'fullname': user.get_full_name(),
+                                                             'profile_pic': image,
+                                                             'messages': messages,
+                                                             'message_count': count,
+                                                             'form': form,
+                                                             'user': user.pk})
+            else:
+                raise Http404("User not found")
+    except User.DoesNotExist or Message.DoesNotExist or Room.DoesNotExist:
+        raise Http404("User not found")
+
+
+def update_profile(request):
+    if request.method == 'POST':
+        user = request.user
+        form = ImageUploadForm(data=request.POST, files=request.FILES, instance=user.userprofile)
+
+        if form.is_valid():
+            output = form.save()
+            return JsonResponse({'success': True, 'image_url': output.image.url})
+        else:
+            return JsonResponse({'error': form.errors})
+
+    else:
+        return JsonResponse({'error': 'Invalid request'})
+
+
+def update_profile_info(request):
+    if request.method == 'POST':
+        user = request.user
+        data = json.loads(request.body)
+        fullname = data.get('fullname')
+        auto_save = data.get('storeMessage')
+
+        if auto_save is not None:
+            user.userprofile.auto_save = auto_save
+            user.userprofile.save()
+            return JsonResponse({'success': True})
+        if fullname:
+            print(fullname)
+            if len(fullname) == 2:
+                first_name, last_name = fullname.split(maxsplit=1)
+                user.first_name = first_name
+                user.last_name = last_name
+                user.save()
+            else:
+                user.first_name = fullname
+                user.last_name = ''
+                user.save()
+            return JsonResponse({'success': True})
+
+        return JsonResponse({'error': 'Invalid data format'})
+
+    else:
+        return JsonResponse({'error': 'Invalid request'})

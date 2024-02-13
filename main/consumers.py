@@ -316,7 +316,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     },
                 )
                 if storeMessage:
-                    await self.save_message_db(message, message_id, reply_id)
+                    await self.save_message_db(message=message, message_id=message_id, reply_id=reply_id)
                 else:
                     status = await self.get_room_user_status(self.receiver_username)
                     if not status:
@@ -335,7 +335,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     },
                 )
                 if storeMessage:
-                    await self.save_message_db(message, message_id, reply_id)
+                    await self.save_message_db(message=message, message_id=message_id, reply_id=reply_id)
                 else:
                     status = await self.get_room_user_status(self.receiver_username)
                     if not status:
@@ -391,7 +391,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 }
             )
             if data.get("storeMessage"):
-                await self.save_message_db(text_message, message_id)
+                await self.save_message_db(message=text_message, message_id=message_id)
             else:
                 status = await self.get_room_user_status(self.receiver_username)
                 if not status:
@@ -423,14 +423,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     }
                 )
             )
-
-        # await self.send(
-        #     text_data=json.dumps(
-        #         {
-        #             "type": 'message_sent',
-        #         }
-        #     )
-        # )
 
     async def image_bytes_data(self, event):
         sender_username = event["sender_username"]
