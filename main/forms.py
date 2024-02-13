@@ -1,7 +1,6 @@
 from io import BytesIO
 
 from PIL import Image
-from cloudinary import uploader
 from django import forms
 from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth.models import User

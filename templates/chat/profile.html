@@ -88,6 +88,12 @@
         .content {
             display: none;
         }
+
+        .container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
     </style>
 </head>
 <body>
@@ -99,96 +105,98 @@
 </div>
 
 <div class="container content justify-content-center mt-5" id="content">
-    <div class="card">
-        <div class="top-container">
-            {% if request.user.username == username %}
-                {% if profile_pic %}
-                    <img id="profile_pic" data-toggle="modal" data-target="#exampleModalCenter" src="{{ profile_pic }}"
-                         class="img-fluid profile-image" width="70" alt="Profile picture">
+    <div class="container">
+        <div class="card">
+            <div class="top-container">
+                {% if request.user.username == username %}
+                    {% if profile_pic %}
+                        <img id="profile_pic" data-toggle="modal" data-target="#exampleModalCenter"
+                             src="{{ profile_pic }}"
+                             class="img-fluid profile-image" width="70" alt="Profile picture">
 
-                {% else %}
-                    <img id="profile_pic" data-toggle="modal" data-target="#exampleModalCenter"
-                         src="{% static 'img/user.png' %}"
-                         class="img-fluid profile-image" width="70" alt="Profile picture">
-                {% endif %}
-            {% else %}
-                {% if profile_pic %}
-                    <img id="profile_pic" src="{{ profile_pic }}"
-                         class="img-fluid profile-image" width="70" alt="Profile picture">
-
-                {% else %}
-                    <img id="profile_pic" src="{% static 'img/user.png' %}"
-                         class="img-fluid profile-image" width="70" alt="Profile picture">
-                {% endif %}
-            {% endif %}
-            <div class="ml-3">
-                <div class="d-flex justify-content-between align-items-center">
-                    {% if fullname %}
-                        <h5 id="fullname" class="name">{{ fullname }}</h5>
                     {% else %}
-                        <h5 id="fullname" class="name">Not available</h5>
+                        <img id="profile_pic" data-toggle="modal" data-target="#exampleModalCenter"
+                             src="{% static 'img/user.png' %}"
+                             class="img-fluid profile-image" width="70" alt="Profile picture">
                     {% endif %}
-                    {% if username == request.user.username %}
-                        <span data-toggle="modal" data-target="#edit_profile_modal"
-                              style="cursor: pointer; margin-left: 8px; margin-top: 5px;" href="">
+                {% else %}
+                    {% if profile_pic %}
+                        <img id="profile_pic" src="{{ profile_pic }}"
+                             class="img-fluid profile-image" width="70" alt="Profile picture">
+
+                    {% else %}
+                        <img id="profile_pic" src="{% static 'img/user.png' %}"
+                             class="img-fluid profile-image" width="70" alt="Profile picture">
+                    {% endif %}
+                {% endif %}
+                <div class="ml-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        {% if fullname %}
+                            <h5 id="fullname" class="name">{{ fullname }}</h5>
+                        {% else %}
+                            <h5 id="fullname" class="name">Not available</h5>
+                        {% endif %}
+                        {% if username == request.user.username %}
+                            <span data-toggle="modal" data-target="#edit_profile_modal"
+                                  style="cursor: pointer; margin-left: 8px; margin-top: 5px;" href="">
                         <i style="font-size: 14px; color: #FFFFFF" class="fas fa-pen"></i>
                     </span>
+                        {% endif %}
+                    </div>
+                    <p class="mail">{{ username }}</p>
+                </div>
+            </div>
+
+
+            <div class="middle-container d-flex justify-content-between align-items-center mt-3 p-2">
+                <div class="dollar-div px-3">
+
+                    <div class="round-div"><i class="fa fa-comment dollar"></i></div>
+
+                </div>
+                <div class="d-flex flex-column text-right mr-2">
+                    <span class="current-balance">Messages</span>
+                    <span class="amount"><span class="dollar-sign"></span>{{ message_count }}</span>
+                </div>
+
+            </div>
+            <div class="wishlist-border mt-4">
+                <span class="wishlist">Recent messages</span>
+            </div>
+        <div id="snap_ui_holder">
+            <snap-ui style="flex-grow: 1;">
+                {% for message in messages %}
+                    {% if message.get_sender_username == username %}
+                        <snap-message from="{{ message.get_sender_username }}">{{ message.message }}</snap-message>
+                    {% else %}
+                        <snap-message>{{ message.message }}</snap-message>
                     {% endif %}
-                </div>
-                <p class="mail">{{ username }}</p>
-            </div>
+                {% empty %}
+                    <snap-notice>No messages</snap-notice>
+                {% endfor %}
+            </snap-ui>
         </div>
-
-
-        <div class="middle-container d-flex justify-content-between align-items-center mt-3 p-2">
-            <div class="dollar-div px-3">
-
-                <div class="round-div"><i class="fa fa-comment dollar"></i></div>
-
-            </div>
-            <div class="d-flex flex-column text-right mr-2">
-                <span class="current-balance">Messages</span>
-                <span class="amount"><span class="dollar-sign"></span>{{ message_count }}</span>
-            </div>
-
+            {% if request.user.username != username %}
+                <a onclick="clear_chat('{{ username }}')" class="wishlist-border pt-2">
+                    <span class="wishlist">Clear chat</span>
+                </a>
+                <a onclick="remove_chat('{{ username }}')" class="wishlist-border pt-2">
+                    <span class="wishlist">Remove chat</span>
+                </a>
+            {% else %}
+                <a class="wishlist-border pt-2">
+                    <span class="wishlist">Save message</span>
+                    <div class="custom-control custom-checkbox d-flex justify-content-between align-items-center">
+                        <input type="checkbox" class="custom-control-input" id="storeCheckbox"
+                               {% if auto_save %}checked{% endif %}>
+                        <label style="color:#fff0ff;" class="custom-control-label" for="storeCheckbox">Auto save my
+                            messages</label>
+                    </div>
+                </a>
+            {% endif %}
         </div>
-        <div class="wishlist-border mt-4">
-            <span class="wishlist">Recent messages</span>
-        </div>
-        <snap-ui style="flex-grow: 1;">
-            {% for message in messages %}
-                {% if message.get_sender_username == username %}
-                    <snap-message from="{{ message.get_sender_username }}">{{ message.message }}</snap-message>
-                {% else %}
-                    <snap-message>{{ message.message }}</snap-message>
-                {% endif %}
-            {% empty %}
-                <snap-notice>No messages</snap-notice>
-            {% endfor %}
-        </snap-ui>
-        {% if request.user.username != username %}
-            <a class="wishlist-border pt-2">
-                <span class="wishlist">Clear chat</span>
-            </a>
-            <!-- dribbble -->
-            <a class="dribbble" href="https://dribbble.com/shots/4772606-Switch-loading-animation" target="_blank">
-                <img src="https://cdn.dribbble.com/assets/dribbble-ball-1col-dnld-e29e0436f93d2f9c430fde5f3da66f94493fdca66351408ab0f96e2ec518ab17.png"
-                     alt=""></a>
-            <a class="wishlist-border pt-2">
-                <span class="wishlist">Remove chat</span>
-            </a>
-        {% else %}
-            <a class="wishlist-border pt-2">
-                <span class="wishlist">Save message</span>
-                <div class="custom-control custom-checkbox d-flex justify-content-between align-items-center">
-                    <input type="checkbox" class="custom-control-input" id="storeCheckbox" {% if auto_save %}checked{% endif %}>
-                    <label style="color:#fff0ff;" class="custom-control-label" for="storeCheckbox">Auto save my
-                        messages</label>
-                    <div id="save_message_loader" style="display: none; height: 20px; width: 20px;"
-                         class="reverse-spinner"></div>
-                </div>
-            </a>
-        {% endif %}
+        <div id="save_message_loader" style="margin-top: 20px; display: none;"
+             class="reverse-spinner"></div>
     </div>
 
 </div>
@@ -260,17 +268,20 @@
 <script src="{% static 'chat/js/main_secondary.js' %}"></script>
 
 <script>
+    let saveMessageLoader = document.getElementById("save_message_loader");
+
     document.addEventListener("DOMContentLoaded", function () {
         setTimeout(function () {
             endPreloader();
         }, 1000);
         var storeCheckbox = document.getElementById("storeCheckbox");
 
-        // Attach a change event listener to the checkbox
-        storeCheckbox.addEventListener("change", function () {
-            // Call your function when the checkbox state changes
-            handleCheckboxChange();
-        });
+        if (storeCheckbox) {
+            storeCheckbox.addEventListener("change", function () {
+                // Call your function when the checkbox state changes
+                handleCheckboxChange();
+            });
+        }
     });
 
     function startPreloader() {
@@ -312,7 +323,7 @@
 
     function update_profile() {
         if ('{{ request.user.username }}' === '{{ username }}') {
-            startPreloader();
+            saveMessageLoader.style.display = 'block';
 
             const label = document.getElementById('image_input_label');
             const selectedImage = document.getElementById('selectedImage');
@@ -344,11 +355,11 @@
                         selectedImage.style.display = 'none';
                         label.style.display = 'flex';
                     }
-                    endPreloader();
+                    saveMessageLoader.style.display = 'none';
                 },
                 error: function (xhr, status, error) {
                     console.error(error);
-                    endPreloader();
+                    saveMessageLoader.style.display = 'none';
                 }
             });
         }
@@ -356,7 +367,6 @@
 
     function handleCheckboxChange() {
         // This function will be called when the checkbox state changes
-        let saveMessageLoader = document.getElementById("save_message_loader");
         saveMessageLoader.style.display = 'block';
 
         let storeCheckbox = document.getElementById("storeCheckbox");
@@ -388,6 +398,7 @@
         let fullname = document.getElementById('fullname');
         let fullname_new = document.getElementById('input_name');
         let new_name = fullname_new.value.trim();
+        saveMessageLoader.style.display = 'block';
 
         if (fullname.textContent === new_name) {
             return
@@ -407,9 +418,72 @@
                 } else {
                     alert(data.error)
                 }
+                saveMessageLoader.style.display = 'none';
             },
             error: function (xhr, status, error) {
                 console.error(error);
+                saveMessageLoader.style.display = 'none';
+            }
+        });
+    }
+
+    function clear_chat(username) {
+        saveMessageLoader.style.display = 'block';
+
+        $.ajax({
+            type: 'POST',
+            url: '{% url "clear_chat" %}',
+            data: JSON.stringify({
+                'username': username
+            }),
+            contentType: 'application/json',
+            success: function (data) {
+                if (data.success) {
+                    let snap_ui_holder = document.getElementById('snap_ui_holder');
+                    while (snap_ui_holder.firstChild) {
+                        snap_ui_holder.removeChild(snap_ui_holder.firstChild);
+                    }
+                    let snap_notice = document.createElement('snap-notice');
+                    snap_notice.textContent = 'No messages'
+                    snap_ui_holder.append(snap_notice);
+                } else {
+                    console.log(data.error)
+                }
+                saveMessageLoader.style.display = 'none';
+            },
+            error: function (xhr, status, error) {
+                console.error(error);
+                saveMessageLoader.style.display = 'none';
+            }
+        });
+    }
+
+    function remove_chat(username) {
+        saveMessageLoader.style.display = 'block';
+        $.ajax({
+            type: 'POST',
+            url: '{% url "remove_chat" %}',
+            data: JSON.stringify({
+                'username': username
+            }),
+            contentType: 'application/json',
+            success: function (data) {
+                if (data.success) {
+                    let snap_ui_holder = document.getElementById('snap_ui_holder');
+                    while (snap_ui_holder.firstChild) {
+                        snap_ui_holder.removeChild(snap_ui_holder.firstChild);
+                    }
+                    let snap_notice = document.createElement('snap-notice');
+                    snap_notice.textContent = 'No messages'
+                    snap_ui_holder.append(snap_notice);
+                } else {
+                    console.log(data.error)
+                }
+                saveMessageLoader.style.display = 'none';
+            },
+            error: function (xhr, status, error) {
+                console.error(error);
+                saveMessageLoader.style.display = 'none';
             }
         });
     }

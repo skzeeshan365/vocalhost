@@ -1,16 +1,13 @@
 import asyncio
 import hashlib
 import json
-from datetime import datetime
-from io import BytesIO
+from datetime import datetime, timezone
 from json import JSONDecodeError
 
-from PIL import Image
 from django.contrib import auth
 from django.contrib.auth import authenticate, login
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
-from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.serializers.json import DjangoJSONEncoder
 from django.core.signals import request_finished
 from django.db.models import Q
@@ -326,6 +323,13 @@ def chat_box(request):
             'last_message_timestamp': str(last_message.timestamp) if last_message else None,
             'new': new_message
         })
+    room_messages_info.sort(
+        key=lambda x: datetime.strptime(x['last_message_timestamp'], '%Y-%m-%d %H:%M:%S.%f%z').replace(
+            tzinfo=timezone.utc)
+        if x['last_message_timestamp']
+        else datetime.min.replace(tzinfo=timezone.utc),
+        reverse=True
+    )
     return render(request, "chat/chat.html",
                   {'protocol': protocol,
                    'abcf': settings.FIREBASE_API_KEY,
