@@ -330,7 +330,8 @@ def chat_box(request):
                   {'protocol': protocol,
                    'abcf': settings.FIREBASE_API_KEY,
                    'users': room_messages_info,
-                   'storeMessage': user.userprofile.auto_save})
+                   'storeMessage': user.userprofile.auto_save,
+                   'pusher': settings.PUSHER_KEY})
 
 
 @login_required(login_url='/account/login/')

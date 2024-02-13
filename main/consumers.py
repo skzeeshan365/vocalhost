@@ -401,25 +401,37 @@ class ChatConsumer(AsyncWebsocketConsumer):
         sender_username = event["sender_username"]
         message = event["message"]
         message_id = event['message_id']
-        reply_id = event.get('reply_id', None)
-        if reply_id:
-            await self.send(
-                text_data=json.dumps(
-                    {
-                        "message": message,
-                        'message_id': message_id,
-                        'reply_id': reply_id,
-                        "sender_username": sender_username,
-                    }
+        if sender_username != self.sender_username:
+            reply_id = event.get('reply_id', None)
+            if reply_id:
+                await self.send(
+                    text_data=json.dumps(
+                        {
+                            "message": message,
+                            'message_id': message_id,
+                            'reply_id': reply_id,
+                            "sender_username": sender_username,
+                        }
+                    )
                 )
-            )
+            else:
+                await self.send(
+                    text_data=json.dumps(
+                        {
+                            "message": message,
+                            'message_id': message_id,
+                            "sender_username": sender_username,
+                        }
+                    )
+                )
+
         else:
             await self.send(
                 text_data=json.dumps(
                     {
-                        "message": message,
+                        "type": 'message_sent',
                         'message_id': message_id,
-                        "sender_username": sender_username,
+                        'data_type': 'text'
                     }
                 )
             )

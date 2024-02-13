@@ -153,9 +153,10 @@ FCM_DJANGO_SETTINGS = {
     "DELETE_INACTIVE_DEVICES": True,
 }
 
+PUSHER_KEY = os.getenv('PUSHER_KEY')
 pusher_client = pusher.Pusher(
   app_id=os.getenv('PUSHER_APP_ID'),
-  key=os.getenv('PUSHER_KEY'),
+  key=PUSHER_KEY,
   secret=os.getenv('PUSHER_SECRET'),
   cluster='ap2',
   ssl=True
