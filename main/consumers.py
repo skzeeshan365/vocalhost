@@ -316,7 +316,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     },
                 )
                 if storeMessage:
-                    await self.save_message_db(message=message, message_id=message_id, reply_id=reply_id)
+                    await self.save_message_db(message=message, message_id=message_id, reply_id=reply_id, saved=True)
                 else:
                     status = await self.get_room_user_status(self.receiver_username)
                     if not status:
@@ -335,7 +335,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     },
                 )
                 if storeMessage:
-                    await self.save_message_db(message=message, message_id=message_id, reply_id=reply_id)
+                    await self.save_message_db(message=message, message_id=message_id, reply_id=reply_id, saved=True)
                 else:
                     status = await self.get_room_user_status(self.receiver_username)
                     if not status:
@@ -353,7 +353,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     },
                 )
                 if save_message:
-                    await self.save_message_db(message, message_id, sender, receiver, reply_id)
+                    await self.save_message_db(message=message, message_id=message_id, sender=sender, receiver=receiver, reply_id=reply_id, saved=True)
                 else:
                     await self.delete_message_db(message_id)
             elif type == 'delete_message':
@@ -368,6 +368,16 @@ class ChatConsumer(AsyncWebsocketConsumer):
                             "message_id": message_id,
                         },
                     )
+            elif type == 'message_seen':
+                print(message_id)
+                await self.channel_layer.group_send(
+                    self.room.room,
+                    {
+                        "type": "message_seen",
+                        "message_id": message_id,
+                        "sender_username": self.sender_username,
+                    },
+                )
 
         if bytes_data:
             json_end = bytes_data.index(b'}') + 1
@@ -391,7 +401,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 }
             )
             if data.get("storeMessage"):
-                await self.save_message_db(message=text_message, message_id=message_id)
+                await self.save_message_db(message=text_message, message_id=message_id, saved=True)
             else:
                 status = await self.get_room_user_status(self.receiver_username)
                 if not status:
@@ -401,6 +411,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         sender_username = event["sender_username"]
         message = event["message"]
         message_id = event['message_id']
+
         if sender_username != self.sender_username:
             reply_id = event.get('reply_id', None)
             if reply_id:
@@ -424,7 +435,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
                         }
                     )
                 )
-
         else:
             await self.send(
                 text_data=json.dumps(
@@ -432,6 +442,23 @@ class ChatConsumer(AsyncWebsocketConsumer):
                         "type": 'message_sent',
                         'message_id': message_id,
                         'data_type': 'text'
+                    }
+                )
+            )
+
+    async def message_seen(self, event):
+        message_id = event["message_id"]
+        sender_username = event["sender_username"]
+
+        print(sender_username)
+
+        if sender_username != self.sender_username:
+            print('send')
+            await self.send(
+                text_data=json.dumps(
+                    {
+                        "type": 'message_seen',
+                        'message_id': message_id,
                     }
                 )
             )
@@ -507,7 +534,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             return None
 
     @database_sync_to_async
-    def save_message_db(self, message=None, message_id=None, sender=None, receiver=None, reply_id=None, temp=None):
+    def save_message_db(self, message=None, message_id=None, sender=None, receiver=None, reply_id=None, temp=None, saved=False):
         if sender is None:
             sender = self.sender
         else:
@@ -523,8 +550,14 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 reply_message = None
         except Message.DoesNotExist:
             reply_message = None
-        if message is not None and message != '' and message_id is not None:
-            try:
+        try:
+            exists = Message.objects.get(message_id=message_id)
+            print(exists)
+            if exists and temp is None:
+                exists.saved = True
+                exists.save()
+        except Message.DoesNotExist:
+            if message is not None and message != '' and message_id is not None:
                 Message.objects.create(
                     message=message,
                     room=self.room,
@@ -532,10 +565,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     receiver=receiver,
                     message_id=message_id,
                     reply_id=reply_message,
-                    temp=temp
+                    temp=temp,
+                    saved=saved
                 )
-            except IntegrityError:
-                pass
+
 
     @database_sync_to_async
     def delete_message_db(self, message_id):

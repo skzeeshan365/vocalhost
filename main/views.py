@@ -309,20 +309,32 @@ def chat_box(request):
 
         last_message = room.get_last_message()
 
+        status = -1
         new_message = None
         if last_message:
             if last_message.temp == user:
                 new_message = True
             else:
                 new_message = False
+            if last_message.temp == other_user:
+                status = 2
+            elif last_message.temp == user:
+                status = 1
+            elif last_message.temp is None:
+                if last_message.sender == user:
+                    status = 0
+                elif last_message.sender == other_user:
+                    status = 1
 
         room_messages_info.append({
             'user': other_user,
             'message_count': str(messages_count) if messages_count > 0 else '',
             'last_message': last_message.message if last_message else None,
             'last_message_timestamp': str(last_message.timestamp) if last_message else None,
-            'new': new_message
+            'new': new_message,
+            'status': status
         })
+        print(status)
     room_messages_info.sort(
         key=lambda x: datetime.strptime(x['last_message_timestamp'], '%Y-%m-%d %H:%M:%S.%f%z').replace(
             tzinfo=timezone.utc)
@@ -352,9 +364,10 @@ def load_messages(request, receiver):
             messages_db = Message.objects.filter(room=room)
             messages = list(
                 messages_db.values('message', 'sender__username', 'message_id', 'reply_id',
-                                   'timestamp', 'temp__username'))
+                                   'timestamp', 'temp__username', 'saved'))
 
-            messages_db = Message.objects.filter(room=room).filter(Q(temp=user))
+            messages_db = Message.objects.filter(room=room, temp=user, saved=False)
+            Message.objects.filter(room=room, temp=user, saved=True).update(temp=None)
             messages_db.delete()
         else:
             messages = []

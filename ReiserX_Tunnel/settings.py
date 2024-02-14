@@ -146,21 +146,20 @@ credentials_path = os.path.join(BASE_DIR, 'ReiserX_Tunnel/credentials_backup.jso
 FIREBASE_APP = initialize_app(credentials.Certificate(credentials_path))
 
 FCM_DJANGO_SETTINGS = {
-"ONE_DEVICE_PER_USER": True,
-     # devices to which notifications cannot be sent,
-     # are deleted upon receiving error response from FCM
-     # default: False
+    "ONE_DEVICE_PER_USER": True,
+    # devices to which notifications cannot be sent,
+    # are deleted upon receiving error response from FCM
+    # default: False
     "DELETE_INACTIVE_DEVICES": True,
 }
 
 PUSHER_KEY = os.getenv('PUSHER_KEY')
 pusher_client = pusher.Pusher(
-  app_id=os.getenv('PUSHER_APP_ID'),
-  key=PUSHER_KEY,
-  secret=os.getenv('PUSHER_SECRET'),
-  cluster='ap2',
-  ssl=True
+    app_id=os.getenv('PUSHER_APP_ID'),
+    key=PUSHER_KEY,
+    secret=os.getenv('PUSHER_SECRET'),
+    cluster='ap2',
+    ssl=True
 )
 
 FIREBASE_API_KEY = os.getenv('FIREBASE_API_KEY')
-

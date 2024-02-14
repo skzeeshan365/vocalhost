@@ -112,12 +112,13 @@ class Message(models.Model):
     receiver = models.ForeignKey(User, on_delete=models.CASCADE, related_name='receiver_rooms')
     reply_id = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='replies', default=None)
     temp = models.ForeignKey(User, on_delete=models.CASCADE, related_name='temp', null=True, blank=True, default=None)
+    saved = models.BooleanField(default=False)
 
     def save(self, *args, **kwargs):
-        if self.temp and get_connected_users().get(self.receiver.username):
+        if self.temp and get_connected_users().get(self.receiver.username) and not self.saved:
             time = timezone.now()
             new_signal_message.send(sender=Message, message=self.message, timestamp=time, sender_username=self.sender.username)
-        elif self.temp:
+        elif self.temp and not self.saved:
             time = timezone.now()
             message_data = {
                 'message': self.message,

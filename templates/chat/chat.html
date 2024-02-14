@@ -70,16 +70,18 @@
     <div class="row">
         <div id="left_bar" class="col-lg-3 col-md-3 col-sm-3 left_bar">
             <!-- Icon in the top right corner -->
-            <a href="{% url 'chat_profile' request.user.username %}" id="user_content" style="elevation: 8deg; position: absolute; top: 4px; left: 2%; cursor: pointer; border-radius: 20px; background-color: #000000; overflow: hidden; height: 40px; padding: 5px; display: flex; align-items: center;">
+            <a href="{% url 'chat_profile' request.user.username %}" id="user_content"
+               style="elevation: 8deg; position: absolute; top: 4px; left: 2%; cursor: pointer; border-radius: 20px; background-color: #000000; overflow: hidden; height: 40px; padding: 5px; display: flex; align-items: center;">
 
-                    {% if  request.user.userprofile.image %}
-                        <img class="author-thumb" src="{{ request.user.userprofile.image.url }}"
-                             alt="Profile picture">
-                    {% else %}
-                        <img class="author-thumb" src="{% static 'img/user.png' %}" alt="Profile picture">
-                    {% endif %}
+                {% if  request.user.userprofile.image %}
+                    <img class="author-thumb" src="{{ request.user.userprofile.image.url }}"
+                         alt="Profile picture">
+                {% else %}
+                    <img class="author-thumb" src="{% static 'img/user.png' %}" alt="Profile picture">
+                {% endif %}
 
-                <p id="user_name" style="color:#fff0ff; margin-left: 8px; margin-bottom: unset; margin-top: unset; margin-right: unset;">
+                <p id="user_name"
+                   style="color:#fff0ff; margin-left: 8px; margin-bottom: unset; margin-top: unset; margin-right: unset;">
                     <span id="user_status" style="font-size: 16px; color: #fff0ff;">{{ request.user.username }}</span>
                 </p>
             </a>
@@ -92,17 +94,19 @@
                 </div>
             </a>
 
-        <hr style="background-color: #838383; margin-top: 60px; height: 1px;">
+            <hr style="background-color: #838383; margin-top: 60px; height: 1px;">
 
             <ul class="people">
                 {% for user in users %}
                     <li onclick="load_chat('{{ user.user.username }}')" class="person context-menu-trigger"
                         data-chat={{ user.user.username }}>
-                    {% if user.user.userprofile.image %}
-                        <img id="users_profile_pic" class="users_profile_pic" src="{{ user.user.userprofile.image.url }}" alt="Profile picture"/>
+                        {% if user.user.userprofile.image %}
+                            <img id="users_profile_pic" class="users_profile_pic"
+                                 src="{{ user.user.userprofile.image.url }}" alt="Profile picture"/>
                         {% else %}
-                        <img id="users_profile_pic" class="users_profile_pic" src="{% static 'img/user.png' %}" alt="Profile picture"/>
-                    {% endif %}
+                            <img id="users_profile_pic" class="users_profile_pic" src="{% static 'img/user.png' %}"
+                                 alt="Profile picture"/>
+                        {% endif %}
                         {% if user.user.get_full_name %}
                             <span class="name">{{ user.user.get_full_name }}</span>
                         {% else %}
@@ -110,24 +114,55 @@
                         {% endif %}
                         {% if user.last_message %}
                             {% if user.new %}
-                                <span style="color: #00ff92" class="time" data-timestamp="{{ user.last_message_timestamp }}"></span>
-                                <span style="color: #00ff92" class="preview">{{ user.last_message }} <p
-                                        style="margin-left: 10px;"> {{ user.message_count }}</p></span>
+                                <span style="color: #00ff92" class="time"
+                                      data-timestamp="{{ user.last_message_timestamp }}"></span>
+                                {% if user.status == 0 %}
+                                    <span class="preview" style="color: #00ff92;">
+                                    <img class="status_icon" id="status_icon" style="margin-right: 5px; height: 25px; width: 25px;" src="{% static 'img/status_seen_outline.svg' %}" alt="Icon">
+                                        {{ user.last_message }}
+                                    </span>
+                                {% elif user.status == 2 %}
+                                    <span class="preview" style="color: #00ff92;">
+                                    <img class="status_icon" id="status_icon" style="margin-right: 5px; height: 25px; width: 25px;" src="{% static 'img/status_delivered.svg' %}" alt="Icon">
+                                        {{ user.last_message }}
+                                    </span>
+                                {% else %}
+                                    <span class="preview" style="color: #00ff92;">
+                                    <img class="status_icon" id="status_icon" style="margin-right: 5px; height: 25px; width: 25px;" src="{% static 'img/status_delivered_outline.svg' %}" alt="Icon">
+                                        {{ user.last_message }}
+                                    </span>
+                                {% endif %}
                             {% else %}
                                 <span class="time" data-timestamp="{{ user.last_message_timestamp }}"></span>
-                                <span class="preview">{{ user.last_message }}
-                                <p style="margin-left: 10px;"> {{ user.message_count }}</p>
-                                </span>
+                                {% if user.status == 0 %}
+                                    <span class="preview" style="display: flex; align-items: center">
+                                    <img class="status_icon" id="status_icon" style="margin-right: 5px; height: 25px; width: 25px;" src="{% static 'img/status_seen_outline.svg' %}" alt="Icon">
+                                        {{ user.last_message }}
+                                    </span>
+                                {% elif user.status == 2 %}
+                                    <span class="preview" style="display: flex; align-items: center">
+                                    <img class="status_icon" id="status_icon" style="margin-right: 5px; height: 25px; width: 25px;" src="{% static 'img/status_delivered.svg' %}" alt="Icon">
+                                        {{ user.last_message }}
+                                    </span>
+                                    {% else %}
+                                    <span class="preview" style="display: flex; align-items: center">
+                                    <img class="status_icon" id="status_icon" style="margin-right: 5px; height: 25px; width: 25px;" src="{% static 'img/status_delivered_outline.svg' %}" alt="Icon">
+                                        {{ user.last_message }}
+                                    </span>
+                                {% endif %}
                             {% endif %}
                         {% else %}
-                            <span class="preview">Tap to chat</span>
+                            <span class="preview">
+                            <i class="status_icon fa fa-comment" id="status_icon" style="margin-right: 5px;"></i>
+                                Tap to chat</span>
                         {% endif %}
                     </li>
                 {% endfor %}
             </ul>
         </div>
         <div class="col-lg-9 ml-auto chat_parent_holder" id="chat_parent_container" style="height: 100vh;">
-            <div style="display: none; flex-direction: column; justify-content: center; align-items: center; height: 90vh;" id="preloader">
+            <div style="display: none; flex-direction: column; justify-content: center; align-items: center; height: 90vh;"
+                 id="preloader">
                 <div class="reverse-spinner"></div>
             </div>
             <div class="container_image" id="container_image">
@@ -151,45 +186,43 @@
                 <!-- FontAwesome chat icon -->
                 <i class="fas fa-arrow-circle-left" style="font-size: 30px; color: #dcdcdc;"></i>
             </div>
-            <form action="" class="form_class" method="POST"
-                  id="contactForm"
-                  name="contactForm">
-                <snap-ui class="form-group snap-ui-container-holder snap-ui-container" id="snap-ui-container"
-                         style="flex-grow: 1;">
+
+            <div>
+                <snap-ui class="snap-ui-container-holder snap-ui-container" id="snap-ui-container"
+                         style="flex-grow: 1; padding-bottom: 5px;">
                     <snap-notice id="no_message" style="display: none;">No messages available</snap-notice>
                 </snap-ui>
-                <div class="row input-box-container" id="input-box-container" style="position: fixed;">
-                    <div class="col-md-9 input_holder">
-                        <div class="form-group">
-                            <div class="reply_message_holder" id="reply_message_holder">
+            </div>
+            <div class="row input-box-container" id="input-box-container" style="position: fixed;">
+                <div class="col-md-9 input_holder">
+                    <div class="form-group">
+                        <div class="reply_message_holder" id="reply_message_holder">
                                 <span id="close_reply" class="close-icon close_reply"
                                       onclick="closeReplyMessageHolder()"><i class="fas fa-times"></i></span>
-                                <textarea class="form-control" placeholder="Type a message" id="input" rows="1"
-                                          style="resize: none; overflow: hidden;"
-                                          maxlength="380"></textarea>
+                            <textarea class="form-control" placeholder="Type a message" id="input" rows="1"
+                                      style="resize: none; overflow: hidden;"
+                                      maxlength="380"></textarea>
 
-                            </div>
                         </div>
                     </div>
-                    <div class="col-sm-0">
-                        <div class="form-group">
-                            <!-- File input for image -->
-                            <label data-toggle="modal" data-target="#exampleModalCenter" class="btn btn-primary"
-                                   style="background: #FFFFFF; width: 35px; height: 35px; display: flex; align-items: center; padding-left: 8px;"><i
-                                    class="fas fa-image"
-                                    style="font-size: 18px; color: #0c5460"></i></label>
-                        </div>
-                    </div>
-                    <!-- Temporary submit button -->
-                    <button onclick="sendMessage()" class="btn btn-primary py-1 px-1" id="submit" type="button"
-                            style="background-color: #1C9963; color: #FFFFFF; border-color: #1C9963; display: none">
-                        Send<i id="loading" class="fas fa-spinner fa-spin"
-                               style="display: none;"></i>
-                    </button>
-                    <!-- Temporary submit button -->
                 </div>
-            </form>
-            <div id="form-messages"></div>
+                <div class="col-sm-0">
+                    <div class="form-group">
+                        <!-- File input for image -->
+                        <label data-toggle="modal" data-target="#exampleModalCenter" class="btn btn-primary"
+                               style="background: #FFFFFF; width: 35px; height: 35px; display: flex; align-items: center; padding-left: 8px;"><i
+                                class="fas fa-image"
+                                style="font-size: 18px; color: #0c5460"></i></label>
+                    </div>
+                </div>
+                <!-- Temporary submit button -->
+                <button onclick="sendMessage()" class="btn btn-primary py-1 px-1" id="submit" type="button"
+                        style="background-color: #1C9963; color: #FFFFFF; border-color: #1C9963; display: none">
+                    Send<i id="loading" class="fas fa-spinner fa-spin"
+                           style="display: none;"></i>
+                </button>
+                <!-- Temporary submit button -->
+            </div>
         </div>
     </div>
 
@@ -264,6 +297,9 @@
     const _356 = '{{ abcf }}';
     const auto_save = {{ storeMessage|yesno:"true,false" }};
     const storeMessage = (auto_save === 'true');
+    const icon_seen = '{% static 'img/status_seen_outline.svg' %}'
+    const icon_delivered = '{% static 'img/status_delivered.svg' %}'
+    const icon_received = '{% static 'img/status_delivered_outline.svg' %}'
 </script>
 <!-- VARIABLE DEFINITION -->
 
