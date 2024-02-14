@@ -114,40 +114,45 @@
                         {% endif %}
                         {% if user.last_message %}
                             {% if user.new %}
-                                <span style="color: #00ff92" class="time"
-                                      data-timestamp="{{ user.last_message_timestamp }}"></span>
+                                <span style="color: #00ff92" class="time" data-timestamp="{{ user.last_message_timestamp }}"></span>
                                 {% if user.status == 0 %}
+                                    <!--- STATUS OPENED --->
                                     <span class="preview" style="color: #00ff92;">
                                     <img class="status_icon" id="status_icon" style="margin-right: 5px; height: 25px; width: 25px;" src="{% static 'img/status_seen_outline.svg' %}" alt="Icon">
-                                        {{ user.last_message }}
+                                        Opened
                                     </span>
                                 {% elif user.status == 2 %}
+                                    <!--- STATUS DELIVERED --->
                                     <span class="preview" style="color: #00ff92;">
                                     <img class="status_icon" id="status_icon" style="margin-right: 5px; height: 25px; width: 25px;" src="{% static 'img/status_delivered.svg' %}" alt="Icon">
-                                        {{ user.last_message }}
+                                        Delivered
                                     </span>
                                 {% else %}
+                                    <!--- STATUS RECEIVED --->
                                     <span class="preview" style="color: #00ff92;">
-                                    <img class="status_icon" id="status_icon" style="margin-right: 5px; height: 25px; width: 25px;" src="{% static 'img/status_delivered_outline.svg' %}" alt="Icon">
-                                        {{ user.last_message }}
+                                    <img class="status_icon" id="status_icon" style="margin-right: 5px; height: 25px; width: 25px;" src="{% static 'img/status_received_outline.svg' %}" alt="Icon">
+                                        Received
                                     </span>
                                 {% endif %}
                             {% else %}
                                 <span class="time" data-timestamp="{{ user.last_message_timestamp }}"></span>
                                 {% if user.status == 0 %}
+                                    <!--- STATUS OPENED --->
                                     <span class="preview" style="display: flex; align-items: center">
                                     <img class="status_icon" id="status_icon" style="margin-right: 5px; height: 25px; width: 25px;" src="{% static 'img/status_seen_outline.svg' %}" alt="Icon">
-                                        {{ user.last_message }}
+                                        Opened
                                     </span>
                                 {% elif user.status == 2 %}
+                                    <!--- STATUS DELIVERED --->
                                     <span class="preview" style="display: flex; align-items: center">
                                     <img class="status_icon" id="status_icon" style="margin-right: 5px; height: 25px; width: 25px;" src="{% static 'img/status_delivered.svg' %}" alt="Icon">
-                                        {{ user.last_message }}
+                                        Delivered
                                     </span>
                                     {% else %}
+                                    <!--- STATUS RECEIVED --->
                                     <span class="preview" style="display: flex; align-items: center">
-                                    <img class="status_icon" id="status_icon" style="margin-right: 5px; height: 25px; width: 25px;" src="{% static 'img/status_delivered_outline.svg' %}" alt="Icon">
-                                        {{ user.last_message }}
+                                    <img class="status_icon" id="status_icon" style="margin-right: 5px; height: 25px; width: 25px;" src="{% static 'img/status_received_outline.svg' %}" alt="Icon">
+                                        Received
                                     </span>
                                 {% endif %}
                             {% endif %}
@@ -299,7 +304,7 @@
     const storeMessage = (auto_save === 'true');
     const icon_seen = '{% static 'img/status_seen_outline.svg' %}'
     const icon_delivered = '{% static 'img/status_delivered.svg' %}'
-    const icon_received = '{% static 'img/status_delivered_outline.svg' %}'
+    const icon_received = '{% static 'img/status_received_outline.svg' %}'
 </script>
 <!-- VARIABLE DEFINITION -->
 
