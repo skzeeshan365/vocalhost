@@ -1,8 +1,14 @@
+import json
+
+from django.core.serializers.json import DjangoJSONEncoder
 from fcm_django.models import FCMDevice
 from firebase_admin.messaging import Message
+from pusher.errors import PusherError
 from sendgrid import SendGridAPIClient, Mail
+from django.utils import timezone
 
 from ReiserX_Tunnel import settings
+from ReiserX_Tunnel.settings import pusher_client
 
 
 def send_email(subject, message, to_email):
@@ -42,3 +48,13 @@ def send_message_to_device(user, title, message, timestamp=None):
             pass
         else:
             pass
+
+
+def send_pusher_update(message_data, receiver_username):
+    message_data = json.dumps(message_data, cls=DjangoJSONEncoder)
+    try:
+        # Your Pusher API calls here
+        pusher_client.trigger(f'{receiver_username}-channel', f'{receiver_username}-new-message',
+                              message_data)
+    except PusherError:
+        pass

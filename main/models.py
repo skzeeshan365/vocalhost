@@ -4,15 +4,12 @@ import uuid
 
 from channels.db import database_sync_to_async
 from django.contrib.auth.models import User
-from django.core.serializers.json import DjangoJSONEncoder
 from django.core.validators import MaxValueValidator
 from django.db import models
 from django.dispatch import Signal
 from django.utils import timezone
-from pusher.errors import PusherError
 
-from ReiserX_Tunnel.settings import pusher_client
-from main.Utils import send_message_to_device
+from main.Utils import send_message_to_device, send_pusher_update
 
 
 class UserProfile(models.Model):
@@ -105,7 +102,7 @@ def get_connected_users():
 
 class Message(models.Model):
     message_id = models.CharField(primary_key=True, max_length=16)
-    message = models.TextField(max_length=10000)
+    message = models.TextField(max_length=10000, null=True, blank=True,)
     timestamp = models.DateTimeField(auto_now_add=True)
     room = models.ForeignKey(Room, on_delete=models.CASCADE, related_name='rooms')
     sender = models.ForeignKey(User, on_delete=models.CASCADE, related_name='sender_rooms')
@@ -113,26 +110,21 @@ class Message(models.Model):
     reply_id = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='replies', default=None)
     temp = models.ForeignKey(User, on_delete=models.CASCADE, related_name='temp', null=True, blank=True, default=None)
     saved = models.BooleanField(default=False)
+    image_url = models.URLField(default=None, null=True, blank=True)
 
     def save(self, *args, **kwargs):
         if self.temp and get_connected_users().get(self.receiver.username) and not self.saved:
             time = timezone.now()
-            new_signal_message.send(sender=Message, message=self.message, timestamp=time, sender_username=self.sender.username)
+            new_signal_message.send(sender=Message, message_type='new_message_background', timestamp=time, sender_username=self.sender.username)
         elif self.temp and not self.saved:
             time = timezone.now()
             message_data = {
-                'message': self.message,
+                'type': 'new_message_background',
                 'timestamp': time,
                 'sender_username': self.sender.username,
                 'temp_username': self.temp.username if self.temp else None,
             }
-            message_data = json.dumps(message_data, cls=DjangoJSONEncoder)
-            try:
-                # Your Pusher API calls here
-                pusher_client.trigger(f'{self.receiver.username}-channel', f'{self.receiver.username}-new-message',
-                                      message_data)
-            except PusherError:
-                pass
+            send_pusher_update(message_data=message_data, receiver_username=self.receiver.username)
             send_message_to_device(self.receiver, f'{self.sender.username}: sent a message', message=self.message)
 
         super().save(*args, **kwargs)

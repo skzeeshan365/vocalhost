@@ -114,23 +114,23 @@
                         {% endif %}
                         {% if user.last_message %}
                             {% if user.new %}
-                                <span style="color: #00ff92" class="time" data-timestamp="{{ user.last_message_timestamp }}"></span>
+                                <span style="color: #ffffff" class="time" data-timestamp="{{ user.last_message_timestamp }}"></span>
                                 {% if user.status == 0 %}
                                     <!--- STATUS OPENED --->
-                                    <span class="preview" style="color: #00ff92;">
+                                    <span class="preview" style="color: #ffffff;">
                                     <img class="status_icon" id="status_icon" style="margin-right: 5px; height: 25px; width: 25px;" src="{% static 'img/status_seen_outline.svg' %}" alt="Icon">
                                         Opened
                                     </span>
                                 {% elif user.status == 2 %}
                                     <!--- STATUS DELIVERED --->
-                                    <span class="preview" style="color: #00ff92;">
+                                    <span class="preview" style="color: #ffffff;">
                                     <img class="status_icon" id="status_icon" style="margin-right: 5px; height: 25px; width: 25px;" src="{% static 'img/status_delivered.svg' %}" alt="Icon">
                                         Delivered
                                     </span>
                                 {% else %}
                                     <!--- STATUS RECEIVED --->
-                                    <span class="preview" style="color: #00ff92;">
-                                    <img class="status_icon" id="status_icon" style="margin-right: 5px; height: 25px; width: 25px;" src="{% static 'img/status_received_outline.svg' %}" alt="Icon">
+                                    <span class="preview" style="color: #ffffff;">
+                                    <img class="status_icon" id="status_icon" style="margin-right: 5px; height: 25px; width: 25px;" src="{% static 'img/status_received.svg' %}" alt="Icon">
                                         Received
                                     </span>
                                 {% endif %}
@@ -145,7 +145,7 @@
                                 {% elif user.status == 2 %}
                                     <!--- STATUS DELIVERED --->
                                     <span class="preview" style="display: flex; align-items: center">
-                                    <img class="status_icon" id="status_icon" style="margin-right: 5px; height: 25px; width: 25px;" src="{% static 'img/status_delivered.svg' %}" alt="Icon">
+                                    <img class="status_icon " id="status_icon" style="margin-right: 5px; height: 25px; width: 25px;" src="{% static 'img/status_delivered.svg' %}" alt="Icon">
                                         Delivered
                                     </span>
                                     {% else %}
@@ -300,11 +300,11 @@
     const userUsername = "{{ request.user.username }}";
     const protocol = '{{ protocol }}';
     const _356 = '{{ abcf }}';
-    const auto_save = {{ storeMessage|yesno:"true,false" }};
-    const storeMessage = (auto_save === 'true');
+    const storeMessage = {{ storeMessage|yesno:"true,false" }};
     const icon_seen = '{% static 'img/status_seen_outline.svg' %}'
     const icon_delivered = '{% static 'img/status_delivered.svg' %}'
     const icon_received = '{% static 'img/status_received_outline.svg' %}'
+    const icon_received_fill = '{% static 'img/status_received.svg' %}'
 </script>
 <!-- VARIABLE DEFINITION -->
 
@@ -327,7 +327,11 @@
 
     var channel = pusher.subscribe(`${userUsername}-channel`);
     channel.bind(`${userUsername}-new-message`, function (data) {
-        handleNewMessage(data.sender_username, data.message, data.timestamp);
+        if (data.type === 'message_status_background') {
+            update_message_status(STATUS_SEEN, data.sender_username);
+        } else if (data.type === 'new_message_background') {
+            handleNewMessage(data.sender_username, data.timestamp);
+        }
     });
 </script>
 </body>

@@ -19,10 +19,11 @@ from fcm_django.models import FCMDevice
 
 from ReiserX_Tunnel import settings
 from main import forms
+from main.Utils import send_pusher_update
 from main.consumers import MyWebSocketConsumer, getRoom
 # Create your views here.
 from main.forms import RegistrationForm, LoginForm, ImageUploadForm
-from main.models import UserProfile, Client, Message, Room
+from main.models import UserProfile, Client, Message, Room, get_connected_users, new_signal_message
 
 
 def home(request):
@@ -334,7 +335,6 @@ def chat_box(request):
             'new': new_message,
             'status': status
         })
-        print(status)
     room_messages_info.sort(
         key=lambda x: datetime.strptime(x['last_message_timestamp'], '%Y-%m-%d %H:%M:%S.%f%z').replace(
             tzinfo=timezone.utc)
@@ -352,6 +352,7 @@ def chat_box(request):
 
 @login_required(login_url='/account/login/')
 def load_messages(request, receiver):
+    from django.utils import timezone
     if request.method == 'POST':
         user = request.user
         receiver_user = receiver
@@ -368,7 +369,20 @@ def load_messages(request, receiver):
 
             messages_db = Message.objects.filter(room=room, temp=user, saved=False)
             Message.objects.filter(room=room, temp=user, saved=True).update(temp=None)
-            messages_db.delete()
+
+            if messages_db.exists():
+                messages_db.delete()
+                time = timezone.now()
+                if get_connected_users().get(receiver_user):
+                    new_signal_message.send(sender=Message, message_type='message_status_background', timestamp=time,
+                                            sender_username=user.username)
+                else:
+                    message_data = {
+                        'type': 'message_status_background',
+                        'timestamp': time,
+                        'sender_username': user.username,
+                    }
+                    send_pusher_update(message_data=message_data, receiver_username=receiver_user)
         else:
             messages = []
         messages = json.dumps(messages, cls=DjangoJSONEncoder)

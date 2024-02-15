@@ -222,12 +222,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
             await self.close()
 
     async def listen_for_signal_messages(self):
-        async def forward_signal_messages(sender, message, timestamp, sender_username, **kwargs):
-            # Forward the User1 message to User3
+        async def forward_signal_messages(sender, message_type, timestamp, sender_username, **kwargs):
             if sender_username != self.sender_username:
                 await self.send(text_data=json.dumps({
-                    'type': 'new_message_background',
-                    'message': message,
+                    'type': message_type,
                     'timestamp': timestamp,
                     'sender_username': sender_username
                 }, cls=DjangoJSONEncoder))
@@ -369,7 +367,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
                         },
                     )
             elif type == 'message_seen':
-                print(message_id)
                 await self.channel_layer.group_send(
                     self.room.room,
                     {
@@ -447,13 +444,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
             )
 
     async def message_seen(self, event):
-        message_id = event["message_id"]
+        message_id = event.get("message_id")
         sender_username = event["sender_username"]
 
-        print(sender_username)
-
         if sender_username != self.sender_username:
-            print('send')
             await self.send(
                 text_data=json.dumps(
                     {
@@ -466,7 +460,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
     async def image_bytes_data(self, event):
         sender_username = event["sender_username"]
         message_id = event['message_id']
-        print(message_id)
 
         await self.send(
             text_data=json.dumps(
@@ -534,7 +527,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             return None
 
     @database_sync_to_async
-    def save_message_db(self, message=None, message_id=None, sender=None, receiver=None, reply_id=None, temp=None, saved=False):
+    def save_message_db(self, message=None, message_id=None, sender=None, receiver=None, reply_id=None, temp=None, saved=False, image_url=None):
         if sender is None:
             sender = self.sender
         else:
@@ -552,7 +545,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
             reply_message = None
         try:
             exists = Message.objects.get(message_id=message_id)
-            print(exists)
             if exists and temp is None:
                 exists.saved = True
                 exists.save()
@@ -566,7 +558,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     message_id=message_id,
                     reply_id=reply_message,
                     temp=temp,
-                    saved=saved
+                    saved=saved,
+                    image_url=image_url,
                 )
 
 
