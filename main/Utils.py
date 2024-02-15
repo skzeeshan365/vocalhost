@@ -1,5 +1,7 @@
 import json
+import time
 
+from cloudinary import uploader
 from django.core.serializers.json import DjangoJSONEncoder
 from fcm_django.models import FCMDevice
 from firebase_admin.messaging import Message
@@ -58,3 +60,30 @@ def send_pusher_update(message_data, receiver_username):
                               message_data)
     except PusherError:
         pass
+
+
+def cloudinary_image_upload(image_data):
+    timestamp = int(time.time())
+    public_id = f'chat/uploaded_image_{timestamp}'
+    result = uploader.upload(
+        image_data,
+        public_id=public_id,
+    )
+    return result.get('secure_url')
+
+
+def cloudinary_image_delete(image_url):
+    public_id = image_url.split('/')[-1].split('.')[0]
+    result = uploader.destroy(f'chat/{public_id}')
+    if result.get('result') == 'ok':
+        return True
+    else:
+        return False
+
+
+def get_image_public_id(image_url):
+    public_id = image_url.split('/')[-1].split('.')[0]
+    if public_id:
+        return f'chat/{public_id}'
+    else:
+        return None

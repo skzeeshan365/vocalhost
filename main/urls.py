@@ -38,6 +38,7 @@ urlpatterns = [
     path('add/chat/', views.add_chat, name='add_chat'),
     path('chat/clear/chat', views.clear_chat, name='clear_chat'),
     path('chat/remove/chat', views.remove_chat, name='remove_chat'),
+    path('chat/upload/image/', views.upload_image, name='upload_image'),
 
     # Favicons
     path('android-icon-36x36.png',

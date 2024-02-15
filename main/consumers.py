@@ -8,6 +8,7 @@ from urllib.parse import parse_qs
 from channels.db import database_sync_to_async
 from channels.exceptions import StopConsumer
 from channels.generic.websocket import AsyncWebsocketConsumer
+from cloudinary import uploader
 from django.contrib.auth.models import User
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import IntegrityError
@@ -15,6 +16,7 @@ from django.db import IntegrityError
 from ReiserX_Tunnel import settings
 from ReiserX_Tunnel.AuthBackend import CustomAuthBackend
 from main import Utils
+from main.Utils import cloudinary_image_delete, cloudinary_image_upload
 from main.models import UserProfile, Room, Message, new_signal_message, connected_users
 
 
@@ -342,6 +344,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 save_message = text_data_json.get("save_message")
                 sender = text_data_json.get("sender")
                 receiver = text_data_json.get("receiver")
+                image_url = text_data_json.get('image_url')
                 await self.channel_layer.group_send(
                     self.room.room,
                     {
@@ -351,9 +354,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     },
                 )
                 if save_message:
-                    await self.save_message_db(message=message, message_id=message_id, sender=sender, receiver=receiver, reply_id=reply_id, saved=True)
+                    await self.save_message_db(message=message, message_id=message_id, sender=sender, receiver=receiver, reply_id=reply_id, saved=True, image_url=image_url)
                 else:
-                    await self.delete_message_db(message_id)
+                    await self.unsave_message_db(message_id)
             elif type == 'delete_message':
                 sender_username = text_data_json.get("sender_username")
                 permission = await self.delete_permission_db(message_id, sender_username)
@@ -402,7 +405,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             else:
                 status = await self.get_room_user_status(self.receiver_username)
                 if not status:
-                    await self.save_message_db(message=text_message, message_id=message_id, temp=self.receiver)
+                    await self.save_message_db(message=text_message, message_id=message_id, temp=self.receiver, image_url=image_data)
 
     async def chat_message(self, event):
         sender_username = event["sender_username"]
@@ -461,16 +464,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
         sender_username = event["sender_username"]
         message_id = event['message_id']
 
-        await self.send(
-            text_data=json.dumps(
-                {
-                    "type": 'message_sent',
-                    'message_id': message_id,
-                    'data_type': 'bytes'
-                }
-            )
-        )
-
         if sender_username != self.sender_username:
             image_data = event["image_data"]
 
@@ -479,6 +472,16 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
             # Send the combined data as bytes_data
             await self.send(bytes_data=combined_data)
+        else:
+            await self.send(
+                text_data=json.dumps(
+                    {
+                        "type": 'message_sent',
+                        'message_id': message_id,
+                        'data_type': 'bytes'
+                    }
+                )
+            )
 
     async def save_message(self, event):
         message_id = event['message_id']
@@ -543,13 +546,17 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 reply_message = None
         except Message.DoesNotExist:
             reply_message = None
+
         try:
             exists = Message.objects.get(message_id=message_id)
             if exists and temp is None:
                 exists.saved = True
                 exists.save()
         except Message.DoesNotExist:
-            if message is not None and message != '' and message_id is not None:
+            if image_url is not None:
+                url = cloudinary_image_upload(image_data=image_url)
+                image_url = url if url else None
+            if message_id is not None:
                 Message.objects.create(
                     message=message,
                     room=self.room,
@@ -562,12 +569,27 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     image_url=image_url,
                 )
 
-
     @database_sync_to_async
     def delete_message_db(self, message_id):
         try:
             message = Message.objects.get(message_id=message_id)
+            if message.image_url:
+                cloudinary_image_delete(message.image_url)
             message.delete()
+        except Message.DoesNotExist:
+            pass
+
+    @database_sync_to_async
+    def unsave_message_db(self, message_id):
+        try:
+            message = Message.objects.get(message_id=message_id)
+            if message.temp:
+                message.saved = False
+                message.save()
+            else:
+                if message.image_url:
+                    cloudinary_image_delete(message.image_url)
+                message.delete()
         except Message.DoesNotExist:
             pass
 

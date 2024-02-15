@@ -1,16 +1,20 @@
 import asyncio
 import hashlib
 import json
+import threading
+import time
 from datetime import datetime, timezone
 from json import JSONDecodeError
 
+from asgiref.sync import sync_to_async
+from cloudinary import uploader
+from cloudinary.api import delete_resources
 from django.contrib import auth
 from django.contrib.auth import authenticate, login
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.core.serializers.json import DjangoJSONEncoder
 from django.core.signals import request_finished
-from django.db.models import Q
 from django.dispatch import receiver
 from django.http import HttpResponse, JsonResponse, Http404
 from django.shortcuts import render, redirect, get_object_or_404, resolve_url
@@ -19,7 +23,7 @@ from fcm_django.models import FCMDevice
 
 from ReiserX_Tunnel import settings
 from main import forms
-from main.Utils import send_pusher_update
+from main.Utils import send_pusher_update, get_image_public_id
 from main.consumers import MyWebSocketConsumer, getRoom
 # Create your views here.
 from main.forms import RegistrationForm, LoginForm, ImageUploadForm
@@ -350,9 +354,35 @@ def chat_box(request):
                    'pusher': settings.PUSHER_KEY})
 
 
+def delete_messages_data(messages_db, receiver_user, username):
+    from django.utils import timezone
+    public_ids_to_delete = []
+    for message in messages_db:
+        if message.image_url:
+            public_id = get_image_public_id(message.image_url)
+            if public_id:
+                public_ids_to_delete.append(public_id)
+    if public_ids_to_delete:
+        try:
+            delete_resources(public_ids_to_delete)
+        except Exception:
+            pass
+    messages_db.delete()
+    time = timezone.now()
+    if get_connected_users().get(receiver_user):
+        new_signal_message.send(sender=Message, message_type='message_status_background', timestamp=time,
+                                sender_username=username)
+    else:
+        message_data = {
+            'type': 'message_status_background',
+            'timestamp': time,
+            'sender_username': username,
+        }
+        send_pusher_update(message_data=message_data, receiver_username=receiver_user)
+
+
 @login_required(login_url='/account/login/')
 def load_messages(request, receiver):
-    from django.utils import timezone
     if request.method == 'POST':
         user = request.user
         receiver_user = receiver
@@ -365,24 +395,14 @@ def load_messages(request, receiver):
             messages_db = Message.objects.filter(room=room)
             messages = list(
                 messages_db.values('message', 'sender__username', 'message_id', 'reply_id',
-                                   'timestamp', 'temp__username', 'saved'))
+                                   'timestamp', 'temp__username', 'saved', 'image_url'))
 
             messages_db = Message.objects.filter(room=room, temp=user, saved=False)
             Message.objects.filter(room=room, temp=user, saved=True).update(temp=None)
 
             if messages_db.exists():
-                messages_db.delete()
-                time = timezone.now()
-                if get_connected_users().get(receiver_user):
-                    new_signal_message.send(sender=Message, message_type='message_status_background', timestamp=time,
-                                            sender_username=user.username)
-                else:
-                    message_data = {
-                        'type': 'message_status_background',
-                        'timestamp': time,
-                        'sender_username': user.username,
-                    }
-                    send_pusher_update(message_data=message_data, receiver_username=receiver_user)
+                thread = threading.Thread(target=delete_messages_data, args=(messages_db, receiver_user, user.username))
+                thread.start()
         else:
             messages = []
         messages = json.dumps(messages, cls=DjangoJSONEncoder)
@@ -431,7 +451,7 @@ def register_device(request):
 def showFirebaseJS(request):
     rendered_template = render_to_string('chat/firebase-messaging-sw.js', {'api_key': settings.FIREBASE_API_KEY})
     data = rendered_template
-    return HttpResponse(data,content_type="text/javascript")
+    return HttpResponse(data, content_type="text/javascript")
 
 
 def get_or_create_room(sender_username, receiver_username):
@@ -590,7 +610,6 @@ def update_profile_info(request):
             user.userprofile.save()
             return JsonResponse({'success': True})
         if fullname:
-            print(fullname)
             if len(fullname) == 2:
                 first_name, last_name = fullname.split(maxsplit=1)
                 user.first_name = first_name
@@ -606,3 +625,25 @@ def update_profile_info(request):
 
     else:
         return JsonResponse({'error': 'Invalid request'})
+
+
+def upload_image(request):
+    if request.method == 'POST':
+        image_data = request.FILES.get('image_data')
+
+        message_id = request.POST.get('message_id')
+
+        message = Message.objects.filter(message_id=message_id).exists()
+        if message:
+            timestamp = int(time.time())
+            public_id = f'chat/uploaded_image_{timestamp}'
+            result = uploader.upload(
+                image_data,
+                public_id=public_id,
+            )
+            # The Cloudinary URL of the uploaded image
+            cloudinary_url = result['secure_url']
+            return JsonResponse({'success': True, 'image_url': cloudinary_url})
+        else:
+            return JsonResponse({'success': True, 'image_url': None})
+    return JsonResponse({'success': False, 'error': 'Invalid request'})

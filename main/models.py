@@ -1,5 +1,6 @@
 # Create your models here.
 import json
+import threading
 import uuid
 
 from channels.db import database_sync_to_async
@@ -100,6 +101,18 @@ def get_connected_users():
     return connected_users
 
 
+def update_message_status(temp, receiver_username, sender_username, receiver, message):
+    time = timezone.now()
+    message_data = {
+        'type': 'new_message_background',
+        'timestamp': time,
+        'sender_username': sender_username,
+        'temp_username': temp.username if temp else None,
+    }
+    send_pusher_update(message_data=message_data, receiver_username=receiver_username)
+    send_message_to_device(receiver, f'{sender_username}: sent a message', message=message)
+
+
 class Message(models.Model):
     message_id = models.CharField(primary_key=True, max_length=16)
     message = models.TextField(max_length=10000, null=True, blank=True,)
@@ -115,17 +128,17 @@ class Message(models.Model):
     def save(self, *args, **kwargs):
         if self.temp and get_connected_users().get(self.receiver.username) and not self.saved:
             time = timezone.now()
-            new_signal_message.send(sender=Message, message_type='new_message_background', timestamp=time, sender_username=self.sender.username)
+            new_signal_message.send(sender=Message, message_type='new_message_background', timestamp=time,
+                                    sender_username=self.sender.username)
         elif self.temp and not self.saved:
-            time = timezone.now()
-            message_data = {
-                'type': 'new_message_background',
-                'timestamp': time,
-                'sender_username': self.sender.username,
-                'temp_username': self.temp.username if self.temp else None,
-            }
-            send_pusher_update(message_data=message_data, receiver_username=self.receiver.username)
-            send_message_to_device(self.receiver, f'{self.sender.username}: sent a message', message=self.message)
+            thread = threading.Thread(target=update_message_status, args=(
+                self.temp,
+                self.receiver.username,
+                self.sender.username,
+                self.receiver,
+                self.message,
+            ))
+            thread.start()
 
         super().save(*args, **kwargs)
 
@@ -134,3 +147,4 @@ class Message(models.Model):
 
     def get_receiver_username(self):
         return self.receiver.username
+
