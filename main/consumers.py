@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 import json
+import threading
 import time
 import uuid
 from urllib.parse import parse_qs
@@ -8,15 +9,14 @@ from urllib.parse import parse_qs
 from channels.db import database_sync_to_async
 from channels.exceptions import StopConsumer
 from channels.generic.websocket import AsyncWebsocketConsumer
-from cloudinary import uploader
+from cloudinary.api import delete_resources
 from django.contrib.auth.models import User
 from django.core.serializers.json import DjangoJSONEncoder
-from django.db import IntegrityError
 
 from ReiserX_Tunnel import settings
 from ReiserX_Tunnel.AuthBackend import CustomAuthBackend
 from main import Utils
-from main.Utils import cloudinary_image_delete, cloudinary_image_upload
+from main.Utils import cloudinary_image_delete, cloudinary_image_upload, get_image_public_id
 from main.models import UserProfile, Room, Message, new_signal_message, connected_users
 
 
@@ -184,6 +184,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         self.sender_username = None
         self.receiver_username = None
         self.api = None
+
     @database_sync_to_async
     def authenticate(self, api_key):
         # Call your custom authentication backend's authenticate method
@@ -193,30 +194,40 @@ class ChatConsumer(AsyncWebsocketConsumer):
         await self.accept()
         query_string = self.scope['query_string'].decode('utf-8')
         query_params = parse_qs(query_string)
-
         sender_username = query_params.get('sender_username', None)
-        receiver_username = query_params.get('receiver_username', None)
         api = query_params.get('api', None)
         await self.listen_for_signal_messages()
 
-        if receiver_username is not None and api is not None:
-            sender = await self.authenticate(api[0])
-            sender_username = sender.get_username()
-            receiver_username = receiver_username[0]
+        if api is not None:
+            self.sender = await self.authenticate(api[0])
+            self.sender_username = self.sender.get_username()
 
-            if sender is not None:
-                await self.connect_chat(sender_username=sender_username, receiver_username=receiver_username,
-                                        sender=sender)
+            if self.sender is not None:
+                await self.channel_layer.group_send(
+                    'chat',
+                    {
+                        "type": "update_user_status",
+                        "status": "online",
+                        "username": self.sender_username,
+                    },
+                )
+                connected_users[self.sender_username] = {'channel_name': self.channel_name}
             else:
                 await self.close()
-        elif receiver_username is not None and sender_username is not None:
-            sender_username = sender_username[0]
-            receiver_username = receiver_username[0]
-            sender = await self.get_user(sender_username)
+        elif sender_username is not None:
+            self.sender_username = sender_username[0]
+            self.sender = await self.get_user(self.sender_username)
 
-            if sender.is_authenticated:
-                await self.connect_chat(sender_username=sender_username, receiver_username=receiver_username,
-                                        sender=sender)
+            if self.sender.is_authenticated:
+                await self.channel_layer.group_send(
+                    'chat',
+                    {
+                        "type": "update_user_status",
+                        "status": "online",
+                        "username": self.sender_username,
+                    },
+                )
+                connected_users[self.sender_username] = {'channel_name': self.channel_name}
             else:
                 await self.close()
 
@@ -234,66 +245,25 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         new_signal_message.connect(forward_signal_messages)
 
-    async def connect_chat(self, sender_username, receiver_username, sender):
-        self.room = await get_or_create_room(sender_username, receiver_username)
-        self.sender_username = sender_username
-        self.receiver_username = receiver_username
-
-        self.sender = sender
-        self.receiver = await self.get_user(receiver_username)
-
-        if self.room is not None:
-            await self.channel_layer.group_add(
-                self.room.room,
-                self.channel_name
-            )
-
-            if settings.DEBUG is False:
-                subject = "A New Message Is Received"
-
-                message = f"{sender_username} has added you on Vocalhost chat."
-
-                to_email = self.receiver.email
-                try:
-                    Utils.send_email(subject=subject, message=message, to_email=to_email)
-                except Exception as e:
-                    pass
-
-            if self.receiver:
-                await self.send(text_data=json.dumps({
-                    'type': 'user_status',
-                    'username': receiver_username,
-                    'status': await self.get_user_status(self.receiver),
-                }))
-
-            await self.channel_layer.group_send(
-                self.room.room,
-                {
-                    "type": "update_user_status",
-                    "status": "online",
-                    "username": sender_username,
-                },
-            )
-            connected_users[self.sender_username] = self.sender_username
-        else:
-            await self.close()
-
     async def disconnect(self, close_code):
-        if self.room.room is not None:
-            await self.set_room_user_status(self.sender_username, False)
-            await self.channel_layer.group_send(
-                self.room.room,
-                {
-                    "type": "update_user_status",
-                    "status": "offline",
-                    "username": self.sender_username,
-                },
-            )
+        if self.room:
+            await self.set_room_user_status_db(self.sender_username, self.channel_name)
+        await self.channel_layer.group_send(
+            'chat',
+            {
+                "type": "update_user_status",
+                "status": "offline",
+                "username": self.sender_username,
+            },
+        )
         if self.sender_username in connected_users:
             del connected_users[self.sender_username]
         raise StopConsumer
 
     async def receive(self, text_data=None, bytes_data=None):
+        channel_name = self.get_channel_name(self.receiver_username)
+        channel_active = self.get_room_user_status_realtime(self.receiver_username)
+
         if text_data is not None:
             text_data_json = json.loads(text_data)
             type = text_data_json.get('type')
@@ -302,82 +272,155 @@ class ChatConsumer(AsyncWebsocketConsumer):
             reply_id = text_data_json.get('reply_id')
             storeMessage = text_data_json.get("storeMessage")
 
-            if type == 'reply_message':
+            if type == 'initialize_receiver':
+                receiver_username = text_data_json.get('receiver_username')
+                if receiver_username:
+                    await self.initialize_receiver(receiver_username)
+            elif type == 'reply_message':
                 # Generate message_id
                 message_id = int(time.time() * 1000)
-                await self.channel_layer.group_send(
-                    self.room.room,
-                    {
-                        "type": "chat_message",
-                        "message": message,
-                        "message_id": message_id,
-                        'reply_id': reply_id,
-                        "sender_username": self.sender_username,
-                    },
-                )
-                if storeMessage:
-                    await self.save_message_db(message=message, message_id=message_id, reply_id=reply_id, saved=True)
-                else:
-                    status = await self.get_room_user_status(self.receiver_username)
-                    if not status:
+                if channel_active:
+                    await self.channel_layer.send(
+                        channel_name,
+                        {
+                            "type": "chat_message",
+                            "message": message,
+                            "message_id": message_id,
+                            'reply_id': reply_id,
+                            "sender_username": self.sender_username,
+                        },
+                    )
+                    if storeMessage:
                         await self.save_message_db(message=message, message_id=message_id, reply_id=reply_id,
-                                                   temp=self.receiver)
+                                                   saved=True)
+                elif channel_name:
+                    await self.channel_layer.send(
+                        channel_name,
+                        {
+                            'type': 'new_message_background',
+                            'timestamp': message_id,
+                            'sender_username': self.sender_username
+                        }
+                    )
+                    await self.save_message_db(message=message, message_id=message_id, reply_id=reply_id,
+                                               temp=self.receiver)
+                else:
+                    await self.save_message_db(message=message, message_id=message_id, reply_id=reply_id,
+                                               temp=self.receiver)
+
+                await self.send(
+                    text_data=json.dumps(
+                        {
+                            "type": 'message_sent',
+                            'message_id': message_id,
+                            'data_type': 'text'
+                        }
+                    )
+                )
             elif type == 'message':
                 # Generate message_id
                 message_id = int(time.time() * 1000)
-                await self.channel_layer.group_send(
-                    self.room.room,
-                    {
-                        "type": "chat_message",
-                        "message": message,
-                        "message_id": message_id,
-                        "sender_username": self.sender_username,
-                    },
-                )
-                if storeMessage:
-                    await self.save_message_db(message=message, message_id=message_id, reply_id=reply_id, saved=True)
+                if channel_active:
+                    await self.channel_layer.send(
+                        channel_name,
+                        {
+                            "type": "chat_message",
+                            "message": message,
+                            "message_id": message_id,
+                            "sender_username": self.sender_username,
+                        },
+                    )
+                    if storeMessage:
+                        await self.save_message_db(message=message, message_id=message_id, reply_id=reply_id,
+                                                   saved=True)
+                elif channel_name:
+                    await self.channel_layer.send(
+                        channel_name,
+                        {
+                            'type': 'new_message_background',
+                            'timestamp': message_id,
+                            'sender_username': self.sender_username
+                        }
+                    )
+                    await self.save_message_db(message=message, message_id=message_id, temp=self.receiver)
                 else:
-                    status = await self.get_room_user_status(self.receiver_username)
-                    if not status:
-                        await self.save_message_db(message=message, message_id=message_id, temp=self.receiver)
+                    await self.save_message_db(message=message, message_id=message_id, temp=self.receiver)
+                await self.send(
+                    text_data=json.dumps(
+                        {
+                            "type": 'message_sent',
+                            'message_id': message_id,
+                            'data_type': 'text'
+                        }
+                    )
+                )
+
             elif type == 'save_message':
                 save_message = text_data_json.get("save_message")
                 sender = text_data_json.get("sender")
                 receiver = text_data_json.get("receiver")
                 image_url = text_data_json.get('image_url')
-                await self.channel_layer.group_send(
-                    self.room.room,
-                    {
-                        "type": "save_message",
-                        "message_id": message_id,
-                        'save_message': save_message
-                    },
-                )
+                if channel_active:
+                    await self.channel_layer.send(
+                        channel_name,
+                        {
+                            "type": "save_message",
+                            "message_id": message_id,
+                            'save_message': save_message,
+                            'sender_username': self.sender_username
+                        },
+                    )
                 if save_message:
-                    await self.save_message_db(message=message, message_id=message_id, sender=sender, receiver=receiver, reply_id=reply_id, saved=True, image_url=image_url)
+                    await self.save_message_db(message=message, message_id=message_id, sender=sender,
+                                               receiver=receiver,
+                                               reply_id=reply_id, saved=True, image_url=image_url)
                 else:
                     await self.unsave_message_db(message_id)
+                await self.send(
+                    text_data=json.dumps(
+                        {
+                            "type": "save_message",
+                            "message_id": message_id,
+                            'save_message': save_message,
+                            'sender_username': self.sender_username
+                        }
+                    )
+                )
             elif type == 'delete_message':
                 sender_username = text_data_json.get("sender_username")
                 permission = await self.delete_permission_db(message_id, sender_username)
                 if permission:
                     await self.delete_message_db(message_id)
-                    await self.channel_layer.group_send(
-                        self.room.room,
+                    if channel_active:
+                        await self.channel_layer.send(
+                            channel_name,
+                            {
+                                "type": "delete_message",
+                                "message_id": message_id,
+                                'sender_username': self.sender_username,
+                            },
+                        )
+
+                    await self.send(
+                        text_data=json.dumps(
+                            {
+                                "type": "delete_message",
+                                "message_id": message_id,
+                                'sender_username': self.sender_username
+                            }
+                        )
+                    )
+
+            elif type == 'message_seen':
+                if channel_active:
+                    await self.channel_layer.send(
+                        channel_name,
                         {
-                            "type": "delete_message",
+                            "type": "message_seen",
                             "message_id": message_id,
+                            "sender_username": self.sender_username,
                         },
                     )
-            elif type == 'message_seen':
-                await self.channel_layer.group_send(
-                    self.room.room,
-                    {
-                        "type": "message_seen",
-                        "message_id": message_id,
-                        "sender_username": self.sender_username,
-                    },
-                )
 
         if bytes_data:
             json_end = bytes_data.index(b'}') + 1
@@ -390,89 +433,34 @@ class ChatConsumer(AsyncWebsocketConsumer):
             # Extract binary image data
             image_data = bytes_data[json_end:]
 
-            await self.channel_layer.group_send(
-                self.room.room,
-                {
-                    "type": "image_bytes_data",
-                    "message": text_message,
-                    "image_data": image_data,
-                    'message_id': message_id,
-                    "sender_username": self.sender_username,
-                }
-            )
-            if data.get("storeMessage"):
-                await self.save_message_db(message=text_message, message_id=message_id, saved=True)
-            else:
-                status = await self.get_room_user_status(self.receiver_username)
-                if not status:
-                    await self.save_message_db(message=text_message, message_id=message_id, temp=self.receiver, image_url=image_data)
-
-    async def chat_message(self, event):
-        sender_username = event["sender_username"]
-        message = event["message"]
-        message_id = event['message_id']
-
-        if sender_username != self.sender_username:
-            reply_id = event.get('reply_id', None)
-            if reply_id:
-                await self.send(
-                    text_data=json.dumps(
-                        {
-                            "message": message,
-                            'message_id': message_id,
-                            'reply_id': reply_id,
-                            "sender_username": sender_username,
-                        }
-                    )
-                )
-            else:
-                await self.send(
-                    text_data=json.dumps(
-                        {
-                            "message": message,
-                            'message_id': message_id,
-                            "sender_username": sender_username,
-                        }
-                    )
-                )
-        else:
-            await self.send(
-                text_data=json.dumps(
+            if channel_active:
+                await self.channel_layer.send(
+                    channel_name,
                     {
-                        "type": 'message_sent',
+                        "type": "image_bytes_data",
+                        "message": text_message,
+                        "image_data": image_data,
                         'message_id': message_id,
-                        'data_type': 'text'
+                        "sender_username": self.sender_username,
                     }
                 )
-            )
-
-    async def message_seen(self, event):
-        message_id = event.get("message_id")
-        sender_username = event["sender_username"]
-
-        if sender_username != self.sender_username:
-            await self.send(
-                text_data=json.dumps(
+                if data.get("storeMessage"):
+                    await self.save_message_db(message=text_message, message_id=message_id, saved=True)
+            elif channel_name:
+                await self.channel_layer.send(
+                    channel_name,
                     {
-                        "type": 'message_seen',
-                        'message_id': message_id,
+                        'type': 'new_message_background',
+                        'timestamp': message_id,
+                        'sender_username': self.sender_username
                     }
                 )
-            )
+                await self.save_message_db(message=text_message, message_id=message_id, temp=self.receiver,
+                                           image_url=image_data)
+            else:
+                await self.save_message_db(message=text_message, message_id=message_id, temp=self.receiver,
+                                           image_url=image_data)
 
-    async def image_bytes_data(self, event):
-        sender_username = event["sender_username"]
-        message_id = event['message_id']
-
-        if sender_username != self.sender_username:
-            image_data = event["image_data"]
-
-            message = event["message"]
-            combined_data = f"{message_id}\n{message}\n{sender_username}\n".encode('utf-8') + b'\n' + image_data
-
-            # Send the combined data as bytes_data
-            await self.send(bytes_data=combined_data)
-        else:
             await self.send(
                 text_data=json.dumps(
                     {
@@ -483,26 +471,95 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 )
             )
 
+    async def chat_message(self, event):
+        sender_username = event["sender_username"]
+        message = event["message"]
+        message_id = event['message_id']
+        reply_id = event.get('reply_id', None)
+        if reply_id:
+            await self.send(
+                text_data=json.dumps(
+                    {
+                        "message": message,
+                        'message_id': message_id,
+                        'reply_id': reply_id,
+                        "sender_username": sender_username,
+                    }
+                )
+            )
+        else:
+            await self.send(
+                text_data=json.dumps(
+                    {
+                        "message": message,
+                        'message_id': message_id,
+                        "sender_username": sender_username,
+                    }
+                )
+            )
+
+    async def message_seen(self, event):
+        message_id = event.get("message_id")
+        sender_username = event.get('sender_username')
+        await self.send(
+            text_data=json.dumps(
+                {
+                    "type": 'message_seen',
+                    'message_id': message_id,
+                    'sender_username': sender_username
+                }
+            )
+        )
+
+    async def image_bytes_data(self, event):
+        sender_username = event["sender_username"]
+        message_id = event['message_id']
+
+        image_data = event["image_data"]
+
+        message = event["message"]
+        combined_data = f"{message_id}\n{message}\n{sender_username}".encode('utf-8') + b'\n' + image_data
+
+        # Send the combined data as bytes_data
+        await self.send(bytes_data=combined_data)
+
     async def save_message(self, event):
         message_id = event['message_id']
         save_message = event.get("save_message")
+        sender_username = event.get('sender_username')
         await self.send(
             text_data=json.dumps(
                 {
                     "type": "save_message",
                     "message_id": message_id,
-                    'save_message': save_message
+                    'save_message': save_message,
+                    'sender_username': sender_username
                 }
             )
         )
 
     async def delete_message(self, event):
         message_id = event['message_id']
+        sender_username = event.get('sender_username')
         await self.send(
             text_data=json.dumps(
                 {
                     "type": "delete_message",
                     "message_id": message_id,
+                    'sender_username': sender_username
+                }
+            )
+        )
+
+    async def new_message_background(self, event):
+        timestamp = event.get('timestamp')
+        sender_username = event.get('sender_username')
+        await self.send(
+            text_data=json.dumps(
+                {
+                    'type': 'new_message_background',
+                    'timestamp': timestamp,
+                    'sender_username': sender_username
                 }
             )
         )
@@ -514,13 +571,50 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         await self.set_user_status(username, status_bool)
 
-        await self.set_room_user_status(username, status_bool)
-
         await self.send(text_data=json.dumps({
             'type': 'user_status',
             'username': username,
             'status': status,
         }))
+
+    async def initialize_receiver(self, receiver_username):
+        if self.room:
+            await self.set_room_user_status_db(self.sender_username, None)
+        if receiver_username:
+            self.room = await get_or_create_room(self.sender_username, receiver_username)
+            self.receiver_username = receiver_username
+
+            self.receiver = await self.get_user(receiver_username)
+
+            if self.room is not None:
+                await self.set_room_user_status_db(self.sender_username, self.channel_name)
+                await self.channel_layer.group_add(
+                    'chat',
+                    self.channel_name
+                )
+
+                if settings.DEBUG is False:
+                    subject = "A New Message Is Received"
+
+                    message = f"{self.sender_username} has added you on Vocalhost chat."
+
+                    to_email = self.receiver.email
+                    try:
+                        Utils.send_email(subject=subject, message=message, to_email=to_email)
+                    except Exception:
+                        pass
+
+                if self.receiver:
+                    await self.send(text_data=json.dumps({
+                        'type': 'user_status',
+                        'username': receiver_username,
+                        'status': await self.get_user_status(self.receiver),
+                    }))
+                connected_users[self.sender_username] = {'channel_name': self.channel_name, 'room': self.room.room}
+            else:
+                await self.close()
+        else:
+            await self.close()
 
     @database_sync_to_async
     def get_user(self, username):
@@ -530,7 +624,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
             return None
 
     @database_sync_to_async
-    def save_message_db(self, message=None, message_id=None, sender=None, receiver=None, reply_id=None, temp=None, saved=False, image_url=None):
+    def save_message_db(self, message=None, message_id=None, sender=None, receiver=None, reply_id=None, temp=None,
+                        saved=False, image_url=None):
         if sender is None:
             sender = self.sender
         else:
@@ -556,7 +651,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             if image_url is not None:
                 url = cloudinary_image_upload(image_data=image_url)
                 image_url = url if url else None
-            if message_id is not None:
+            if message_id is not None and self.room is not None:
                 Message.objects.create(
                     message=message,
                     room=self.room,
@@ -605,7 +700,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     return False
             else:
                 return False
-        except (Message.DoesNotExist, User.DoesNotExist) as e:
+        except Message.DoesNotExist:
+            return True
+        except User.DoesNotExist:
             return False
 
     @database_sync_to_async
@@ -615,27 +712,62 @@ class ChatConsumer(AsyncWebsocketConsumer):
         else:
             return 'offline'
 
-    @database_sync_to_async
-    def get_room_user_status(self, username):
-        if self.room.sender_username == username:
-            return self.room.sender_status
-        elif self.room.receiver_username == username:
-            return self.room.receiver_status
+    def get_room_user_status_realtime(self, username):
+        user = connected_users.get(username)
+        if user and user.get('room') == self.room.room:
+            return True
         else:
             return False
 
     @database_sync_to_async
+    def get_room_user_status_db(self, username):
+        if self.room.sender_username == username:
+            return self.room.sender_channel
+        elif self.room.receiver_username == username:
+            return self.room.receiver_channel
+
+    @database_sync_to_async
     def set_user_status(self, username, status):
-        user_profile = UserProfile.objects.get(user__username=username)  # Replace 'username' with the actual username
+        user_profile = UserProfile.objects.get(
+            user__username=username)
 
         user_profile.status = status
         user_profile.save()
 
     @database_sync_to_async
-    def set_room_user_status(self, username=None, status=False):
+    def set_room_user_status_db(self, username=None, channel=None):
+        if channel is None:
+            thread = threading.Thread(target=self.delete_messages_data,
+                                      args=(self.receiver_username, self.sender_username, self.room, self.sender))
+            thread.start()
         if self.room.sender_username == username:
-            self.room.sender_status = status
+            self.room.sender_channel = channel
             self.room.save()
         elif self.room.receiver_username == username:
-            self.room.receiver_status = status
+            self.room.receiver_channel = channel
             self.room.save()
+
+    @staticmethod
+    def get_channel_name(username):
+        user = connected_users.get(username)
+        if user:
+            return user.get('channel_name')
+        return None
+
+    @staticmethod
+    def delete_messages_data(receiver_user, username, room, sender):
+        messages_db = Message.objects.filter(room=room, temp=sender, saved=False)
+
+        if messages_db.exists():
+            public_ids_to_delete = []
+            for message in messages_db:
+                if message.image_url:
+                    public_id = get_image_public_id(message.image_url)
+                    if public_id:
+                        public_ids_to_delete.append(public_id)
+            if public_ids_to_delete:
+                try:
+                    delete_resources(public_ids_to_delete)
+                except Exception:
+                    pass
+            messages_db.delete()

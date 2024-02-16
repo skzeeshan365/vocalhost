@@ -1,5 +1,4 @@
 # Create your models here.
-import json
 import threading
 import uuid
 
@@ -76,8 +75,8 @@ class Client(models.Model):
 
 class Room(models.Model):
     room = models.CharField(max_length=128, unique=True)
-    sender_status = models.BooleanField(default=False, null=True)
-    receiver_status = models.BooleanField(default=False, null=True)
+    sender_channel = models.CharField(max_length=255, blank=True, null=True)
+    receiver_channel = models.CharField(max_length=255, blank=True, null=True)
     sender_username = models.CharField(max_length=128, default=None)
     receiver_username = models.CharField(max_length=128, default=None)
 
@@ -126,11 +125,7 @@ class Message(models.Model):
     image_url = models.URLField(default=None, null=True, blank=True)
 
     def save(self, *args, **kwargs):
-        if self.temp and get_connected_users().get(self.receiver.username) and not self.saved:
-            time = timezone.now()
-            new_signal_message.send(sender=Message, message_type='new_message_background', timestamp=time,
-                                    sender_username=self.sender.username)
-        elif self.temp and not self.saved:
+        if self.temp and not self.saved and not get_connected_users().get(self.receiver.username):
             thread = threading.Thread(target=update_message_status, args=(
                 self.temp,
                 self.receiver.username,

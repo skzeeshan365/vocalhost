@@ -7,7 +7,6 @@ from fcm_django.models import FCMDevice
 from firebase_admin.messaging import Message
 from pusher.errors import PusherError
 from sendgrid import SendGridAPIClient, Mail
-from django.utils import timezone
 
 from ReiserX_Tunnel import settings
 from ReiserX_Tunnel.settings import pusher_client

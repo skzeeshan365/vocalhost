@@ -6,9 +6,7 @@ import time
 from datetime import datetime, timezone
 from json import JSONDecodeError
 
-from asgiref.sync import sync_to_async
 from cloudinary import uploader
-from cloudinary.api import delete_resources
 from django.contrib import auth
 from django.contrib.auth import authenticate, login
 from django.contrib.auth.decorators import login_required
@@ -23,7 +21,7 @@ from fcm_django.models import FCMDevice
 
 from ReiserX_Tunnel import settings
 from main import forms
-from main.Utils import send_pusher_update, get_image_public_id
+from main.Utils import send_pusher_update
 from main.consumers import MyWebSocketConsumer, getRoom
 # Create your views here.
 from main.forms import RegistrationForm, LoginForm, ImageUploadForm
@@ -354,20 +352,8 @@ def chat_box(request):
                    'pusher': settings.PUSHER_KEY})
 
 
-def delete_messages_data(messages_db, receiver_user, username):
+def update_message_status(receiver_user, username):
     from django.utils import timezone
-    public_ids_to_delete = []
-    for message in messages_db:
-        if message.image_url:
-            public_id = get_image_public_id(message.image_url)
-            if public_id:
-                public_ids_to_delete.append(public_id)
-    if public_ids_to_delete:
-        try:
-            delete_resources(public_ids_to_delete)
-        except Exception:
-            pass
-    messages_db.delete()
     time = timezone.now()
     if get_connected_users().get(receiver_user):
         new_signal_message.send(sender=Message, message_type='message_status_background', timestamp=time,
@@ -397,11 +383,11 @@ def load_messages(request, receiver):
                 messages_db.values('message', 'sender__username', 'message_id', 'reply_id',
                                    'timestamp', 'temp__username', 'saved', 'image_url'))
 
-            messages_db = Message.objects.filter(room=room, temp=user, saved=False)
+            messages_db = Message.objects.filter(room=room, temp=user, saved=False).exists()
             Message.objects.filter(room=room, temp=user, saved=True).update(temp=None)
 
-            if messages_db.exists():
-                thread = threading.Thread(target=delete_messages_data, args=(messages_db, receiver_user, user.username))
+            if messages_db:
+                thread = threading.Thread(target=update_message_status, args=(receiver_user, user.username))
                 thread.start()
         else:
             messages = []
@@ -633,17 +619,28 @@ def upload_image(request):
 
         message_id = request.POST.get('message_id')
 
-        message = Message.objects.filter(message_id=message_id).exists()
-        if message:
+        try:
+            message = Message.objects.get(message_id=message_id)
+            if message.image_url is None:
+                timestamp = int(time.time())
+                public_id = f'chat/uploaded_image_{timestamp}'
+                result = uploader.upload(
+                    image_data,
+                    public_id=public_id,
+                )
+                cloudinary_url = result['secure_url']
+
+                return JsonResponse({'success': True, 'image_url': cloudinary_url})
+            else:
+                return JsonResponse({'success': True, 'image_url': None})
+        except Message.DoesNotExist:
             timestamp = int(time.time())
             public_id = f'chat/uploaded_image_{timestamp}'
             result = uploader.upload(
                 image_data,
                 public_id=public_id,
             )
-            # The Cloudinary URL of the uploaded image
             cloudinary_url = result['secure_url']
+
             return JsonResponse({'success': True, 'image_url': cloudinary_url})
-        else:
-            return JsonResponse({'success': True, 'image_url': None})
     return JsonResponse({'success': False, 'error': 'Invalid request'})
