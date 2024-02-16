@@ -56,6 +56,7 @@ ul.people {
                     white-space: nowrap;
                     text-overflow: ellipsis;
                     color: #ababab;
+                    align-items: center;
                 }
                 &.active,&:hover {
                     margin-top: -1px;
