@@ -187,7 +187,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def authenticate(self, api_key):
-        # Call your custom authentication backend's authenticate method
         return CustomAuthBackend().authenticate_api(api_key=api_key)
 
     async def connect(self):
@@ -421,6 +420,17 @@ class ChatConsumer(AsyncWebsocketConsumer):
                             "sender_username": self.sender_username,
                         },
                     )
+            elif type == 'typing_status':
+                typing = text_data_json.get('typing')
+                if channel_active:
+                    await self.channel_layer.send(
+                        channel_name,
+                        {
+                            "type": "typing_status",
+                            "typing": typing,
+                            "sender_username": self.sender_username,
+                        },
+                    )
 
         if bytes_data:
             json_end = bytes_data.index(b'}') + 1
@@ -615,6 +625,16 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 await self.close()
         else:
             await self.close()
+
+    async def typing_status(self, event):
+        typing = event.get('typing')
+        sender_username = event.get('sender_username')
+
+        await self.send(text_data=json.dumps({
+            'type': 'typing_status',
+            'typing': typing,
+            'sender_username': sender_username
+        }))
 
     @database_sync_to_async
     def get_user(self, username):
