@@ -101,8 +101,13 @@
                     <li onclick="load_chat('{{ user.user.username }}')" class="person context-menu-trigger"
                         data-chat={{ user.user.username }}>
                         {% if user.user.userprofile.image %}
+                            {% if user.user.userprofile.image.url %}
                             <img id="users_profile_pic" class="users_profile_pic"
                                  src="{{ user.user.userprofile.image.url }}" alt="Profile picture"/>
+                            {% else %}
+                                <img id="users_profile_pic" class="users_profile_pic" src="{% static 'img/user.png' %}"
+                                 alt="Profile picture"/>
+                            {% endif %}
                         {% else %}
                             <img id="users_profile_pic" class="users_profile_pic" src="{% static 'img/user.png' %}"
                                  alt="Profile picture"/>
