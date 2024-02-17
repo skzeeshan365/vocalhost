@@ -300,6 +300,7 @@ const STATUS_DELIVERED = 0;
 const STATUS_SEEN = 1;
 const STATUS_RECEIVED = 2;
 const STATUS_RECEIVED_INITIAL = 3;
+const STATUS_TYPING = 4;
 
 function handleNewMessage(username, timestamp, background = true) {
     var personElement = document.querySelector(`[data-chat='${username}']`);
@@ -326,35 +327,45 @@ function handleNewMessage(username, timestamp, background = true) {
     }
 }
 
-function update_message_status(seen = 0, username) {
+function update_message_status(seen, username, previous=true) {
     var personElement = document.querySelector(`[data-chat='${username}']`);
-    var previewElement = personElement.querySelector('.preview');
-    if (previewElement) {
-        var textSpan = document.createElement('span');
-        var icon = previewElement.querySelector('.status_icon');
-        if (icon) {
-            if (seen === STATUS_DELIVERED) {
-                icon.src = icon_delivered
-                textSpan.textContent = 'Delivered';
-            } else if (seen === STATUS_SEEN) {
-                icon.src = icon_seen
-                textSpan.textContent = 'Opened';
-            } else if (seen === STATUS_RECEIVED) {
-                icon.src = icon_received
-                textSpan.textContent = 'Received';
-            } else if (seen === STATUS_RECEIVED_INITIAL) {
-                icon.src = icon_received_fill
-                textSpan.textContent = 'Received';
+    if (personElement) {
+        var previewElement = personElement.querySelector('.preview');
+        if (previewElement) {
+            var textSpan = document.createElement('span');
+            var icon = previewElement.querySelector('.status_icon');
+            if (icon) {
+                if (seen === STATUS_DELIVERED) {
+                    icon.src = icon_delivered
+                    textSpan.textContent = 'Delivered';
+                } else if (seen === STATUS_SEEN) {
+                    icon.src = icon_seen
+                    textSpan.textContent = 'Opened';
+                } else if (seen === STATUS_RECEIVED) {
+                    icon.src = icon_received
+                    textSpan.textContent = 'Received';
+                } else if (seen === STATUS_RECEIVED_INITIAL) {
+                    icon.src = icon_received_fill
+                    textSpan.textContent = 'Received';
+                } else if (seen === STATUS_TYPING) {
+                    icon.src = icon_received
+                    textSpan.textContent = 'Typing...';
+                }
+                icon = document.getElementById('status_icon').cloneNode(true);
+                previewElement.innerHTML = '';
+                previewElement.appendChild(icon);
+                previewElement.appendChild(textSpan);
+                if (previous) {
+                    personElement.setAttribute('message_status', seen.toString())
+                }
+            } else {
+                console.log('Icon element not found inside preview');
             }
-            icon = document.getElementById('status_icon').cloneNode(true)
-            previewElement.innerHTML = '';
-            previewElement.appendChild(icon);
-            previewElement.appendChild(textSpan);
         } else {
-            console.log('Icon element not found inside preview');
+            console.log('preview null');
         }
     } else {
-        console.log('preview null');
+        console.log('person null');
     }
 }
 
@@ -793,6 +804,10 @@ function initialize_socket() {
                     newUserStatusSpan.textContent = `${data.status}`;
 
                     heading_name.appendChild(newUserStatusSpan);
+                    var personElement = document.querySelector(`[data-chat='${data.username}']`);
+                    if (personElement) {
+                        personElement.setAttribute('status', `${data.status}`);
+                    }
                 }
             } else if (data.type === 'message_sent') {
                 if (data.data_type === 'bytes') {
@@ -839,9 +854,7 @@ function initialize_socket() {
             } else if (data.type === 'message_status_background') {
                 update_message_status(STATUS_SEEN, data.sender_username);
             } else if (data.type === 'typing_status') {
-                if (data.sender_username === getActivePerson()) {
-                    update_typing_status(data.sender_username, data.typing, null);
-                }
+                    update_typing_status(data.sender_username, data.typing);
             } else {
                 if (data.sender_username === getActivePerson()) {
                     // Determine if the message is sent or received based on the sender
@@ -1269,7 +1282,7 @@ function handleContextMenu_profile(option) {
 function clear_chat(username) {
     $.ajax({
         type: 'POST',
-        url: '{% url "clear_chat" %}',
+        url: '/chat/clear/chat/',
         data: JSON.stringify({
             'username': username
         }),
@@ -1293,7 +1306,7 @@ function clear_chat(username) {
 function remove_chat(username) {
     $.ajax({
         type: 'POST',
-        url: '{% url "remove_chat" %}',
+        url: '/chat/remove/chat/',
         data: JSON.stringify({
             'username': username
         }),
@@ -1314,7 +1327,7 @@ function remove_chat(username) {
 // User list context menu
 
 // Section: Typing
-function update_typing_status(username, typing, user_status) {
+function update_typing_status(username, typing) {
     const heading_name = document.getElementById('heading_name');
     heading_name.innerHTML = `${username}`;
     const newUserStatusSpan = document.createElement('span');
@@ -1323,10 +1336,22 @@ function update_typing_status(username, typing, user_status) {
     newUserStatusSpan.style.color = 'rgb(217,217,217)'; // Set the desired style
     newUserStatusSpan.style.marginLeft = 8;
 
+    var personElement = document.querySelector(`[data-chat='${username}']`);
+
     if (typing) {
         newUserStatusSpan.textContent = 'typing';
+        update_message_status(STATUS_TYPING, username, false);
     } else {
-        newUserStatusSpan.textContent = `${user_status}`;
+        if (personElement) {
+            newUserStatusSpan.textContent = personElement.getAttribute('status');
+            var statusValue = personElement.getAttribute('message_status');
+            if (statusValue) {
+                var intValue = parseInt(statusValue, 10);
+                update_message_status(intValue, username, false);
+            } else {
+                update_message_status(STATUS_RECEIVED, username, false);
+            }
+        }
     }
     heading_name.appendChild(newUserStatusSpan);
 }
