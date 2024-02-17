@@ -36,8 +36,8 @@ urlpatterns = [
     path("chat/load/messages/<str:receiver>/", views.load_messages, name="load_messages"),
     path("push/register_device/", views.register_device, name='register_device'),
     path('add/chat/', views.add_chat, name='add_chat'),
-    path('chat/clear/chat', views.clear_chat, name='clear_chat'),
-    path('chat/remove/chat', views.remove_chat, name='remove_chat'),
+    path('chat/clear/chat/', views.clear_chat, name='clear_chat'),
+    path('chat/remove/chat/', views.remove_chat, name='remove_chat'),
     path('chat/upload/image/', views.upload_image, name='upload_image'),
 
     # Favicons

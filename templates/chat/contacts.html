@@ -60,18 +60,23 @@
             <ul class="people">
                 {% for user in users %}
                     <li class="person" onclick="addPerson('{{ user.user.username }}')" data-chat={{ user.user.username }}>
-                        <img src="https://s3-us-west-2.amazonaws.com/s.cdpn.io/382994/thomas.jpg" alt=""/>
+                        {% if user.user.userprofile.image %}
+                            <img id="users_profile_pic" class="users_profile_pic"
+                                 src="{{ user.user.userprofile.image.url }}" alt="Profile picture"/>
+                        {% else %}
+                            <img id="users_profile_pic" class="users_profile_pic" src="{% static 'img/user.png' %}"
+                                 alt="Profile picture"/>
+                        {% endif %}
                         {% if user.user.get_full_name %}
                             <span class="name">{{ user.user.get_full_name }}</span>
                         {% else %}
                             <span class="name">{{ user.user.username }}</span>
                         {% endif %}
-                        <span class="time">12:00 PM</span>
                         <span class="preview">Tap to chat</span>
                     </li>
                     {% empty %}
                     <div class="row justify-content-center">
-                    <h5 style="color:#fff;">No chats available</h5>
+                    <h5 style="color:#fff;">No users available</h5>
                     </div>
                 {% endfor %}
             </ul>

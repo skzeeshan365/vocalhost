@@ -17,7 +17,7 @@ SECRET_KEY = os.getenv('SECRET_KEY')
 CONNECT_KEY = os.getenv('CONNECT_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = False
 
 ALLOWED_HOSTS = ['3.109.62.111', 'vocalhost.reiserx.com', '127.0.0.1', '192.168.0.100']
 

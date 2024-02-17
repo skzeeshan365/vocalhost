@@ -464,7 +464,6 @@ def add_chat(request):
 
         room = get_or_create_room(user.username, username)
         if room:
-            print(room)
             return JsonResponse({'success': True})
         else:
             return JsonResponse({'error': True})

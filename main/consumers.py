@@ -422,7 +422,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     )
             elif type == 'typing_status':
                 typing = text_data_json.get('typing')
-                if channel_active:
+                print(typing)
+                if channel_name:
                     await self.channel_layer.send(
                         channel_name,
                         {
@@ -629,6 +630,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
     async def typing_status(self, event):
         typing = event.get('typing')
         sender_username = event.get('sender_username')
+
+        print(f'{sender_username}: {typing}')
 
         await self.send(text_data=json.dumps({
             'type': 'typing_status',
