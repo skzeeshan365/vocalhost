@@ -13,6 +13,10 @@ const firebaseConfig = {
     firebase.analytics();
     const messaging = firebase.messaging();
 
+    if (!token_status) {
+        handlePermission();
+    }
+
     // Check if permission is already granted
     if (Notification.permission === 'granted') {
         messaging.onMessage((payload) => {
@@ -42,9 +46,18 @@ const firebaseConfig = {
             });
     }
 
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/firebase-messaging-sw.js')
+            .then((registration) => {
+            })
+            .catch((error) => {
+                console.error('Service Worker registration failed:', error);
+            });
+    }
+
     function sendRegistrationTokenToServer(token) {
         // Use AJAX, fetch, or any other method to send the token to your Django server
-        fetch('/push/register_device/', {
+        fetch('/chat/push/register_device/', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -54,13 +67,4 @@ const firebaseConfig = {
             .then((response) => response.json())
             .then((data) => console.log('Server response:', data))
             .catch((error) => console.error('Error:', error));
-    }
-
-    if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('/firebase-messaging-sw.js')
-            .then((registration) => {
-            })
-            .catch((error) => {
-                console.error('Service Worker registration failed:', error);
-            });
     }

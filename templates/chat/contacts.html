@@ -3,7 +3,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-     <meta charset="utf-8">
+    <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
     <!-- Bootstrap CSS -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.2/css/all.min.css"
@@ -51,32 +51,107 @@
     <meta name="msapplication-TileImage" content="{% static 'favicon/ms-icon-144x144.png' %}">
     <meta name="theme-color" content="#ffffff">
     <!-- Favicon -->
+
+    <style>
+        .person {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .add-friend-container {
+            margin-left: auto;
+        }
+
+        .add-friend-icon {
+            background-color: #3f3f3f;
+            color: #e7e7e7;
+            border: none;
+            border-radius: 12px;
+            padding: 5px 10px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 12px;
+            margin: 4px 2px;
+            cursor: pointer;
+        }
+    </style>
 </head>
 <body style="padding: 0px;">
 
 <div class="container" style="padding: unset;" id="chat_container">
     <div class="row">
         <div id="left_bar" class="col-lg-3 col-md-3 col-sm-3 left_bar">
-            <ul class="people">
-                {% for user in users %}
-                    <li class="person" onclick="addPerson('{{ user.user.username }}')" data-chat={{ user.user.username }}>
-                        {% if user.user.userprofile.image %}
-                            <img id="users_profile_pic" class="users_profile_pic"
-                                 src="{{ user.user.userprofile.image.url }}" alt="Profile picture"/>
-                        {% else %}
-                            <img id="users_profile_pic" class="users_profile_pic" src="{% static 'img/user.png' %}"
-                                 alt="Profile picture"/>
-                        {% endif %}
-                        {% if user.user.get_full_name %}
-                            <span class="name">{{ user.user.get_full_name }}</span>
-                        {% else %}
-                            <span class="name">{{ user.user.username }}</span>
-                        {% endif %}
-                        <span class="preview">Tap to chat</span>
+            <ul class="people" id="request_list">
+                {% for user in requests %}
+                    <li class="person" data-chat={{ user.username }}>
+                        <a href="{% url 'chat_profile' user.username %}">
+                            {% if user.userprofile.image %}
+                                <img id="users_profile_pic" class="users_profile_pic"
+                                     src="{{ user.userprofile.image.url }}" alt="Profile picture"/>
+                            {% else %}
+                                <img id="users_profile_pic" class="users_profile_pic" src="{% static 'img/user.png' %}"
+                                     alt="Profile picture"/>
+                            {% endif %}
+                            <div style="display: flex; flex-direction: column; margin-left: 10px;">
+                                <!-- Adjust margin as needed -->
+                                {% if user.get_full_name %}
+                                    <span class="name">{{ user.get_full_name }}</span>
+                                {% else %}
+                                    <span class="name">{{ user.username }}</span>
+                                {% endif %}
+                                <span class="preview" style="width: 100%;">{{ user.username }}</span>
+                            </div>
+                        </a>
+                        <div class="add-friend-container">
+                            <button class="add-friend-icon" onclick="acceptRequest('{{ user.username }}')">Accept
+                            </button>
+                        </div>
                     </li>
-                    {% empty %}
+                {% empty %}
                     <div class="row justify-content-center">
-                    <h5 style="color:#fff;">No users available</h5>
+                        <h6 style="color:#fff; margin-top: 20px;">No requests available</h6>
+                    </div>
+                {% endfor %}
+            </ul>
+            <br>
+            <ul class="people" id="user_list">
+                {% for user in users %}
+                    <li class="person" data-chat="{{ user.user.username }}" data-status="{{ user.status }}">
+                        <a href="{% url 'chat_profile' user.user.username %}">
+                            {% if user.user.userprofile.image %}
+                                <img id="users_profile_pic" class="users_profile_pic"
+                                     src="{{ user.user.userprofile.image.url }}" alt="Profile picture"/>
+                            {% else %}
+                                <img id="users_profile_pic" class="users_profile_pic" src="{% static 'img/user.png' %}"
+                                     alt="Profile picture"/>
+                            {% endif %}
+                            <div style="display: flex; flex-direction: column; margin-left: 10px;">
+                                <!-- Adjust margin as needed -->
+                                {% if user.user.get_full_name %}
+                                    <span class="name">{{ user.user.get_full_name }}</span>
+                                {% else %}
+                                    <span class="name">{{ user.user.username }}</span>
+                                {% endif %}
+                                <span class="preview" style="width: 100%;">{{ user.user.username }}</span>
+                            </div>
+                        </a>
+                        {% if user.status %}
+                            <div class="add-friend-container">
+                                <button class="add-friend-icon" onclick="addFriend('{{ user.user.username }}')">Added
+                                </button>
+                            </div>
+                        {% else %}
+                            <div class="add-friend-container">
+                                <button class="add-friend-icon" onclick="addFriend('{{ user.user.username }}')">Add
+                                </button>
+                            </div>
+                        {% endif %}
+                    </li>
+                {% empty %}
+                    <div class="row justify-content-center">
+                        <h5 style="color:#fff;">No users available</h5>
                     </div>
                 {% endfor %}
             </ul>
@@ -97,26 +172,61 @@
 <script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
 
 <script>
-    function addPerson(username) {
+    function addFriend(username) {
+        let user_list = document.getElementById('user_list');
+        var personElement = user_list.querySelector(`[data-chat='${username}']`);
+        var buttonElement = personElement.querySelector('.add-friend-icon');
+
+        var statusAttribute = personElement.getAttribute('data-status');
+        var status = statusAttribute === 'True';
+
         $.ajax({
             type: 'POST',
-            url: '{% url "add_chat" %}',
-            data: JSON.stringify({
-                'username': username
-            }),
-            contentType: 'application/json',
-            success: function (data) {
-                console.log(data)
-                if (data.success) {
-                    // Set a flag in local storage indicating that the page needs to be refreshed
-                    sessionStorage.setItem('return_from_add_person', 'true');
-                    history.back();
+            url: '{% url "send_friend_request" %}',  // Update the URL based on your project's URL structure
+            data: {'username': username, 'send_request': status},
+            dataType: 'json',
+            success: function (response) {
+                if (response.status === 'success') {
+                    if (response.request_status) {
+                        buttonElement.innerText = 'Added';
+                        personElement.setAttribute('data-status', 'True');
+                    } else {
+                        buttonElement.innerText = 'Add';
+                        personElement.setAttribute('data-status', 'False');
+                    }
                 } else {
-
+                    alert(response.error)
                 }
             },
-            error: function (xhr, status, error) {
-                console.error(error);
+            error: function (response) {
+                // Handle errors, e.g., show an error message
+                alert(response.responseJSON.message);
+            }
+        });
+    }
+
+    function acceptRequest(username) {
+        let user_list = document.getElementById('request_list');
+        var personElement = user_list.querySelector(`[data-chat='${username}']`);
+        var buttonElement = personElement.querySelector('.add-friend-icon');
+
+        $.ajax({
+            type: 'POST',
+            url: '{% url "accept_friend_request" %}',  // Update the URL based on your project's URL structure
+            data: {'username': username},
+            dataType: 'json',
+            success: function (response) {
+                if (response.status === 'success') {
+                    buttonElement.innerText = 'Accepted'
+                    buttonElement.removeAttribute('onclick')
+                    sessionStorage.setItem('return_from_add_person', 'true');
+                } else {
+                    alert(response.error);
+                }
+            },
+            error: function (response) {
+                // Handle errors, e.g., show an error message
+                alert(response.responseJSON.message);
             }
         });
     }

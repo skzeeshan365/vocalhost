@@ -90,10 +90,33 @@
         }
 
         .container {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-}
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .add-friend-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .add-friend-icon {
+            background-color: #3f3f3f;
+            color: #e7e7e7;
+            border: none;
+            border-radius: 12px;
+            padding: 5px 10px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 4px 2px;
+            cursor: pointer;
+            width: 100%;
+            max-width: 300px;
+            box-sizing: border-box;
+        }
     </style>
 </head>
 <body>
@@ -146,7 +169,25 @@
                     <p class="mail">{{ username }}</p>
                 </div>
             </div>
-
+                <div class="add-friend-container">
+                    {% if status == 0 %}
+                        <button class="add-friend-icon" data-status="False"
+                                onclick="addFriend('{{ username }}')">Add
+                        </button>
+                    {% elif status == 1 %}
+                        <button class="add-friend-icon" data-status="True"
+                                onclick="addFriend('{{ username }}')">Added
+                        </button>
+                    {% elif status == 2 %}
+                        <button class="add-friend-icon"
+                                onclick="acceptRequest('{{ username }}')">Accept
+                        </button>
+                        {% else %}
+                        <button class="add-friend-icon" style="display: none;"
+                                onclick="addFriend('{{ username }}')" data-status="False">Accept
+                        </button>
+                    {% endif %}
+                </div>
 
             <div class="middle-container d-flex justify-content-between align-items-center mt-3 p-2">
                 <div class="dollar-div px-3">
@@ -163,25 +204,25 @@
             <div class="wishlist-border mt-4">
                 <span class="wishlist">Recent messages</span>
             </div>
-        <div id="snap_ui_holder">
-            <snap-ui style="flex-grow: 1;">
-                {% for message in messages %}
-                    {% if message.get_sender_username == username %}
-                        <snap-message from="{{ message.get_sender_username }}">{{ message.message }}</snap-message>
-                    {% else %}
-                        <snap-message>{{ message.message }}</snap-message>
-                    {% endif %}
-                {% empty %}
-                    <snap-notice>No messages</snap-notice>
-                {% endfor %}
-            </snap-ui>
-        </div>
+            <div id="snap_ui_holder">
+                <snap-ui style="flex-grow: 1;">
+                    {% for message in messages %}
+                        {% if message.get_sender_username == username %}
+                            <snap-message from="{{ message.get_sender_username }}">{{ message.message }}</snap-message>
+                        {% else %}
+                            <snap-message>{{ message.message }}</snap-message>
+                        {% endif %}
+                    {% empty %}
+                        <snap-notice>No messages</snap-notice>
+                    {% endfor %}
+                </snap-ui>
+            </div>
             {% if request.user.username != username %}
                 <a onclick="clear_chat('{{ username }}')" class="wishlist-border pt-2">
                     <span class="wishlist">Clear chat</span>
                 </a>
                 <a onclick="remove_chat('{{ username }}')" class="wishlist-border pt-2">
-                    <span class="wishlist">Remove chat</span>
+                    <span class="wishlist">Remove friend</span>
                 </a>
             {% else %}
                 <a class="wishlist-border pt-2">
@@ -476,6 +517,14 @@
                     let snap_notice = document.createElement('snap-notice');
                     snap_notice.textContent = 'No messages'
                     snap_ui_holder.append(snap_notice);
+                    var buttonElement = document.querySelector('.add-friend-icon');
+                    buttonElement.style.display = 'block';
+                    buttonElement.innerText = 'Add';
+                    buttonElement.setAttribute('data-status', 'False');
+                    buttonElement.onclick = function() {
+                        addFriend(username);
+                    };
+
                 } else {
                     console.log(data.error)
                 }
@@ -484,6 +533,60 @@
             error: function (xhr, status, error) {
                 console.error(error);
                 saveMessageLoader.style.display = 'none';
+            }
+        });
+    }
+
+    function addFriend(username) {
+        var buttonElement = document.querySelector('.add-friend-icon');
+
+        var statusAttribute = buttonElement.getAttribute('data-status');
+        var status = statusAttribute === 'True';
+
+        $.ajax({
+            type: 'POST',
+            url: '{% url "send_friend_request" %}',
+            data: {'username': username, 'send_request': status},
+            dataType: 'json',
+            success: function (response) {
+                if (response.status === 'success') {
+                    if (response.request_status) {
+                        buttonElement.innerText = 'Added';
+                        buttonElement.setAttribute('data-status', 'True');
+                    } else {
+                        buttonElement.innerText = 'Add';
+                        buttonElement.setAttribute('data-status', 'False');
+                    }
+                } else {
+                    alert(response.error)
+                }
+            },
+            error: function (response) {
+                // Handle errors, e.g., show an error message
+                alert(response.responseJSON.message);
+            }
+        });
+    }
+
+    function acceptRequest(username) {
+        var buttonElement = document.querySelector('.add-friend-icon');
+
+        $.ajax({
+            type: 'POST',
+            url: '{% url "accept_friend_request" %}',
+            data: {'username': username},
+            dataType: 'json',
+            success: function (response) {
+                if (response.status === 'success') {
+                    buttonElement.style.display = 'none';
+                    sessionStorage.setItem('return_from_add_person', 'true');
+                } else {
+                    alert(response.error);
+                }
+            },
+            error: function (response) {
+                // Handle errors, e.g., show an error message
+                alert(response.responseJSON.message);
             }
         });
     }

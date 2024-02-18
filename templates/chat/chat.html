@@ -167,6 +167,10 @@
                                 Tap to chat</span>
                         {% endif %}
                     </li>
+                    {% empty %}
+                    <div class="d-flex justify-content-center">
+                    <h6 style="color:#fff; margin-top: 20px;">No chats available</h6>
+                    </div>
                 {% endfor %}
             </ul>
         </div>
@@ -263,7 +267,7 @@
         <i class="fa fa-comment"></i> Clear chat
     </div>
     <div id="delete_message_context" class="context-menu-item" onclick="handleContextMenu_profile('remove')">
-        <i class="fa fa-trash"></i> Remove
+        <i class="fa fa-trash"></i> Remove friend
     </div>
 </div>
 
@@ -310,6 +314,7 @@
     const icon_delivered = '{% static 'img/status_delivered.svg' %}'
     const icon_received = '{% static 'img/status_received_outline.svg' %}'
     const icon_received_fill = '{% static 'img/status_received.svg' %}'
+    const token_status = {{ token_status|yesno:"true,false" }};
 </script>
 <!-- VARIABLE DEFINITION -->
 
@@ -320,7 +325,7 @@
 
 <!-- CUSTOM FILES -->
 <script src="{% static 'chat/js/main.js' %}"></script>
-<script src="{% static 'chat/js/base_main.js' %}"></script>
+<script src="{% static 'chat/js/base_main-v'|add:ASSET_VERSION|add:'.js' %}"></script>
 <!-- CUSTOM FILES -->
 
 <script>

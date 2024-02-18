@@ -17,7 +17,7 @@ SECRET_KEY = os.getenv('SECRET_KEY')
 CONNECT_KEY = os.getenv('CONNECT_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = False
+DEBUG = True
 
 ALLOWED_HOSTS = ['3.109.62.111', 'vocalhost.reiserx.com', '127.0.0.1', '192.168.0.100']
 
@@ -33,6 +33,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "channels",
     "main.apps.MainConfig",
+    'chat.apps.ChatConfig',
     "django.contrib.sitemaps",
     "fcm_django",
     'cloudinary_storage',
@@ -50,6 +51,8 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = "ReiserX_Tunnel.urls"
 
+ASSET_VERSION = '1'
+
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
@@ -61,6 +64,7 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                'ReiserX_Tunnel.context_processors.asset_version'
             ],
         },
     },

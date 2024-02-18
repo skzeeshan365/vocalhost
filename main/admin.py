@@ -3,7 +3,8 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 from django.contrib.auth.models import User
 
-from main.models import Client, UserProfile, Room, Message
+from main.models import Client, UserProfile
+from chat.models import Room, Message, FriendRequest
 
 
 class UserProfileInline(admin.StackedInline):
@@ -21,3 +22,4 @@ admin.site.register(Client)
 admin.site.register(Room)
 
 admin.site.register(Message)
+admin.site.register(FriendRequest)

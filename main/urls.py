@@ -4,7 +4,6 @@ from django.views.static import serve
 
 from ReiserX_Tunnel import settings
 from main import views
-from main.views import chat_box
 
 urlpatterns = [
     path('', views.home, name='home'),
@@ -23,22 +22,6 @@ urlpatterns = [
 
     path('accounts/', views.user_accounts, name='user_accounts'),
     path('accounts/<str:username>/', views.increase_limit, name='increase_limit'),
-
-    path('account/profile/update/profile-pic', views.update_profile, name='update_profile'),
-    path('account/profile/update/info', views.update_profile_info, name='update_profile_info'),
-
-    path('chat/firebase-messaging-sw.js', serve,
-         {'document_root': 'static', 'path': 'chat/js/firebase-messaging-sw.js', 'show_indexes': True}),
-
-    path("chat/", chat_box, name="chat"),
-    path('chat/profile/<str:username>/', views.chat_profile, name='chat_profile'),
-    path("chat/delete/<str:receiver>/", views.delete_messages, name="delete_messages"),
-    path("chat/load/messages/<str:receiver>/", views.load_messages, name="load_messages"),
-    path("push/register_device/", views.register_device, name='register_device'),
-    path('add/chat/', views.add_chat, name='add_chat'),
-    path('chat/clear/chat/', views.clear_chat, name='clear_chat'),
-    path('chat/remove/chat/', views.remove_chat, name='remove_chat'),
-    path('chat/upload/image/', views.upload_image, name='upload_image'),
 
     # Favicons
     path('android-icon-36x36.png',
