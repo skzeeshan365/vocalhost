@@ -38,19 +38,18 @@ def send_message_to_device(user, title, message, timestamp=None):
             data={
                 "title": title,
                 "message": message,
-                "timestamp": "null"
             },
+            token=device.registration_id,
         )
 
         device.send_message(message=message)
-    except Exception as e:
-        print(e)
+    except Exception:
+        pass
 
 
 def send_pusher_update(message_data, receiver_username):
     message_data = json.dumps(message_data, cls=DjangoJSONEncoder)
     try:
-        # Your Pusher API calls here
         pusher_client.trigger(f'{receiver_username}-channel', f'{receiver_username}-new-message',
                               message_data)
     except PusherError:

@@ -306,6 +306,8 @@
 <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.6/dist/umd/popper.min.js"></script>
 <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
 <script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
+<script src="https://js.pusher.com/8.2.0/pusher.min.js"></script>
+
 <script src="{% static 'chat/js/main_secondary.js' %}"></script>
 
 <script>
@@ -590,6 +592,43 @@
             }
         });
     }
+</script>
+
+<script>
+    Pusher.logToConsole = false;
+
+    var pusher = new Pusher('{{ pusher }}', {
+        cluster: 'ap2'
+    });
+    let userUsername = '{{ request.user.username }}'
+    var channel = pusher.subscribe(`${userUsername}-channel`);
+    channel.bind(`${userUsername}-new-message`, function (data) {
+        let buttonElement = document.querySelector('.add-friend-icon');
+        if (data.type === 'friend_request_accepted') {
+            buttonElement.style.display = 'none';
+            sessionStorage.setItem('return_from_add_person', 'true');
+        } else if (data.type === 'friend_request_added') {
+            buttonElement.innerText = 'Accept';
+            buttonElement.onclick = function () {
+                acceptRequest(data.username);
+            };
+        } else if (data.type === 'remove_friend') {
+            buttonElement.innerText = 'Add';
+            buttonElement.setAttribute('data-status', 'False');
+            buttonElement.style.display = 'block';
+            buttonElement.onclick = function() {
+                addFriend(data.username);
+            };
+
+            let snap_ui_holder = document.getElementById('snap_ui_holder');
+            while (snap_ui_holder.firstChild) {
+                snap_ui_holder.removeChild(snap_ui_holder.firstChild);
+            }
+            let snap_notice = document.createElement('snap-notice');
+            snap_notice.textContent = 'No messages'
+            snap_ui_holder.append(snap_notice);
+        }
+    });
 </script>
 </body>
 </html>

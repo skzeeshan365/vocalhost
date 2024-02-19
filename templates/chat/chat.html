@@ -71,7 +71,7 @@
         <div id="left_bar" class="col-lg-3 col-md-3 col-sm-3 left_bar">
             <!-- Icon in the top right corner -->
             <a href="{% url 'chat_profile' request.user.username %}" id="user_content"
-               style="elevation: 8deg; position: absolute; top: 4px; left: 2%; cursor: pointer; border-radius: 20px; background-color: #000000; overflow: hidden; height: 40px; padding: 5px; display: flex; align-items: center;">
+               style="elevation: 8deg; position: absolute; top: 4px; left: 2%; cursor: pointer; border-radius: 20px; background-color: #444444; overflow: hidden; height: 40px; padding: 5px 10px 5px 5px;display: flex; align-items: center;">
 
                 {% if  request.user.userprofile.image %}
                     <img class="author-thumb" src="{{ request.user.userprofile.image.url }}"
@@ -91,10 +91,16 @@
                 <div style="position: absolute; top: 5px; right: 5%;">
                     <!-- FontAwesome chat icon -->
                     <i class="fas fa-plus-square" style="font-size: 30px; color: #dcdcdc;"></i>
+                    <!-- Bootstrap badge -->
+                    {% if received_requests > 0 %}
+                    <span id="request_badge" class="badge badge-danger" style="position: absolute; top: -5px; right: -10px; border-radius: 50%; background-color: #009dff; elevation: below;">{{ received_requests }}</span>
+                    {% else %}
+                        <span id="request_badge" class="badge badge-danger" style="position: absolute; top: -5px; right: -10px; border-radius: 50%; background-color: #009dff; elevation: below; display: none;">{{ received_requests }}</span>
+                    {% endif %}
                 </div>
             </a>
 
-            <hr style="background-color: #838383; margin-top: 60px; height: 1px;">
+            <hr style="background-color: #464646; margin-top: 60px; height: 1px;">
 
             <ul class="people">
                 {% for user in users %}
@@ -162,6 +168,7 @@
                                 {% endif %}
                             {% endif %}
                         {% else %}
+                            <span class="time" data-timestamp=""></span>
                             <span class="preview">
                                 <img class="status_icon" id="status_icon" style="margin-right: 5px; height: 25px; width: 25px;" src="{% static 'img/status_received_outline.svg' %}" alt="Icon">
                                 Tap to chat</span>
@@ -297,11 +304,11 @@
         </div>
     </div>
 </div>
+
 <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.6/dist/umd/popper.min.js"></script>
 <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
 <script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
-<!-- Add this to your HTML file -->
 <script src="https://js.pusher.com/8.2.0/pusher.min.js"></script>
 
 <!-- VARIABLE DEFINITION -->
@@ -315,6 +322,7 @@
     const icon_received = '{% static 'img/status_received_outline.svg' %}'
     const icon_received_fill = '{% static 'img/status_received.svg' %}'
     const token_status = {{ token_status|yesno:"true,false" }};
+    const default_user_icon = "{% static 'img/user.png' %}";
 </script>
 <!-- VARIABLE DEFINITION -->
 
@@ -329,6 +337,11 @@
 <!-- CUSTOM FILES -->
 
 <script>
+
+</script>
+
+<script>
+    let badge = document.getElementById('request_badge');
     Pusher.logToConsole = false;
 
     var pusher = new Pusher('{{ pusher }}', {
@@ -341,6 +354,17 @@
             update_message_status(STATUS_SEEN, data.sender_username);
         } else if (data.type === 'new_message_background') {
             handleNewMessage(data.sender_username, data.timestamp);
+        } else if (data.type === 'friend_request_accepted') {
+            let n = parseInt(badge.innerText, 10);
+            badge.innerText = `${--n}`;
+        } else if (data.type === 'friend_request_added') {
+            if (badge.innerText === '0') {
+                badge.innerText = '1';
+                badge.style.display = 'block';
+            } else {
+                let n = parseInt(badge.innerText, 10);
+                badge.innerText = `${++n}`;
+            }
         }
     });
 </script>

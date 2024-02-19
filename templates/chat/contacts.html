@@ -170,6 +170,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.6/dist/umd/popper.min.js"></script>
 <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
 <script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
+<script src="https://js.pusher.com/8.2.0/pusher.min.js"></script>
 
 <script>
     function addFriend(username) {
@@ -182,7 +183,7 @@
 
         $.ajax({
             type: 'POST',
-            url: '{% url "send_friend_request" %}',  // Update the URL based on your project's URL structure
+            url: '{% url "send_friend_request" %}',
             data: {'username': username, 'send_request': status},
             dataType: 'json',
             success: function (response) {
@@ -230,6 +231,36 @@
             }
         });
     }
+</script>
+
+<script>
+    Pusher.logToConsole = false;
+
+    var pusher = new Pusher('{{ pusher }}', {
+        cluster: 'ap2'
+    });
+    let userUsername = '{{ request.user.username }}'
+    var channel = pusher.subscribe(`${userUsername}-channel`);
+    channel.bind(`${userUsername}-new-message`, function (data) {
+        let user_list = document.getElementById('user_list');
+        let request_list = document.getElementById('request_list');
+        if (data.type === 'friend_request_accepted') {
+            let personElement = user_list.querySelector(`[data-chat='${data.username}']`);
+            if (personElement) {
+                personElement.remove();
+            }
+        } else if (data.type === 'friend_request_added') {
+            let personElement = user_list.querySelector(`[data-chat='${data.username}']`);
+            if (personElement) {
+                var buttonElement = personElement.querySelector('.add-friend-icon');
+                buttonElement.onclick = function () {
+                    acceptRequest(data.username);
+                }
+                buttonElement.innerText = 'Accept';
+                request_list.insertBefore(personElement, request_list.firstChild);
+            }
+        }
+    });
 </script>
 </body>
 </html>

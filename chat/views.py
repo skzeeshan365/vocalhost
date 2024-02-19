@@ -78,21 +78,29 @@ def chat_box(request):
         else datetime.min.replace(tzinfo=timezone.utc),
         reverse=True
     )
+
+    received_friend_request = FriendRequest.objects.filter(receiver=user).count()
+
     return render(request, "chat/chat.html",
                   {'protocol': protocol,
                    'abcf': settings.FIREBASE_API_KEY,
                    'users': room_messages_info,
                    'storeMessage': user.userprofile.auto_save,
                    'pusher': settings.PUSHER_KEY,
-                   'token_status': token})
+                   'token_status': token,
+                   'received_requests': received_friend_request})
 
 
 def update_message_status(receiver_user, username):
     from django.utils import timezone
-    time = timezone.now()
+    timestamp = timezone.now()
     if get_connected_users().get(receiver_user):
-        new_signal_message.send(sender=Message, message_type='message_status_background', timestamp=time,
-                                sender_username=username)
+        message = {
+            'type': 'message_status_background',
+            'timestamp': timestamp,
+            'sender_username': username
+        }
+        new_signal_message.send(sender=username, receiver_username=receiver_user, message=message)
     else:
         message_data = {
             'type': 'message_status_background',
@@ -205,7 +213,8 @@ def add_chat(request):
     return render(request, "chat/contacts.html",
                   {
                       'requests': pending_received_requests,
-                      'users': users_with_no_requests
+                      'users': users_with_no_requests,
+                      'pusher': settings.PUSHER_KEY,
                   })
 
 
@@ -297,6 +306,15 @@ def remove_chat(request):
                 room = getRoom(user.username, username)
                 if room:
                     room.delete()
+                    message_data = {
+                        'type': 'remove_friend',
+                        'username': user.username,
+                    }
+                    if get_connected_users().get(username):
+                        new_signal_message.send(sender=user.username, receiver_username=username,
+                                                message=message_data)
+                    else:
+                        send_pusher_update(message_data=message_data, receiver_username=username)
                     return JsonResponse({'success': True})
                 else:
                     return JsonResponse({'error': 'Failed to remove chat'})
@@ -325,7 +343,8 @@ def chat_profile(request, username):
                                                          'message_count': count,
                                                          'form': form,
                                                          'user': user.pk,
-                                                         'auto_save': user.userprofile.auto_save})
+                                                         'auto_save': user.userprofile.auto_save,
+                                                         'pusher': settings.PUSHER_KEY})
         else:
             user = User.objects.get(username=username)
             if user:
@@ -357,7 +376,8 @@ def chat_profile(request, username):
                                                              'message_count': count,
                                                              'form': form,
                                                              'user': user.pk,
-                                                             'status': status})
+                                                             'status': status,
+                                                             'pusher': settings.PUSHER_KEY})
             else:
                 raise Http404("User not found")
     except User.DoesNotExist or Message.DoesNotExist or Room.DoesNotExist:

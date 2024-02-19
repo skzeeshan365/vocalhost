@@ -56,14 +56,14 @@ def get_connected_users():
 
 
 def update_message_status(temp, receiver_username, sender_username, receiver, message):
-    time = timezone.now()
-    message_data = {
-        'type': 'new_message_background',
-        'timestamp': time,
-        'sender_username': sender_username,
-        'temp_username': temp.username if temp else None,
-    }
-    send_pusher_update(message_data=message_data, receiver_username=receiver_username)
+    # time = timezone.now()
+    # message_data = {
+    #     'type': 'new_message_background',
+    #     'timestamp': time,
+    #     'sender_username': sender_username,
+    #     'temp_username': temp.username if temp else None,
+    # }
+    # send_pusher_update(message_data=message_data, receiver_username=receiver_username)
     send_message_to_device(receiver, f'{sender_username}: sent a message', message=message)
 
 
@@ -100,21 +100,36 @@ class Message(models.Model):
         return self.receiver.username
 
 
-def update_request(type, sender_username, receiver, title, message):
-    message_data = {
-        'type': type,
-        'sender_username': sender_username,
-    }
-    send_pusher_update(message_data=message_data, receiver_username=receiver.username)
-    send_message_to_device(receiver, title=title, message=message)
-
+def update_request(type, sender, receiver, title, message, accept=False):
+    if accept:
+        if get_connected_users().get(receiver.username):
+            message_data = {
+                'type': type,
+                'username': sender.username,
+                'fullname': sender.get_full_name(),
+                'image_url': sender.userprofile.image.url if sender.userprofile.image else None,
+            }
+            new_signal_message.send(sender=sender.username, receiver_username=receiver.username, message=message_data)
+        else:
+            message_data = {
+                'type': type,
+                'username': sender.username,
+            }
+            send_pusher_update(message_data=message_data, receiver_username=receiver.username)
+            send_message_to_device(receiver, title=title, message=message)
+    else:
+        message_data = {
+            'type': type,
+            'username': sender.username,
+        }
+        send_pusher_update(message_data=message_data, receiver_username=receiver.username)
+        send_message_to_device(receiver, title=title, message=message)
 
 
 class FriendRequest(models.Model):
     DEFAULT = 0
     PENDING = 1
     ACCEPTED = 2
-    REJECTED = 3
 
     STATUS_CHOICES = [
         (PENDING, 'Pending'),
@@ -129,10 +144,9 @@ class FriendRequest(models.Model):
         return f"{self.sender} to {self.receiver}: {self.get_status_display()}"
 
     def save(self, *args, **kwargs):
-        # Call the original save() method
         super().save(*args, **kwargs)
         if self.status == self.ACCEPTED:
-            update_request('friend_request_accepted', sender_username=self.sender.username, receiver=self.receiver, title='Request accepted', message=f'{self.sender.username} has accepted your friend request')
+            update_request('friend_request_accepted', sender=self.receiver, receiver=self.sender, title='Friend request accepted', message=f'{self.receiver.username} has accepted your friend request', accept=True)
 
             room = get_or_create_room(sender_username=self.sender.username, receiver_username=self.receiver.username)
             if not room:
@@ -141,7 +155,7 @@ class FriendRequest(models.Model):
         elif self.status == self.PENDING:
             thread = threading.Thread(target=update_request, args=(
                 'friend_request_added',
-                self.sender.username,
+                self.sender,
                 self.receiver,
                 'New friend request',
                 f'{self.sender.username} has added you on vocalhost chat'

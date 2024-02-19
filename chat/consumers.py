@@ -108,19 +108,15 @@ class ChatConsumer(AsyncWebsocketConsumer):
             await self.close()
 
     async def listen_for_signal_messages(self):
-        async def forward_signal_messages(sender, message_type, timestamp, sender_username, **kwargs):
-            if sender_username != self.sender_username:
-                await self.send(text_data=json.dumps({
-                    'type': message_type,
-                    'timestamp': timestamp,
-                    'sender_username': sender_username
-                }, cls=DjangoJSONEncoder))
+        async def forward_signal_messages(sender, receiver_username, message, **kwargs):
+            if receiver_username == self.sender_username:
+                await self.send(text_data=json.dumps(message, cls=DjangoJSONEncoder))
 
         new_signal_message.connect(forward_signal_messages)
 
     async def disconnect(self, close_code):
         if self.room:
-            await self.set_room_user_status_db(self.sender_username, self.channel_name)
+            await self.set_room_user_status_db(self.sender_username)
         await self.channel_layer.group_send(
             'chat',
             {
@@ -147,8 +143,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
             if type == 'initialize_receiver':
                 receiver_username = text_data_json.get('receiver_username')
-                if receiver_username:
-                    await self.initialize_receiver(receiver_username)
+                await self.initialize_receiver(receiver_username)
             elif type == 'reply_message':
                 # Generate message_id
                 message_id = int(time.time() * 1000)
@@ -462,7 +457,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         }))
 
     async def initialize_receiver(self, receiver_username):
-        if self.room:
+        if self.room and receiver_username:
             await self.set_room_user_status_db(self.sender_username, None)
         if receiver_username:
             self.room = await get_room_db(self.sender_username, receiver_username)
@@ -498,6 +493,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             else:
                 await self.close()
         else:
+            self.room = None
             await self.close()
 
     async def typing_status(self, event):
