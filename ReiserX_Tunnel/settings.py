@@ -19,7 +19,7 @@ CONNECT_KEY = os.getenv('CONNECT_KEY')
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['3.109.62.111', 'vocalhost.reiserx.com', '127.0.0.1', '192.168.0.100']
+ALLOWED_HOSTS = ['localhost', '3.109.62.111', 'vocalhost.reiserx.com', '127.0.0.1', '192.168.0.100']
 
 # Application definition
 

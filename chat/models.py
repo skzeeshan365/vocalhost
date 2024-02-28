@@ -1,4 +1,5 @@
 import hashlib
+import pickle
 import threading
 import uuid
 
@@ -10,6 +11,49 @@ from django.dispatch import Signal
 from django.utils import timezone
 
 from main.Utils import send_message_to_device, send_pusher_update
+
+
+class SenderKeyBundle:
+    def __init__(self, ik_public_key, ek_public_key, DHratchet, username):
+        self.ik_public_key = ik_public_key
+        self.ek_public_key = ek_public_key
+        self.DHratchet = DHratchet
+        self.username = username
+
+    def get_keys(self):
+        return [self.ik_public_key, self.ek_public_key]
+
+
+class ReceiverKeyBundle:
+    def __init__(self, IKb, SPKb, OPKb, DHratchet, username):
+        self.IKb = IKb
+        self.SPKb = SPKb
+        self.OPKb = OPKb
+        self.DHratchet = DHratchet
+        self.username = username
+
+    def get_keys(self):
+        return [self.IKb, self.SPKb, self.OPKb, self.DHratchet]
+
+
+def create_room(sender_username, receiver_username, sender_key_bundle, receiver_key_bundle):
+    combined_usernames_set = frozenset([sender_username, receiver_username])
+    sorted_usernames = sorted(combined_usernames_set)
+
+    room_identifier = hashlib.sha256(str(sorted_usernames).encode()).hexdigest()
+    room = Room(
+        room=room_identifier,
+        sender_username=sorted_usernames[0],
+        receiver_username=sorted_usernames[1]
+    )
+    if sender_key_bundle.username == sorted_usernames[0]:
+        room.set_sender_key_bundle(sender_key_bundle)
+        room.set_receiver_key_bundle(receiver_key_bundle)
+    else:
+        room.set_receiver_key_bundle(sender_key_bundle)
+        room.set_sender_key_bundle(receiver_key_bundle)
+
+    room.save()
 
 
 def get_or_create_room(sender_username, receiver_username):
@@ -35,6 +79,9 @@ class Room(models.Model):
     sender_username = models.CharField(max_length=128, default=None)
     receiver_username = models.CharField(max_length=128, default=None)
 
+    sender_key_bundle = models.BinaryField(default=None, null=True, blank=True)
+    receiver_key_bundle = models.BinaryField(default=None, null=True, blank=True)
+
     def __str__(self):
         return f'{self.room}'
 
@@ -45,6 +92,28 @@ class Room(models.Model):
     def get_last_message(self):
         last_message = Message.objects.filter(room=self).order_by('-timestamp').first()
         return last_message if last_message else None
+
+    def set_sender_key_bundle(self, key_bundle):
+        self.sender_key_bundle = pickle.dumps(key_bundle)
+
+    def get_sender_key_bundle(self):
+        if self.sender_key_bundle:
+            return pickle.loads(self.sender_key_bundle)
+        return None
+
+    def set_receiver_key_bundle(self, key_bundle):
+        self.receiver_key_bundle = pickle.dumps(key_bundle)
+
+    def get_receiver_key_bundle(self):
+        if self.receiver_key_bundle:
+            return pickle.loads(self.receiver_key_bundle)
+        return None
+
+    def get_bundle_key(self, username):
+        if username == self.sender_username:
+            return pickle.loads(self.receiver_key_bundle)
+        else:
+            return pickle.loads(self.sender_key_bundle)
 
 
 new_signal_message = Signal()
@@ -140,6 +209,9 @@ class FriendRequest(models.Model):
     receiver = models.ForeignKey(User, on_delete=models.CASCADE, related_name='receiver')
     status = models.IntegerField(choices=STATUS_CHOICES, default=DEFAULT)
 
+    key_bundle = models.BinaryField(default=None, null=True, blank=True)
+    receiver_key_bundle = models.BinaryField(default=None, null=True, blank=True)
+
     def __str__(self):
         return f"{self.sender} to {self.receiver}: {self.get_status_display()}"
 
@@ -148,9 +220,8 @@ class FriendRequest(models.Model):
         if self.status == self.ACCEPTED:
             update_request('friend_request_accepted', sender=self.receiver, receiver=self.sender, title='Friend request accepted', message=f'{self.receiver.username} has accepted your friend request', accept=True)
 
-            room = get_or_create_room(sender_username=self.sender.username, receiver_username=self.receiver.username)
-            if not room:
-                raise Exception("Error creating room")
+            create_room(sender_username=self.sender.username, receiver_username=self.receiver.username, sender_key_bundle=self.get_key_bundle(), receiver_key_bundle=self.get_receiver_key_bundle())
+
             self.delete()
         elif self.status == self.PENDING:
             thread = threading.Thread(target=update_request, args=(
@@ -161,3 +232,19 @@ class FriendRequest(models.Model):
                 f'{self.sender.username} has added you on vocalhost chat'
             ))
             thread.start()
+
+    def set_key_bundle(self, key_bundle):
+        self.key_bundle = pickle.dumps(key_bundle)
+
+    def get_key_bundle(self):
+        if self.key_bundle:
+            return pickle.loads(self.key_bundle)
+        return None
+
+    def set_receiver_key_bundle(self, key_bundle):
+        self.receiver_key_bundle = pickle.dumps(key_bundle)
+
+    def get_receiver_key_bundle(self):
+        if self.receiver_key_bundle:
+            return pickle.loads(self.receiver_key_bundle)
+        return None

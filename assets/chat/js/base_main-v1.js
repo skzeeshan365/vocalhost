@@ -327,7 +327,7 @@ function handleNewMessage(username, timestamp, background = true) {
     }
 }
 
-function update_message_status(seen, username, previous=true) {
+function update_message_status(seen, username, previous = true) {
     var personElement = document.querySelector(`[data-chat='${username}']`);
     if (personElement) {
         var previewElement = personElement.querySelector('.preview');
@@ -392,9 +392,25 @@ let bytes_webpBlob = null;
 let bytes_message = null;
 let sent_reply_id = null;
 
+let sender = null;
+let receiver = null;
+
 function close_chat() {
     document.getElementById('chat_parent_container').style.display = 'none';
     document.getElementById('left_bar').style.display = 'block';
+}
+
+function close_all_chats() {
+    var snapUiContainer = document.getElementById('snap-ui-container');
+    while (snapUiContainer.firstChild) {
+        snapUiContainer.removeChild(snapUiContainer.firstChild);
+    }
+    document.getElementById('container_image').style.display = 'flex';
+    resetActiveness();
+    var inputBoxContainer = document.getElementById('input-box-container');
+    inputBoxContainer.style.display = 'none';
+    var header_content = document.getElementById('header_content');
+    header_content.style.display = 'none';
 }
 
 function preloaderStart() {
@@ -459,6 +475,9 @@ function load_chat(userName) {
                 // Handle the received messages
                 var messages = JSON.parse(response.data);
                 load_chat_message(messages);
+                (async () => {
+                    await initialize_keys(userName, response.keys);
+                })();
             } else {
                 console.error('Error loading messages:', response.message);
             }
@@ -635,33 +654,33 @@ document.addEventListener('DOMContentLoaded', function () {
 
     const messageInput = document.getElementById('input');
     let isTyping = false;
-let debounceTimeout;
+    let debounceTimeout;
 
-messageInput.addEventListener('input', function () {
-    clearTimeout(debounceTimeout);
+    messageInput.addEventListener('input', function () {
+        clearTimeout(debounceTimeout);
 
-    if (!isTyping) {
-        // User started typing
-        isTyping = true;
-        if (isWebSocketReady(chatSocket)) {
-            chatSocket.send(JSON.stringify({
-                'type': 'typing_status',
-                'typing': true
-            }));
+        if (!isTyping) {
+            // User started typing
+            isTyping = true;
+            if (isWebSocketReady(chatSocket)) {
+                chatSocket.send(JSON.stringify({
+                    'type': 'typing_status',
+                    'typing': true
+                }));
+            }
         }
-    }
 
-    debounceTimeout = setTimeout(function () {
-        // User stopped typing
-        isTyping = false;
-        if (isWebSocketReady(chatSocket)) {
-            chatSocket.send(JSON.stringify({
-                'type': 'typing_status',
-                'typing': false
-            }));
-        }
-    }, 500);
-});
+        debounceTimeout = setTimeout(function () {
+            // User stopped typing
+            isTyping = false;
+            if (isWebSocketReady(chatSocket)) {
+                chatSocket.send(JSON.stringify({
+                    'type': 'typing_status',
+                    'typing': false
+                }));
+            }
+        }, 500);
+    });
 });
 
 
@@ -705,6 +724,38 @@ function getMessageContentByID(message_id) {
             .join('')
     } else {
         return null;
+    }
+}
+
+function insert_new_user(username, fullname, timestamp, img_src) {
+    var userList = document.querySelector('.people');
+
+    var newListElement = document.createElement('li');
+    newListElement.className = 'person context-menu-trigger';
+    newListElement.setAttribute('data-chat', username);  // Set default chat username
+    newListElement.onclick = function () {
+        load_chat(username);
+    };
+    newListElement.innerHTML = `
+            <!-- Add your default values here -->
+            <img class="users_profile_pic" src="${img_src}" alt="Profile picture"/>
+            <span class="name">${fullname}</span>
+            <span class="time">${timestamp}</span>
+            <span class="preview">
+                <img class="status_icon" id="status_icon" style="margin-right: 5px; height: 25px; width: 25px;" src="${icon_received}" alt="Icon">
+                Tap to chat
+            </span>
+            <!-- End default values -->
+        `;
+    newListElement.setAttribute('data-timestamp', timestamp);  // Set default timestamp to empty string
+
+    userList.insertBefore(newListElement, userList.firstChild);
+}
+
+function remove_user(username) {
+    let personElement = document.querySelector(`[data-chat='${username}']`);
+    if (personElement) {
+        personElement.remove();
     }
 }
 
@@ -854,7 +905,29 @@ function initialize_socket() {
             } else if (data.type === 'message_status_background') {
                 update_message_status(STATUS_SEEN, data.sender_username);
             } else if (data.type === 'typing_status') {
-                    update_typing_status(data.sender_username, data.typing);
+                update_typing_status(data.sender_username, data.typing);
+            } else if (data.type === 'friend_request_accepted') {
+                let img;
+                let fullname;
+                if (data.image_url) {
+                    img = data.image_url
+                } else {
+                    img = default_user_icon
+                }
+
+                if (data.fullname !== '') {
+                    fullname = data.fullname
+                } else {
+                    fullname = data.username
+                }
+                var currentTime = new Date();
+                let timestamp = getFormattedTime(currentTime)
+                insert_new_user(data.username, fullname, timestamp, img)
+            } else if (data.type === 'remove_friend') {
+                if (data.username === getActivePerson()) {
+                    close_all_chats();
+                }
+                remove_user(data.username);
             } else {
                 if (data.sender_username === getActivePerson()) {
                     // Determine if the message is sent or received based on the sender
@@ -951,7 +1024,8 @@ const sendMessage = function () {
                     var imageElement = document.getElementById('selectedImage');
                     imageElement.style.display = 'none';
 
-                    handleNewMessage(getActivePerson(), message_id, false);
+                    let current_time = new Date();
+                    handleNewMessage(getActivePerson(), current_time, false);
                     update_message_status(STATUS_DELIVERED, getActivePerson());
                 }, 'image/webp', 0.7); // Adjust quality as needed
             };
@@ -1018,10 +1092,19 @@ const updateSentMessage = function (message, message_id, reply_id = null) {
     update_message_status(STATUS_DELIVERED, getActivePerson());
 }
 
-function getFormattedTime(timestamp) {
-    if (timestamp) {
-        const date = new Date(timestamp);
-        return date.toLocaleTimeString('en-US', {hour: 'numeric', minute: 'numeric', hour12: true});
+function getFormattedTime(timestampOrDateString) {
+    if (timestampOrDateString !== undefined && timestampOrDateString !== null) {
+        const timestamp = Number(timestampOrDateString);
+
+        if (!isNaN(timestamp)) {
+            const date = new Date(timestamp);
+            return date.toLocaleTimeString('en-US', {hour: 'numeric', minute: 'numeric', hour12: true});
+        } else {
+            // It's a date string
+            return timestampOrDateString;
+        }
+    } else {
+        return 'Invalid Date';
     }
 }
 
@@ -1314,6 +1397,12 @@ function remove_chat(username) {
         success: function (data) {
             if (data.success) {
                 trigger_global.remove();
+                if (isWebSocketReady()) {
+                    chatSocket.send(JSON.stringify({
+                        'type': 'initialize_receiver',
+                        'receiver_username': null,
+                    }));
+                }
             } else {
                 console.log(data.error)
             }
@@ -1354,4 +1443,126 @@ function update_typing_status(username, typing) {
         }
     }
     heading_name.appendChild(newUserStatusSpan);
+}
+
+// Section: RetrieveKeys
+async function retrieveAndImportKeys(username) {
+    let roomData = JSON.parse(localStorage.getItem(username));
+
+    if (roomData && roomData.type && roomData.private_keys) {
+        if (roomData.type === 'sender') {
+            let ikPrivateKeyData = base64StringToArrayBuffer(roomData.private_keys.ikPrivateKeyData);
+            let ekPrivateKeyData = base64StringToArrayBuffer(roomData.private_keys.ekPrivateKeyData);
+
+            let importedIkPrivateKey = await crypto.subtle.importKey(
+                'raw',
+                ikPrivateKeyData,
+                {name: 'HKDF'},
+                false,
+                ['deriveKey']
+            );
+            let importedEkPrivateKey = await crypto.subtle.importKey(
+                'raw',
+                ekPrivateKeyData,
+                {name: 'HKDF'},
+                false,
+                ['deriveKey']
+            );
+
+            return {
+                ikPrivateKey: importedIkPrivateKey,
+                ekPrivateKey: importedEkPrivateKey
+            };
+        } else if (roomData.type === 'receiver') {
+            let ikPrivateKey = base64StringToArrayBuffer(roomData.private_keys.ikPrivateKey);
+            let spkPrivateKey = base64StringToArrayBuffer(roomData.private_keys.spkPrivateKey);
+            let opkPrivateKey = base64StringToArrayBuffer(roomData.private_keys.opkPrivateKey);
+            let dhratchet_key = base64StringToArrayBuffer(roomData.private_keys.dhratchet_key);
+
+            let importedIkPrivateKey = await crypto.subtle.importKey(
+                'raw',
+                ikPrivateKey,
+                {name: 'HKDF'},
+                false,
+                ['deriveKey']
+            );
+            let importedSPKPrivateKey = await crypto.subtle.importKey(
+                'raw',
+                spkPrivateKey,
+                {name: 'HKDF'},
+                false,
+                ['deriveKey']
+            );
+
+            let importedOPKPrivateKey = await crypto.subtle.importKey(
+                'raw',
+                opkPrivateKey,
+                {name: 'HKDF'},
+                false,
+                ['deriveKey']
+            );
+            let importedDHRatchetKey = await crypto.subtle.importKey(
+                'raw',
+                dhratchet_key,
+                {name: 'HKDF'},
+                false,
+                ['deriveKey']
+            );
+
+            return {
+                ikPrivateKey: importedIkPrivateKey,
+                spkPrivateKey: importedSPKPrivateKey,
+                opkPrivateKey: importedOPKPrivateKey,
+                dhRatchetPrivateKey: importedDHRatchetKey
+            };
+        }
+    } else {
+        console.log('No keys found for this username');
+        return null;
+    }
+}
+
+function base64StringToArrayBuffer(base64) {
+    let binaryString = window.atob(base64);
+    let len = binaryString.length;
+    let bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+    }
+    return bytes.buffer;
+}
+
+async function import_public_keys(keys) {
+    console.log(keys[0]);
+    let key = base64StringToArrayBuffer(keys[0]);
+    console.log(key);
+    let ikpublic_key = await crypto.subtle.importKey(
+        'spki',
+        key,
+        {name: 'ECDH', namedCurve: 'P-256'},
+        true,
+        []
+    );
+    console.log(ikpublic_key);
+}
+
+async function initialize_keys(username, keys) {
+    let roomData = JSON.parse(localStorage.getItem(username));
+
+    if (roomData && roomData.type && roomData.private_keys) {
+        if (roomData.type === 'sender') {
+             sender = new Alice(username);
+             await sender.retrieveAndImportKeys();
+             await sender.x3dh(keys);
+             await sender.initRatchets();
+        } else if (roomData.type === 'receiver') {
+            receiver = new Bob(username);
+            await receiver.retrieveAndImportKeys();
+            await receiver.x3dh(keys);
+            await receiver.initRatchets();
+        }
+    } else {
+        console.log('No keys found for this username');
+        return null;
+    }
 }

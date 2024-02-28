@@ -1,3 +1,4 @@
+import base64
 import hashlib
 import json
 import threading
@@ -5,6 +6,10 @@ import time
 from datetime import datetime, timezone
 
 from cloudinary import uploader
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.core.serializers.json import DjangoJSONEncoder
@@ -12,12 +17,15 @@ from django.http import HttpResponse, JsonResponse, Http404
 from django.shortcuts import render, redirect
 from django.template.loader import render_to_string
 from fcm_django.models import FCMDevice
+from jwcrypto import jwk
 
 from ReiserX_Tunnel import settings
+from chat.utils import format_key
 from main.Utils import send_pusher_update
 from chat.consumers import getRoom
 from main.forms import ImageUploadForm
-from chat.models import Message, Room, get_connected_users, new_signal_message, FriendRequest
+from chat.models import Message, Room, get_connected_users, new_signal_message, FriendRequest, SenderKeyBundle, \
+    ReceiverKeyBundle
 
 
 @login_required(login_url='/account/login/')
@@ -110,6 +118,22 @@ def update_message_status(receiver_user, username):
         send_pusher_update(message_data=message_data, receiver_username=receiver_user)
 
 
+def extract_public_keys_from_bundle(key_bundle):
+    ik_public_key = key_bundle.ik_public_key
+    ek_public_key = key_bundle.ek_public_key
+    spk_public_key = key_bundle.spk_public_key
+    opk_public_key = key_bundle.opk_public_key
+    dhratchet_public_key = key_bundle.dhratchet_public_key
+
+    return ik_public_key, ek_public_key, spk_public_key, opk_public_key, dhratchet_public_key
+
+def extract_public_keys_from_bundle_sender(key_bundle):
+    ik_public_key = key_bundle.ik_public_key
+    ek_public_key = key_bundle.ek_public_key
+
+    return ik_public_key, ek_public_key
+
+
 @login_required(login_url='/account/login/')
 def load_messages(request, receiver):
     if request.method == 'POST':
@@ -121,6 +145,9 @@ def load_messages(request, receiver):
         room = hashlib.sha256(str(sorted_usernames).encode()).hexdigest()
         room = Room.objects.filter(room=room).first()
         if room:
+            bundle = room.get_bundle_key(username=receiver_user)
+            keys = bundle.get_keys()
+
             messages_db = Message.objects.filter(room=room)
             messages = list(
                 messages_db.values('message', 'sender__username', 'message_id', 'reply_id',
@@ -134,8 +161,9 @@ def load_messages(request, receiver):
                 thread.start()
         else:
             messages = []
+            keys = None
         messages = json.dumps(messages, cls=DjangoJSONEncoder)
-        return JsonResponse({'status': 'success', 'data': messages})
+        return JsonResponse({'status': 'success', 'data': messages, 'keys': format_key(keys)})
     else:
         return JsonResponse({'status': 'error', 'message': 'Invalid request'})
 
@@ -243,9 +271,73 @@ def send_friend_request(request):
             if existing_request.exists():
                 return JsonResponse({'status': 'error', 'message': 'Friend request already sent'}, status=400)
 
-            friend_request = FriendRequest(sender=request.user, receiver=friend_user, status=FriendRequest.PENDING)
+            ik_private_key = ec.generate_private_key(ec.SECP256R1(), default_backend())
+            ek_private_key = ec.generate_private_key(ec.SECP256R1(), default_backend())
+            dhratchet_private_key = ec.generate_private_key(ec.SECP256R1(), default_backend())
+
+            # Get the corresponding public keys as bytes
+            ik_public_key_bytes = ik_private_key.public_key().public_bytes(
+                encoding=serialization.Encoding.DER,
+                format=serialization.PublicFormat.SubjectPublicKeyInfo
+            )
+
+            ek_public_key_bytes = ek_private_key.public_key().public_bytes(
+                encoding=serialization.Encoding.DER,
+                format=serialization.PublicFormat.SubjectPublicKeyInfo
+            )
+
+            dhratchet_public_key_bytes = dhratchet_private_key.public_key().public_bytes(
+                encoding=serialization.Encoding.DER,
+                format=serialization.PublicFormat.SubjectPublicKeyInfo
+            )
+
+            friend_request = FriendRequest(sender=request.user,
+                                           receiver=friend_user,
+                                           status=FriendRequest.PENDING)
+            key_bundle = SenderKeyBundle(
+                ik_public_key=ik_public_key_bytes,
+                ek_public_key=ek_public_key_bytes,
+                DHratchet= dhratchet_public_key_bytes,
+                username=username,
+            )
+            friend_request.set_key_bundle(key_bundle=key_bundle)
             friend_request.save()
-            return JsonResponse({'status': 'success', 'request_status': True})
+
+            # Serialize keys to PEM format
+            ik_private_key_pem = ik_private_key.private_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PrivateFormat.PKCS8,
+                encryption_algorithm=serialization.NoEncryption()
+            )
+
+            ek_private_key_pem = ek_private_key.private_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PrivateFormat.PKCS8,
+                encryption_algorithm=serialization.NoEncryption()
+            )
+
+            dhratchet_private_key_pem = dhratchet_private_key.private_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PrivateFormat.PKCS8,
+                encryption_algorithm=serialization.NoEncryption()
+            )
+
+            ik_key = jwk.JWK.from_pem(ik_private_key_pem)
+            ik_jwk_key = ik_key.export()
+
+            ek_key = jwk.JWK.from_pem(ek_private_key_pem)
+            ek_jwk_key = ek_key.export()
+
+            dhratchet_key = jwk.JWK.from_pem(dhratchet_private_key_pem)
+            dhratchet_jwk_key = dhratchet_key.export()
+
+            private_keys = {
+                'ik_private_key': ik_jwk_key,
+                'ek_private_key': ek_jwk_key,
+                'dhratchet_private_key': dhratchet_jwk_key
+            }
+
+            return JsonResponse({'status': 'success', 'request_status': True, 'private_keys': private_keys})
 
     return JsonResponse({'status': 'error', 'message': 'Invalid request method'}, status=405)
 
@@ -268,10 +360,86 @@ def accept_friend_request(request):
             return JsonResponse({'status': 'error', 'message': 'Friend request not found or already accepted'},
                                 status=404)
 
+        ik_private_key = ec.generate_private_key(ec.SECP256R1(), default_backend())
+        spk_private_key = ec.generate_private_key(ec.SECP256R1(), default_backend())
+        opk_private_key = ec.generate_private_key(ec.SECP256R1(), default_backend())
+        dhratchet_private_key = ec.generate_private_key(ec.SECP256R1(), default_backend())
+
+        # Get the corresponding public keys as bytes
+        ik_public_key_bytes = ik_private_key.public_key().public_bytes(
+            encoding=serialization.Encoding.DER,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo
+        )
+        spk_public_key_bytes = spk_private_key.public_key().public_bytes(
+            encoding=serialization.Encoding.DER,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo
+        )
+        opk_public_key_bytes = opk_private_key.public_key().public_bytes(
+            encoding=serialization.Encoding.DER,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo
+        )
+        dhratchet_public_key_bytes = dhratchet_private_key.public_key().public_bytes(
+            encoding=serialization.Encoding.DER,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo
+        )
+
         friend_request.status = FriendRequest.ACCEPTED
+
+        key_bundle = ReceiverKeyBundle(
+            IKb=ik_public_key_bytes,
+            SPKb=spk_public_key_bytes,
+            OPKb=opk_public_key_bytes,
+            DHratchet=dhratchet_public_key_bytes,
+            username=username,
+        )
+        friend_request.set_receiver_key_bundle(key_bundle=key_bundle)
         friend_request.save()
 
-        return JsonResponse({'status': 'success', 'message': 'Friend request accepted'})
+        # Serialize keys to PEM format
+        ik_private_key_pem = ik_private_key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption()
+        )
+
+        spk_private_key_pem = spk_private_key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption()
+        )
+
+        opk_private_key_pem = opk_private_key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption()
+        )
+
+        dhratchet_private_key_pem = dhratchet_private_key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption()
+        )
+
+        ik_key = jwk.JWK.from_pem(ik_private_key_pem)
+        ik_jwk_key = ik_key.export()
+
+        spk_key = jwk.JWK.from_pem(spk_private_key_pem)
+        spk_jwk_key = spk_key.export()
+
+        opk_key = jwk.JWK.from_pem(opk_private_key_pem)
+        opk_jwk_key = opk_key.export()
+
+        ratchet_key = jwk.JWK.from_pem(dhratchet_private_key_pem)
+        ratchet_jwk_key = ratchet_key.export()
+
+        private_keys = {
+            'ik_private_key': ik_jwk_key,
+            'spk_private_key': spk_jwk_key,
+            'opk_private_key': opk_jwk_key,
+            'dhratchet_private_key': ratchet_jwk_key
+        }
+
+        return JsonResponse({'status': 'success', 'message': 'Friend request accepted', 'private_keys': private_keys})
 
     return JsonResponse({'status': 'error', 'message': 'Invalid request method'}, status=405)
 
