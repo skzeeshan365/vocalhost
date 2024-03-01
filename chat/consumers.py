@@ -188,6 +188,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
             elif type == 'message':
                 # Generate message_id
                 message_id = int(time.time() * 1000)
+                encrypted = text_data_json.get('encrypted')
+                key = text_data_json.get('key')
+                await self.update_public_key_db(self.sender_username, key)
                 if channel_active:
                     await self.channel_layer.send(
                         channel_name,
@@ -196,6 +199,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
                             "message": message,
                             "message_id": message_id,
                             "sender_username": self.sender_username,
+                            'encrypted': encrypted,
+                            'key': key
                         },
                     )
                     if storeMessage:
@@ -355,6 +360,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
         message = event["message"]
         message_id = event['message_id']
         reply_id = event.get('reply_id', None)
+
+        encrypted_message = event.get('encrypted')
+        key = event.get('key')
+
         if reply_id:
             await self.send(
                 text_data=json.dumps(
@@ -373,6 +382,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
                         "message": message,
                         'message_id': message_id,
                         "sender_username": sender_username,
+                        'encrypted': encrypted_message,
+                        'key': key
                     }
                 )
             )
@@ -499,8 +510,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
     async def typing_status(self, event):
         typing = event.get('typing')
         sender_username = event.get('sender_username')
-
-        print(f'{sender_username}: {typing}')
 
         await self.send(text_data=json.dumps({
             'type': 'typing_status',
@@ -632,12 +641,26 @@ class ChatConsumer(AsyncWebsocketConsumer):
             thread = threading.Thread(target=self.delete_messages_data,
                                       args=(self.receiver_username, self.sender_username, self.room, self.sender))
             thread.start()
-        if self.room.sender_username == username:
-            self.room.sender_channel = channel
-            self.room.save()
-        elif self.room.receiver_username == username:
-            self.room.receiver_channel = channel
-            self.room.save()
+        try:
+            room = Room.objects.get(room=self.room.room)
+            if self.room.sender_username == username:
+                room.sender_channel = channel
+                room.save()
+            elif self.room.receiver_username == username:
+                room.receiver_channel = channel
+                room.save()
+        except Room.DoesNotExist:
+            pass
+
+    @database_sync_to_async
+    def update_public_key_db(self, username=None, public_key=None):
+        if self.room and username and public_key:
+            try:
+                room = Room.objects.get(room=self.room.room)
+                room.set_ratchet_key(username, public_key)
+                room.save()
+            except Room.DoesNotExist:
+                pass
 
     @staticmethod
     def get_channel_name(username):

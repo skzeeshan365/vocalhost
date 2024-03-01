@@ -1,39 +1,102 @@
+import base64
+import binascii
+import copy
 import hashlib
+import json
 import pickle
 import threading
-import uuid
 
-from channels.db import database_sync_to_async
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import ec
 from django.contrib.auth.models import User
-from django.core.validators import MaxValueValidator
 from django.db import models
 from django.dispatch import Signal
-from django.utils import timezone
 
 from main.Utils import send_message_to_device, send_pusher_update
 
 
 class SenderKeyBundle:
-    def __init__(self, ik_public_key, ek_public_key, DHratchet, username):
+    def __init__(self, ik_public_key, ek_public_key, DHratchet, isNew, username):
         self.ik_public_key = ik_public_key
         self.ek_public_key = ek_public_key
         self.DHratchet = DHratchet
         self.username = username
+        self.isNew = isNew
 
     def get_keys(self):
         return [self.ik_public_key, self.ek_public_key]
 
+    def get_type(self):
+        return 'sender'
+
+    def get_new(self):
+        return self.isNew
+
+    def set_new(self, new):
+        self.isNew = new
+
+    def to_dict(self):
+        return {
+            'ik_public_key': self.ik_public_key,
+            'ek_public_key': self.ek_public_key,
+            'DHratchet': self.DHratchet,
+            'username': self.username,
+            'isNew': self.isNew,
+        }
+
+    @classmethod
+    def from_dict(cls, data):
+        return cls(
+            ik_public_key=data['ik_public_key'],
+            ek_public_key=data['ek_public_key'],
+            DHratchet=data['DHratchet'],
+            username=data['username'],
+            isNew=data['isNew'],
+        )
+
 
 class ReceiverKeyBundle:
-    def __init__(self, IKb, SPKb, OPKb, DHratchet, username):
+    def __init__(self, IKb, SPKb, OPKb, DHratchet, isNew, username):
         self.IKb = IKb
         self.SPKb = SPKb
         self.OPKb = OPKb
         self.DHratchet = DHratchet
         self.username = username
+        self.isNew = isNew
 
     def get_keys(self):
-        return [self.IKb, self.SPKb, self.OPKb, self.DHratchet]
+        return [self.IKb, self.SPKb, self.OPKb]
+
+    def get_type(self):
+        return 'receiver'
+
+    def get_new(self):
+        return self.isNew
+
+    def set_new(self, new):
+        self.isNew = new
+
+    def to_dict(self):
+        return {
+            'IKb': self.IKb,
+            'SPKb': self.SPKb,
+            'OPKb': self.OPKb,
+            'DHratchet': self.DHratchet,
+            'username': self.username,
+            'isNew': self.isNew,
+        }
+
+    @classmethod
+    def from_dict(cls, data):
+        return cls(
+            IKb=data['IKb'],
+            SPKb=data['SPKb'],
+            OPKb=data['OPKb'],
+            DHratchet=data['DHratchet'],
+            username=data['username'],
+            isNew=data['isNew'],
+        )
 
 
 def create_room(sender_username, receiver_username, sender_key_bundle, receiver_key_bundle):
@@ -46,13 +109,18 @@ def create_room(sender_username, receiver_username, sender_key_bundle, receiver_
         sender_username=sorted_usernames[0],
         receiver_username=sorted_usernames[1]
     )
-    if sender_key_bundle.username == sorted_usernames[0]:
+    if sender_username == sorted_usernames[0]:
         room.set_sender_key_bundle(sender_key_bundle)
         room.set_receiver_key_bundle(receiver_key_bundle)
+
+        room.sender_ratchet = base64.b64decode(sender_key_bundle.DHratchet)
+        room.receiver_ratchet = base64.b64decode(receiver_key_bundle.DHratchet)
     else:
         room.set_receiver_key_bundle(sender_key_bundle)
         room.set_sender_key_bundle(receiver_key_bundle)
 
+        room.receiver_ratchet = base64.b64decode(sender_key_bundle.DHratchet)
+        room.sender_ratchet = base64.b64decode(receiver_key_bundle.DHratchet)
     room.save()
 
 
@@ -79,8 +147,11 @@ class Room(models.Model):
     sender_username = models.CharField(max_length=128, default=None)
     receiver_username = models.CharField(max_length=128, default=None)
 
-    sender_key_bundle = models.BinaryField(default=None, null=True, blank=True)
-    receiver_key_bundle = models.BinaryField(default=None, null=True, blank=True)
+    sender_key_bundle = models.JSONField(default=dict, blank=True, null=True)
+    receiver_key_bundle = models.JSONField(default=dict, blank=True, null=True)
+
+    sender_ratchet = models.BinaryField(default=None, null=True, blank=True)
+    receiver_ratchet = models.BinaryField(default=None, null=True, blank=True)
 
     def __str__(self):
         return f'{self.room}'
@@ -94,26 +165,83 @@ class Room(models.Model):
         return last_message if last_message else None
 
     def set_sender_key_bundle(self, key_bundle):
-        self.sender_key_bundle = pickle.dumps(key_bundle)
-
-    def get_sender_key_bundle(self):
-        if self.sender_key_bundle:
-            return pickle.loads(self.sender_key_bundle)
-        return None
+        self.sender_key_bundle = key_bundle.to_dict()
 
     def set_receiver_key_bundle(self, key_bundle):
-        self.receiver_key_bundle = pickle.dumps(key_bundle)
+        self.receiver_key_bundle = key_bundle.to_dict()
+
+    def get_sender_key_bundle(self):
+        return SenderKeyBundle.from_dict(self.sender_key_bundle) if self.sender_key_bundle else None
 
     def get_receiver_key_bundle(self):
-        if self.receiver_key_bundle:
-            return pickle.loads(self.receiver_key_bundle)
-        return None
+        return ReceiverKeyBundle.from_dict(self.receiver_key_bundle) if self.receiver_key_bundle else None
 
     def get_bundle_key(self, username):
         if username == self.sender_username:
-            return pickle.loads(self.receiver_key_bundle)
+            if self.sender_key_bundle.get('ik_public_key', False):
+                old_bundle = SenderKeyBundle.from_dict(self.sender_key_bundle)
+            else:
+                old_bundle = ReceiverKeyBundle.from_dict(self.sender_key_bundle)
+            if old_bundle.get_new():
+                old_bundle.set_new(False)
+                self.sender_key_bundle = old_bundle.to_dict()
+                self.save()
+                old_bundle.set_new(True)
         else:
-            return pickle.loads(self.sender_key_bundle)
+            if self.receiver_key_bundle.get('ik_public_key', False):
+                old_bundle = SenderKeyBundle.from_dict(self.receiver_key_bundle)
+            else:
+                old_bundle = ReceiverKeyBundle.from_dict(self.receiver_key_bundle)
+            if old_bundle.get_new():
+                old_bundle.set_new(False)
+                self.receiver_key_bundle = old_bundle.to_dict()
+                self.save()
+                old_bundle.set_new(True)
+
+        return old_bundle
+
+    def get_ratchet_key(self, username):
+        if username == self.sender_username:
+            return self.sender_ratchet
+        else:
+            return self.receiver_ratchet
+
+    def set_sender_ratchet_key(self, key):
+        self.sender_ratchet = key
+
+    def set_receiver_ratchet_key(self, key):
+        self.receiver_ratchet = key
+
+    def set_ratchet_key(self, username, ratchet_key):
+        try:
+            decoded_key_bytes = base64.urlsafe_b64decode(ratchet_key)
+            decoded_key_str = decoded_key_bytes.decode('utf-8')
+
+            # Deserialize JWK string
+            jwk = json.loads(decoded_key_str)
+
+            x_bytes = base64.urlsafe_b64decode(jwk['x'] + '==')
+            y_bytes = base64.urlsafe_b64decode(jwk['y'] + '==')
+
+            # Use the elliptic curve public key method
+            public_key = ec.EllipticCurvePublicNumbers(
+                x=int.from_bytes(x_bytes, 'big'),
+                y=int.from_bytes(y_bytes, 'big'),
+                curve=ec.SECP256R1()  # Adjust the curve as needed
+            ).public_key(default_backend())
+
+            # Get the public key in bytes (DER format)
+            public_key_bytes = public_key.public_bytes(
+                encoding=serialization.Encoding.DER,
+                format=serialization.PublicFormat.SubjectPublicKeyInfo
+            )
+
+            if username == self.sender_username:
+                self.sender_ratchet = public_key_bytes
+            else:
+                self.receiver_ratchet = public_key_bytes
+        except binascii.Error as e:
+            print(f"Error decoding Base64: {e}")
 
 
 new_signal_message = Signal()
@@ -209,8 +337,8 @@ class FriendRequest(models.Model):
     receiver = models.ForeignKey(User, on_delete=models.CASCADE, related_name='receiver')
     status = models.IntegerField(choices=STATUS_CHOICES, default=DEFAULT)
 
-    key_bundle = models.BinaryField(default=None, null=True, blank=True)
-    receiver_key_bundle = models.BinaryField(default=None, null=True, blank=True)
+    key_bundle = models.JSONField(default=dict, blank=True, null=True)
+    receiver_key_bundle = models.JSONField(default=dict, blank=True, null=True)
 
     def __str__(self):
         return f"{self.sender} to {self.receiver}: {self.get_status_display()}"
@@ -218,9 +346,12 @@ class FriendRequest(models.Model):
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
         if self.status == self.ACCEPTED:
-            update_request('friend_request_accepted', sender=self.receiver, receiver=self.sender, title='Friend request accepted', message=f'{self.receiver.username} has accepted your friend request', accept=True)
+            update_request('friend_request_accepted', sender=self.receiver, receiver=self.sender,
+                           title='Friend request accepted',
+                           message=f'{self.receiver.username} has accepted your friend request', accept=True)
 
-            create_room(sender_username=self.sender.username, receiver_username=self.receiver.username, sender_key_bundle=self.get_key_bundle(), receiver_key_bundle=self.get_receiver_key_bundle())
+            create_room(sender_username=self.sender.username, receiver_username=self.receiver.username,
+                        sender_key_bundle=self.get_key_bundle(), receiver_key_bundle=self.get_receiver_key_bundle())
 
             self.delete()
         elif self.status == self.PENDING:
@@ -234,17 +365,13 @@ class FriendRequest(models.Model):
             thread.start()
 
     def set_key_bundle(self, key_bundle):
-        self.key_bundle = pickle.dumps(key_bundle)
+        self.key_bundle = key_bundle.to_dict()
 
     def get_key_bundle(self):
-        if self.key_bundle:
-            return pickle.loads(self.key_bundle)
-        return None
+        return SenderKeyBundle.from_dict(self.key_bundle) if self.key_bundle else None
 
     def set_receiver_key_bundle(self, key_bundle):
-        self.receiver_key_bundle = pickle.dumps(key_bundle)
+        self.receiver_key_bundle = key_bundle.to_dict()
 
     def get_receiver_key_bundle(self):
-        if self.receiver_key_bundle:
-            return pickle.loads(self.receiver_key_bundle)
-        return None
+        return ReceiverKeyBundle.from_dict(self.receiver_key_bundle) if self.receiver_key_bundle else None

@@ -48,6 +48,8 @@ def send_message_to_device(user, title, message, timestamp=None):
 
 
 def send_pusher_update(message_data, receiver_username):
+    print(message_data)
+    print(receiver_username)
     message_data = json.dumps(message_data, cls=DjangoJSONEncoder)
     try:
         pusher_client.trigger(f'{receiver_username}-channel', f'{receiver_username}-new-message',

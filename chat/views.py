@@ -20,7 +20,7 @@ from fcm_django.models import FCMDevice
 from jwcrypto import jwk
 
 from ReiserX_Tunnel import settings
-from chat.utils import format_key
+from chat.utils import format_key, format_keys, generate_sender_keys, generate_receiver_keys
 from main.Utils import send_pusher_update
 from chat.consumers import getRoom
 from main.forms import ImageUploadForm
@@ -139,6 +139,10 @@ def load_messages(request, receiver):
     if request.method == 'POST':
         user = request.user
         receiver_user = receiver
+
+        data = json.loads(request.body)
+        generate_keys = data.get('generate_keys')
+
         combined_usernames_set = frozenset([user.username, receiver_user])
         sorted_usernames = sorted(combined_usernames_set)
 
@@ -147,6 +151,17 @@ def load_messages(request, receiver):
         if room:
             bundle = room.get_bundle_key(username=receiver_user)
             keys = bundle.get_keys()
+            isNew = bundle.get_new()
+            ratchet_public_key = format_key(room.get_ratchet_key(username=receiver_user))
+            if generate_keys:
+                if room.get_bundle_key(username=user.username).get_type() == 'sender':
+                    private_keys = generate_sender_keys(room, user.username)
+                    isNew = True
+                else:
+                    private_keys = generate_receiver_keys(room, user.username)
+                    isNew = True
+            else:
+                private_keys = None
 
             messages_db = Message.objects.filter(room=room)
             messages = list(
@@ -162,8 +177,14 @@ def load_messages(request, receiver):
         else:
             messages = []
             keys = None
+            ratchet_public_key = None
+            private_keys = None
+            isNew = False
         messages = json.dumps(messages, cls=DjangoJSONEncoder)
-        return JsonResponse({'status': 'success', 'data': messages, 'keys': format_key(keys)})
+        return JsonResponse({'status': 'success', 'data': messages, 'keys': {'public_keys': keys,
+                                                                             'ratchet_public_key': ratchet_public_key,
+                                                                             'private_keys': private_keys,
+                                                                             'is_new': isNew}})
     else:
         return JsonResponse({'status': 'error', 'message': 'Invalid request'})
 
@@ -291,13 +312,19 @@ def send_friend_request(request):
                 format=serialization.PublicFormat.SubjectPublicKeyInfo
             )
 
+            # Convert bytes to base64-encoded strings
+            ik_public_key_base64 = base64.b64encode(ik_public_key_bytes).decode('utf-8')
+            ek_public_key_base64 = base64.b64encode(ek_public_key_bytes).decode('utf-8')
+            dhratchet_public_key_base64 = base64.b64encode(dhratchet_public_key_bytes).decode('utf-8')
+
             friend_request = FriendRequest(sender=request.user,
                                            receiver=friend_user,
                                            status=FriendRequest.PENDING)
             key_bundle = SenderKeyBundle(
-                ik_public_key=ik_public_key_bytes,
-                ek_public_key=ek_public_key_bytes,
-                DHratchet= dhratchet_public_key_bytes,
+                ik_public_key=ik_public_key_base64,
+                ek_public_key=ek_public_key_base64,
+                DHratchet= dhratchet_public_key_base64,
+                isNew=True,
                 username=username,
             )
             friend_request.set_key_bundle(key_bundle=key_bundle)
@@ -383,13 +410,19 @@ def accept_friend_request(request):
             format=serialization.PublicFormat.SubjectPublicKeyInfo
         )
 
+        ik_public_key_base64 = base64.b64encode(ik_public_key_bytes).decode('utf-8')
+        spk_public_key_base64 = base64.b64encode(spk_public_key_bytes).decode('utf-8')
+        opk_public_key_base64 = base64.b64encode(opk_public_key_bytes).decode('utf-8')
+        dhratchet_public_key_base64 = base64.b64encode(dhratchet_public_key_bytes).decode('utf-8')
+
         friend_request.status = FriendRequest.ACCEPTED
 
         key_bundle = ReceiverKeyBundle(
-            IKb=ik_public_key_bytes,
-            SPKb=spk_public_key_bytes,
-            OPKb=opk_public_key_bytes,
-            DHratchet=dhratchet_public_key_bytes,
+            IKb=ik_public_key_base64,
+            SPKb=spk_public_key_base64,
+            OPKb=opk_public_key_base64,
+            DHratchet=dhratchet_public_key_base64,
+            isNew=True,
             username=username,
         )
         friend_request.set_receiver_key_bundle(key_bundle=key_bundle)

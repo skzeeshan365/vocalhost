@@ -5,3 +5,5 @@ sendgrid~=6.11.0
 pillow~=10.2.0
 cloudinary~=1.38.0
 pusher~=3.3.2
+cryptography~=41.0.1
+jwcrypto~=1.5.4

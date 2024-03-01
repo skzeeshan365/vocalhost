@@ -248,14 +248,10 @@
         roomData.private_keys = {
             ikPrivateKeyData: ik_private_key,
             ekPrivateKeyData: ek_private_key,
-            dhRatchetPrivateKey: dhratchet_private_key
+            dhratchet_key: dhratchet_private_key
         };
 
         localStorage.setItem(username, JSON.stringify(roomData));
-        
-        (async () => {
-            console.log(await importKeys(username));
-        })();
     }
     
     function saveKeys_receiver(username, ik_private_key, spk_private_key, opk_private_key, dhratchet_key) {
