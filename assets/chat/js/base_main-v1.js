@@ -392,8 +392,7 @@ let bytes_webpBlob = null;
 let bytes_message = null;
 let sent_reply_id = null;
 
-let sender = null;
-let receiver = null;
+let encryption = null;
 
 function close_chat() {
     document.getElementById('chat_parent_container').style.display = 'none';
@@ -466,33 +465,70 @@ function load_chat(userName) {
             'receiver_username': userName,
         }));
     }
-    $.ajax({
-        type: 'POST',
-        url: `/chat/load/messages/${userName}/`,  // Adjust the URL based on your Django URL configuration
-        dataType: 'json',
-        success: function (response) {
-            if (response.status === 'success') {
-                // Handle the received messages
-                var messages = JSON.parse(response.data);
-                load_chat_message(messages);
-                (async () => {
-                    await initialize_keys(userName, response.keys);
-                })();
-            } else {
-                console.error('Error loading messages:', response.message);
+    let roomData = JSON.parse(localStorage.getItem(userName));
+    if (roomData && roomData.type && roomData.private_keys) {
+        console.log('1');
+
+        $.ajax({
+            type: 'POST',
+            url: `/chat/load/messages/${userName}/`,
+            dataType: 'json',
+            data: JSON.stringify({
+                generate_keys: false
+            }),
+            success: function (response) {
+                if (response.status === 'success') {
+                    var messages = JSON.parse(response.data);
+                    (async () => {
+                        await initialize_keys(userName, response.keys.public_keys, response.keys.ratchet_public_key, response.keys.is_new, messages);
+                    })();
+                } else {
+                    console.error('Error loading messages:', response.message);
+                }
+            },
+            error: function (error) {
+                console.error('Error loading messages:', error);
+                preloaderEnd();
             }
-        },
-        error: function (error) {
-            console.error('Error loading messages:', error);
-            preloaderEnd();
-        }
-    });
+        });
+    } else {
+        console.log('2');
+        $.ajax({
+            type: 'POST',
+            url: `/chat/load/messages/${userName}/`,
+            dataType: 'json',
+            data: JSON.stringify({
+                generate_keys: true
+            }),
+            success: function (response) {
+                if (response.status === 'success') {
+                    if (response.keys.private_keys.type === 0) {
+                        saveKeys(userName, response.keys.private_keys.ik_private_key, response.keys.private_keys.ek_private_key, response.keys.private_keys.dhratchet_private_key);
+                    } else if (response.keys.private_keys.type === 1) {
+                        saveKeys_receiver(userName, response.keys.private_keys.ik_private_key, response.keys.private_keys.spk_private_key, response.keys.private_keys.opk_private_key, response.keys.private_keys.dhratchet_private_key)
+                    }
+                    var messages = JSON.parse(response.data);
+                    (async () => {
+                        await initialize_keys(userName, response.keys.public_keys, response.keys.ratchet_public_key, response.keys.is_new, messages);
+                    })();
+                } else {
+                    console.error('Error loading messages:', response.message);
+                }
+            },
+            error: function (error) {
+                console.error('Error loading messages:', error);
+                preloaderEnd();
+            }
+        });
+    }
+
+
     header_content.addEventListener('click', function (event) {
         window.location.href = `/chat/profile/${userName}`;
     });
 }
 
-function load_chat_message(messages) {
+async function load_chat_message(messages) {
     const snapUiContainer = document.getElementById('snap-ui-container');
     snapUiContainer.addEventListener('mouseover', handleHover);
     snapUiContainer.addEventListener('mouseout', handleHoverEnd);
@@ -515,7 +551,7 @@ function load_chat_message(messages) {
 
         const messagesForDate = messagesInDate.sort((a, b) => a.message_id - b.message_id);
 
-        messagesForDate.forEach(function (message, index) {
+        for (const [index, message] of messagesForDate.entries()) {
             // Determine if the message is sent or received based on the sender
             const messageType = message.sender__username === userUsername ? 'you' : getActivePerson();
 
@@ -534,20 +570,27 @@ function load_chat_message(messages) {
                     update_message_status(STATUS_RECEIVED, getActivePerson());
                 }
             }
+            let text_message;
+            if (message.public_key) {
+                await encryption.setReceiverKey(message.public_key);
+                text_message = await encryption.recv(message.message, encryption.receiver_public_key);
+            } else {
+                text_message = message.message;
+            }
             if (messageType === 'you') {
                 if (message.reply_id !== null) {
-                    addSnapMessage(message.message_id, message.message, null, save, message.image_url || null, message.reply_id, message.timestamp);
+                    addSnapMessage(message.message_id, text_message, null, save, message.image_url || null, message.reply_id, message.timestamp);
                 } else {
-                    addSnapMessage(message.message_id, message.message, null, save, message.image_url || null, null, message.timestamp);
+                    addSnapMessage(message.message_id, text_message, null, save, message.image_url || null, null, message.timestamp);
                 }
             } else {
                 if (message.reply_id !== null) {
-                    addSnapMessage(message.message_id, message.message, getActivePerson(), save, message.image_url || null, message.reply_id, message.timestamp);
+                    addSnapMessage(message.message_id, text_message, getActivePerson(), save, message.image_url || null, message.reply_id, message.timestamp);
                 } else {
-                    addSnapMessage(message.message_id, message.message, getActivePerson(), save, message.image_url || null, null, message.timestamp);
+                    addSnapMessage(message.message_id, text_message, getActivePerson(), save, message.image_url || null, null, message.timestamp);
                 }
             }
-        });
+        }
     }
 
     setTimeout(function () {
@@ -777,7 +820,7 @@ function initialize_socket() {
     chatSocket.onclose = function (event) {
         if (event.code !== 1000) {
             console.log('Reconnecting...');
-            setTimeout(initialize_socket, 10000);
+            // setTimeout(initialize_socket, 10000);
         }
     };
 
@@ -789,32 +832,35 @@ function initialize_socket() {
         if (e.data instanceof Blob) {
             const reader = new FileReader();
 
-            reader.onload = function (event) {
+            reader.onload = async function (event) {
                 const binaryData = new Uint8Array(event.target.result);
 
                 // Find delimiter indices
                 const delimiterIndex1 = binaryData.indexOf('\n'.charCodeAt(0));
                 const delimiterIndex2 = binaryData.indexOf('\n'.charCodeAt(0), delimiterIndex1 + 1);
                 const delimiterIndex3 = binaryData.indexOf('\n'.charCodeAt(0), delimiterIndex2 + 1);
+                const delimiterIndex4 = binaryData.indexOf('\n'.charCodeAt(0), delimiterIndex3 + 1);
 
                 // Extract text data
                 const message_id = new TextDecoder().decode(binaryData.subarray(0, delimiterIndex1));
                 const message = new TextDecoder().decode(binaryData.subarray(delimiterIndex1 + 1, delimiterIndex2));
                 const sender_username = new TextDecoder().decode(binaryData.subarray(delimiterIndex2 + 1, delimiterIndex3));
+                const public_key = new TextDecoder().decode(binaryData.subarray(delimiterIndex3 + 1, delimiterIndex4));
+                const parsed_public_key = (public_key === 'None') ? null : public_key;
+
                 if (sender_username === getActivePerson()) {
-                    const startIndex = binaryData.indexOf('RIFF'.charCodeAt(0));
-                    // Extract binary data
-                    const actualBinaryData = binaryData.subarray(startIndex);
-
+                    const actualBinaryData = binaryData.subarray(delimiterIndex4 + 1);
                     const imageBlob = new Blob([actualBinaryData], {type: 'image/webp'});
-
                     const messageType = sender_username === userUsername ? 'you' : getActivePerson();
-
                     if (message !== '') {
-                        if (messageType === "you") {
-                            updateImage(imageBlob, null, message_id, null, message || null);
-                        } else {
-                            updateImage(imageBlob, getActivePerson(), message_id, null, message || null);
+                        if (parsed_public_key) {
+                            await encryption.setReceiverKey_JWK(parsed_public_key);
+                            let text_message = await encryption.recv(message, encryption.receiver_public_key);
+                            if (messageType === "you") {
+                                updateImage(imageBlob, null, message_id, null, text_message);
+                            } else {
+                                updateImage(imageBlob, getActivePerson(), message_id, null, text_message);
+                            }
                         }
                     } else {
                         if (messageType === "you") {
@@ -934,10 +980,12 @@ function initialize_socket() {
                     const messageType = data.sender_username === userUsername ? 'you' : getActivePerson();
 
                     // Display the message with the appropriate indicator
+                    await encryption.setReceiverKey_JWK(data.public_key);
+                    let text_message = await encryption.recv(data.message, encryption.receiver_public_key);
                     if (messageType === "you") {
-                        addSnapMessage(data.message_id, data.message, null, null, null, data.reply_id || null)
+                        addSnapMessage(data.message_id, text_message, null, null, null, data.reply_id || null)
                     } else {
-                        addSnapMessage(data.message_id, data.message, getActivePerson(), null, null, data.reply_id || null)
+                        addSnapMessage(data.message_id, text_message, getActivePerson(), null, null, data.reply_id || null)
                     }
 
                     // Scroll to the bottom
@@ -975,95 +1023,118 @@ function message_seen(message_id) {
 }
 
 // Function to handle sending messages
-const sendMessage = function () {
-    const messageInput = document.querySelector('#input');
-    const message = messageInput.value.trim();
+const sendMessage = async function () {
+    if (isWebSocketReady(chatSocket)) {
+        const messageInput = document.querySelector('#input');
+        let message = messageInput.value.trim();
 
-    if (message !== '' || imageInput.files.length > 0) {
-        $('#form-messages').hide();
-        const loadingIcon = document.getElementById('loading');
-        loadingIcon.style.display = 'inline-block';
+        if (message !== '' || imageInput.files.length > 0) {
+            $('#form-messages').hide();
+            const loadingIcon = document.getElementById('loading');
+            loadingIcon.style.display = 'inline-block';
 
-        // Check if there is an image selected
-        if (imageInput.files.length > 0) {
-            const file = imageInput.files[0];
-            const img = new Image();
-            img.src = URL.createObjectURL(file);
+            // Check if there is an image selected
+            if (imageInput.files.length > 0) {
+                let encrypted_message;
+                if (message === '') {
+                    encrypted_message = null;
+                } else {
+                    encrypted_message = await encryption.send(encryption.receiver_public_key, message);
+                }
 
-            img.onload = function () {
-                const canvas = document.createElement('canvas');
-                const ctx = canvas.getContext('2d');
-                canvas.width = img.width;
-                canvas.height = img.height;
+                const file = imageInput.files[0];
+                const img = new Image();
+                img.src = URL.createObjectURL(file);
 
-                // Step 1: Reduce Quality
-                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                canvas.toBlob((webpBlob) => {
-                    // Send the WebP image data (webpBlob) to the server
+                console.log(encrypted_message);
 
-                    // Create a new Blob containing text and binary data
-                    const combinedBlob = new Blob([JSON.stringify({
-                        message: message,
-                        storeMessage: storeMessage,
-                    }), webpBlob]);
-                    chatSocket.send(combinedBlob);
+                img.onload = async function () {
+                    console.log('2');
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    canvas.width = img.width;
+                    canvas.height = img.height;
 
-                    var imageElement = document.getElementById('selectedImage');
-                    imageElement.src = ''; // Reset the source
-                    imageInput.value = '';
-                    imageInput.type = 'file';
+                    // Step 1: Reduce Quality
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    canvas.toBlob((webpBlob) => {
 
-                    bytes_webpBlob = webpBlob;
-                    bytes_message = message;
-                    updateImageLabelIcon(imageInput)
+                        // Create a new Blob containing text and binary data
+                        console.log('3');
+                        if (encrypted_message) {
+                            console.log(encrypted_message);
+                            const combinedBlob = new Blob([JSON.stringify({
+                                message: encrypted_message.cipher,
+                                storeMessage: storeMessage,
+                                public_key: encrypted_message.ratchet_key
+                            }), webpBlob]);
+                            chatSocket.send(combinedBlob);
+                        } else {
+                            const combinedBlob = new Blob([JSON.stringify({
+                                message: encrypted_message,
+                                storeMessage: storeMessage,
+                                public_keys: null
+                            }), webpBlob]);
+                            chatSocket.send(combinedBlob);
+                        }
 
-                    var labelElement = document.getElementById('image_input_label');
-                    labelElement.style.display = 'flex';
+                        var imageElement = document.getElementById('selectedImage');
+                        imageElement.src = ''; // Reset the source
+                        imageInput.value = '';
+                        imageInput.type = 'file';
 
-                    // Reset image
-                    var imageElement = document.getElementById('selectedImage');
-                    imageElement.style.display = 'none';
+                        bytes_webpBlob = webpBlob;
+                        bytes_message = message;
+                        updateImageLabelIcon(imageInput)
 
-                    let current_time = new Date();
-                    handleNewMessage(getActivePerson(), current_time, false);
-                    update_message_status(STATUS_DELIVERED, getActivePerson());
-                }, 'image/webp', 0.7); // Adjust quality as needed
-            };
-        } else {
-            var replyMessageHolder = document.getElementById('reply_message_holder');
+                        var labelElement = document.getElementById('image_input_label');
+                        labelElement.style.display = 'flex';
 
-            var containsSnapMessage = replyMessageHolder.querySelector('snap-message') !== null;
+                        imageElement.style.display = 'none';
 
-            if (containsSnapMessage) {
-                const reply_id = replyMessageHolder.querySelector('snap-message').id;
-                // Send only the message if no image is selected
-                chatSocket.send(JSON.stringify({
-                    'type': 'reply_message',
-                    'message': message,
-                    'storeMessage': storeMessage,
-                    'reply_id': reply_id,
-                }));
-                sent_reply_id = reply_id;
-                bytes_message = message;
+                        let current_time = new Date();
+                        handleNewMessage(getActivePerson(), current_time, false);
+                        update_message_status(STATUS_DELIVERED, getActivePerson());
+                    }, 'image/webp', 0.7); // Adjust quality as needed
+                };
             } else {
-                // Send only the message if no image is selected
-                chatSocket.send(JSON.stringify({
-                    'type': 'message',
-                    'message': message,
-                    'storeMessage': storeMessage,
-                }));
-                bytes_message = message;
+                var replyMessageHolder = document.getElementById('reply_message_holder');
+
+                var containsSnapMessage = replyMessageHolder.querySelector('snap-message') !== null;
+                let encrypted_message = await encryption.send(encryption.receiver_public_key, message);
+
+                if (containsSnapMessage) {
+                    const reply_id = replyMessageHolder.querySelector('snap-message').id;
+                    // Send only the message if no image is selected
+                    chatSocket.send(JSON.stringify({
+                        'type': 'reply_message',
+                        'message': encrypted_message.cipher,
+                        'storeMessage': storeMessage,
+                        'reply_id': reply_id,
+                        'public_key': encrypted_message.ratchet_key
+                    }));
+                    sent_reply_id = reply_id;
+                    bytes_message = message;
+                } else {
+                    chatSocket.send(JSON.stringify({
+                        'type': 'message',
+                        'message': encrypted_message.cipher,
+                        'storeMessage': storeMessage,
+                        'public_key': encrypted_message.ratchet_key
+                    }));
+                    bytes_message = message;
+                }
             }
+
+            // Scroll to the bottom after sending a message
+            var snapUiContainer = document.getElementById('snap-ui-container');
+            snapUiContainer.scrollTop = snapUiContainer.scrollHeight;
+
+
+            messageInput.value = '';
+        } else {
+            $('#form-messages').html('<div class="alert alert-danger" role="alert">' + "Please type a message" + '</div>');
         }
-
-        // Scroll to the bottom after sending a message
-        var snapUiContainer = document.getElementById('snap-ui-container');
-        snapUiContainer.scrollTop = snapUiContainer.scrollHeight;
-
-
-        messageInput.value = '';
-    } else {
-        $('#form-messages').html('<div class="alert alert-danger" role="alert">' + "Please type a message" + '</div>');
     }
 }
 
@@ -1546,23 +1617,69 @@ async function import_public_keys(keys) {
     console.log(ikpublic_key);
 }
 
-async function initialize_keys(username, keys) {
+async function initialize_keys(username, keys, ratchet_public_key, is_new, messages) {
     let roomData = JSON.parse(localStorage.getItem(username));
+    console.log(keys);
+    console.log(ratchet_public_key);
+    console.log(is_new);
 
     if (roomData && roomData.type && roomData.private_keys) {
         if (roomData.type === 'sender') {
-             sender = new Alice(username);
-             await sender.retrieveAndImportKeys();
-             await sender.x3dh(keys);
-             await sender.initRatchets();
+            encryption = new Alice(username);
+            await encryption.retrieveAndImportKeys();
+            await encryption.x3dh(keys);
+            await encryption.initRatchets(is_new);
+            await encryption.setReceiverKey(ratchet_public_key);
         } else if (roomData.type === 'receiver') {
-            receiver = new Bob(username);
-            await receiver.retrieveAndImportKeys();
-            await receiver.x3dh(keys);
-            await receiver.initRatchets();
+            encryption = new Bob(username);
+            await encryption.retrieveAndImportKeys();
+            await encryption.x3dh(keys);
+            await encryption.initRatchets(is_new);
+            await encryption.setReceiverKey(ratchet_public_key);
+        }
+        if (encryption) {
+            await load_chat_message(messages);
         }
     } else {
         console.log('No keys found for this username');
         return null;
     }
+}
+
+function saveKeys(username, ik_private_key, ek_private_key, dhratchet_private_key) {
+    let roomData = JSON.parse(localStorage.getItem(username));
+
+    if (!roomData) {
+        roomData = {};
+    }
+
+    roomData.type = 'sender';
+
+    roomData.private_keys = {
+        ikPrivateKeyData: ik_private_key,
+        ekPrivateKeyData: ek_private_key,
+        dhratchet_key: dhratchet_private_key
+    };
+
+    localStorage.setItem(username, JSON.stringify(roomData));
+}
+
+function saveKeys_receiver(username, ik_private_key, spk_private_key, opk_private_key, dhratchet_key) {
+
+    let roomData = JSON.parse(localStorage.getItem(username));
+
+    if (!roomData) {
+        roomData = {};
+    }
+
+    roomData.type = 'receiver';
+
+    roomData.private_keys = {
+        ikPrivateKey: ik_private_key,
+        spkPrivateKey: spk_private_key,
+        opkPrivateKey: opk_private_key,
+        dhratchet_key: dhratchet_key
+    };
+
+    localStorage.setItem(username, JSON.stringify(roomData));
 }

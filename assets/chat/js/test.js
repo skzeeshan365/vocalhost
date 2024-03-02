@@ -105,6 +105,20 @@ function b64(msg) {
     return btoa(String.fromCharCode.apply(null, new Uint8Array(msg)));
 }
 
+
+function saveDHRatchetKey(dhratchet_private_key, username) {
+    console.log(`${username}: save`);
+        let roomData = JSON.parse(localStorage.getItem(username));
+
+        if (!roomData) {
+            roomData = {};
+        }
+
+        roomData.private_keys['dhratchet_key'] = JSON.stringify(dhratchet_private_key);
+
+        localStorage.setItem(username, JSON.stringify(roomData));
+    }
+
 class SymmRatchet {
     constructor(key) {
         this.state = key;
@@ -147,6 +161,30 @@ class Bob {
         this.OPKb = {};
         this.DHratchet = {};
         this.username = username;
+        this.receiver_public_key = null;
+    }
+
+    async setReceiverKey(key) {
+        let public_key = base64StringToArrayBuffer(key);
+        this.receiver_public_key = await crypto.subtle.importKey(
+            'spki',
+            public_key,
+            {name: 'ECDH', namedCurve: 'P-256'},
+            true,
+            []
+        );
+    }
+
+    async setReceiverKey_JWK(key) {
+        const base64DecodedPublicKey = atob(key);
+        const receivedJWK = JSON.parse(base64DecodedPublicKey);
+        this.receiver_public_key = await crypto.subtle.importKey(
+            'jwk',
+            receivedJWK,
+            {name: 'ECDH', namedCurve: 'P-256'},
+            true,
+            []
+        );
     }
 
     async generateKeys() {
@@ -208,54 +246,9 @@ class Bob {
     }
 
     async saveToLocalStorage() {
-        // Storing the keys
-        let ikbKey = await exportKey('jwk', this.IKb.privateKey);
-        let spkbKey = await exportKey('jwk', this.SPKb.privateKey);
-        let opkbKey = await exportKey('jwk', this.OPKb.privateKey);
-
-        let ikbKeypublic = await exportKey('jwk', this.IKb.publicKey);
-        let spkbKeypublic = await exportKey('jwk', this.SPKb.publicKey);
-        let opkbKeypublic = await exportKey('jwk', this.OPKb.publicKey);
-
-        let keys = {
-            'ikbKey': ikbKey,
-            'spkbKey': spkbKey,
-            'opkbKey': opkbKey,
-            'ikbKeypublic': ikbKeypublic,
-            'spkbKeypublic': spkbKeypublic,
-            'opkbKeypublic': opkbKeypublic,
-        };
-
-        localStorage.setItem('keys', JSON.stringify(keys));
-
-        // localStorage.setItem('rootRatchetState', btoa(String.fromCharCode.apply(null, new Uint8Array(this.rootRatchet.state))));
-        // localStorage.setItem('recvRatchetState', btoa(String.fromCharCode.apply(null, new Uint8Array(this.recvRatchet.state))));
-        // localStorage.setItem('sendRatchetState', btoa(String.fromCharCode.apply(null, new Uint8Array(this.sendRatchet.state))));
-    }
-
-    async saveDhratchetKey() {
-        let dhRatchetPrivateKey = await exportKey('jwk', this.DHratchet.privateKey);
-        let dhRatchetPublicKey = await exportKey('jwk', this.DHratchet.publicKey);
-        let keys = {
-            'dhRatchetPrivateKey': dhRatchetPrivateKey,
-            'dhRatchetPublicKey': dhRatchetPublicKey,
-        };
-
-        localStorage.setItem('dhratchetKeys', JSON.stringify(keys));
-    }
-
-    async loadDhratchetKey() {
-        let retrievedKeys = JSON.parse(localStorage.getItem('dhratchetKeys'));
-        this.DHratchet.privateKey = await importKey_ECDH(
-            'jwk',
-            retrievedKeys.dhRatchetPrivateKey,
-            ['deriveKey']
-        );
-        this.DHratchet.publicKey = await importKey_ECDH(
-            'jwk',
-            retrievedKeys.dhRatchetPublicKey,
-            []
-        );
+        localStorage.setItem('rootRatchetState', btoa(String.fromCharCode.apply(null, new Uint8Array(this.rootRatchet.state))));
+        localStorage.setItem('recvRatchetState', btoa(String.fromCharCode.apply(null, new Uint8Array(this.recvRatchet.state))));
+        localStorage.setItem('sendRatchetState', btoa(String.fromCharCode.apply(null, new Uint8Array(this.sendRatchet.state))));
     }
 
     async retrieveAndImportKeys() {
@@ -300,10 +293,8 @@ class Bob {
         }
     }
 
-
     async loadFromLocalStorage() {
         try {
-
             // Retrieving the states
             let retrievedRootRatchetState = new Uint8Array(atob(localStorage.getItem('rootRatchetState')).split("").map(function (c) {
                 return c.charCodeAt(0);
@@ -323,11 +314,37 @@ class Bob {
         }
     }
 
+    removeFromLocalStorage() {
+        try {
+        localStorage.removeItem('rootRatchetState');
+        localStorage.removeItem('recvRatchetState');
+        localStorage.removeItem('sendRatchetState');
+        } catch (error) {
+            console.error("Error", error);
+        }
+    }
 
-    async initRatchets() {
-        this.rootRatchet = new SymmRatchet(this.sk);
-        this.recvRatchet = new SymmRatchet((await this.rootRatchet.next())[0]);
-        this.sendRatchet = new SymmRatchet((await this.rootRatchet.next())[0]);
+
+    async initRatchets(is_new) {
+        let retrievedRootRatchetState = new Uint8Array(atob(localStorage.getItem('rootRatchetState')).split("").map(function (c) {
+            return c.charCodeAt(0);
+        }));
+
+        if (is_new) {
+            console.log('1');
+            this.rootRatchet = new SymmRatchet(this.sk);
+            this.recvRatchet = new SymmRatchet((await this.rootRatchet.next())[0]);
+            this.sendRatchet = new SymmRatchet((await this.rootRatchet.next())[0]);
+            this.removeFromLocalStorage();
+        } else if (retrievedRootRatchetState) {
+            console.log('2');
+            await this.loadFromLocalStorage();
+        } else {
+            console.log('3');
+            this.rootRatchet = new SymmRatchet(this.sk);
+            this.recvRatchet = new SymmRatchet((await this.rootRatchet.next())[0]);
+            this.sendRatchet = new SymmRatchet((await this.rootRatchet.next())[0]);
+        }
     }
 
     async send_dhRatchet(alicePublic) {
@@ -337,12 +354,13 @@ class Bob {
             ['deriveKey']
         );
 
-        await this.saveDhratchetKey();
+        saveDHRatchetKey(await exportKey('jwk', this.DHratchet.privateKey), this.username);
 
         const dhSend = await deriveKey(this.DHratchet.privateKey, alicePublic);
         const sharedSend = (await this.rootRatchet.next(dhSend))[0];
         this.sendRatchet = new SymmRatchet(sharedSend);
         console.log('[Bob]\tSend ratchet seed:', b64(sharedSend));
+        await this.saveToLocalStorage();
     }
 
     async receive_dhRatchet(alicePublic) {
@@ -350,24 +368,27 @@ class Bob {
         const sharedRecv = (await this.rootRatchet.next(dhRecv))[0];
         this.recvRatchet = new SymmRatchet(sharedRecv);
         console.log('[Bob]\tRecv ratchet seed:', b64(sharedRecv));
+        await this.saveToLocalStorage();
     }
 
-    async send(alice, msg) {
-        await this.send_dhRatchet(alice.DHratchet.publicKey);
+    async send(alice_public_key, msg) {
+        await this.send_dhRatchet(alice_public_key);
         const [key, iv] = await this.sendRatchet.next();
         const cipher = await encryptMessage(key, iv, msg);
-        console.log('[Bob]\tSending ciphertext to Alice:', b64(cipher));
-        await alice.recv(cipher, this.DHratchet.publicKey);
+        return {
+            cipher: b64(cipher),
+            ratchet_key: btoa(JSON.stringify(await exportKey('jwk', this.DHratchet.publicKey)))
+        }
     }
 
     async recv(cipher, alicePublicKey) {
         await this.receive_dhRatchet(alicePublicKey);
         const [key, iv] = await this.recvRatchet.next();
         try {
-            const decrypted = await decryptMessage(key, iv, cipher);
-            console.log('[Bob]\tDecrypted message:', decrypted);
+            const arrayBufferCipher = new Uint8Array([...atob(cipher)].map(char => char.charCodeAt(0)));
+            return await decryptMessage(key, iv, arrayBufferCipher)
         } catch (error) {
-            console.error('Error during decryption:', error);
+            return `Failed to decrypt message: ${error}`;
         }
     }
 }
@@ -378,6 +399,30 @@ class Alice {
         this.EKa = {};
         this.DHratchet = {};
         this.username = username;
+        this.receiver_public_key = null;
+    }
+
+    async setReceiverKey(key) {
+        let public_key = base64StringToArrayBuffer(key);
+        this.receiver_public_key = await crypto.subtle.importKey(
+            'spki',
+            public_key,
+            {name: 'ECDH', namedCurve: 'P-256'},
+            true,
+            []
+        );
+    }
+
+    async setReceiverKey_JWK(key) {
+        const base64DecodedPublicKey = atob(key);
+        const receivedJWK = JSON.parse(base64DecodedPublicKey);
+        this.receiver_public_key = await crypto.subtle.importKey(
+            'jwk',
+            receivedJWK,
+            {name: 'ECDH', namedCurve: 'P-256'},
+            true,
+            []
+        );
     }
 
     async generate_keys() {
@@ -439,10 +484,22 @@ class Alice {
         console.log('[alice]\tShared key:', b64(this.sk));
     }
 
-    async initRatchets() {
-        this.rootRatchet = new SymmRatchet(this.sk);
-        this.sendRatchet = new SymmRatchet((await this.rootRatchet.next())[0]);
-        this.recvRatchet = new SymmRatchet((await this.rootRatchet.next())[0]);
+    async initRatchets(is_new) {
+        let retrievedRootRatchetState = new Uint8Array(atob(localStorage.getItem('alice_rootRatchetState')).split("").map(function (c) {
+                return c.charCodeAt(0);
+            }));
+        if (is_new) {
+            this.rootRatchet = new SymmRatchet(this.sk);
+            this.sendRatchet = new SymmRatchet((await this.rootRatchet.next())[0]);
+            this.recvRatchet = new SymmRatchet((await this.rootRatchet.next())[0]);
+            this.removeFromLocalStorage();
+        } else if (retrievedRootRatchetState) {
+            await this.loadFromLocalStorage();
+        } else {
+            this.rootRatchet = new SymmRatchet(this.sk);
+            this.sendRatchet = new SymmRatchet((await this.rootRatchet.next())[0]);
+            this.recvRatchet = new SymmRatchet((await this.rootRatchet.next())[0]);
+        }
     }
 
     async retrieveAndImportKeys() {
@@ -451,7 +508,7 @@ class Alice {
         if (roomData && roomData.type && roomData.private_keys) {
             let ikPrivateKeyData = JSON.parse(roomData.private_keys.ikPrivateKeyData);
             let ekPrivateKeyData = JSON.parse(roomData.private_keys.ekPrivateKeyData);
-            let dhRatchetPrivateKey = JSON.parse(roomData.private_keys.dhRatchetPrivateKey);
+            let dhRatchetPrivateKey = JSON.parse(roomData.private_keys.dhratchet_key);
 
             this.IKa.privateKey = await crypto.subtle.importKey(
                 'jwk',
@@ -479,54 +536,23 @@ class Alice {
     }
 
     async saveToLocalStorage() {
-        // Storing the keys
-        let ikaKey = await exportKey('jwk', this.IKa.privateKey);
-        let ekaKey = await exportKey('jwk', this.EKa.privateKey);
-
-        let ikaKeypublic = await exportKey('jwk', this.IKa.publicKey);
-        let ekaKeypublic = await exportKey('jwk', this.EKa.publicKey);
-
-        let keys = {
-            'ikaKey': ikaKey,
-            'ekaKey': ekaKey,
-            'ikaKeypublic': ikaKeypublic,
-            'ekaKeypublic': ekaKeypublic,
-        };
-
-        localStorage.setItem('alice_keys', JSON.stringify(keys));
-
         localStorage.setItem('alice_rootRatchetState', btoa(String.fromCharCode.apply(null, new Uint8Array(this.rootRatchet.state))));
         localStorage.setItem('alice_recvRatchetState', btoa(String.fromCharCode.apply(null, new Uint8Array(this.recvRatchet.state))));
         localStorage.setItem('alice_sendRatchetState', btoa(String.fromCharCode.apply(null, new Uint8Array(this.sendRatchet.state))));
     }
 
+    removeFromLocalStorage() {
+        try {
+        localStorage.removeItem('alice_rootRatchetState');
+        localStorage.removeItem('alice_recvRatchetState');
+        localStorage.removeItem('alice_sendRatchetState');
+        } catch (error) {
+            console.error("Error", error);
+        }
+    }
+
     async loadFromLocalStorage() {
         try {
-            let retrievedKeys = JSON.parse(localStorage.getItem('alice_keys'));
-
-            this.IKa.privateKey = await importKey_ECDH(
-                'jwk',
-                retrievedKeys.ikaKey,
-                ['deriveKey']
-            );
-            this.EKa.privateKey = await importKey_ECDH(
-                'jwk',
-                retrievedKeys.ekaKey,
-                ['deriveKey']
-            );
-
-            this.IKa.publicKey = await importKey_ECDH(
-                'jwk',
-                retrievedKeys.ikaKeypublic,
-                []
-            );
-            this.EKa.publicKey = await importKey_ECDH(
-                'jwk',
-                retrievedKeys.ekaKeypublic,
-                []
-            );
-
-            // Retrieving the states
             let retrievedRootRatchetState = new Uint8Array(atob(localStorage.getItem('alice_rootRatchetState')).split("").map(function (c) {
                 return c.charCodeAt(0);
             }));
@@ -552,10 +578,13 @@ class Alice {
             ['deriveKey']
         );
 
+        saveDHRatchetKey(await exportKey('jwk', this.DHratchet.privateKey), this.username);
+
         const dhSend = await deriveKey(this.DHratchet.privateKey, bobPublic);
         const sharedSend = (await this.rootRatchet.next(dhSend))[0];
         this.sendRatchet = new SymmRatchet(sharedSend);
         console.log('[Alice]\tSend ratchet seed:', b64(sharedSend));
+        await this.saveToLocalStorage();
     }
 
     async receive_dhRatchet(bobPublic) {
@@ -563,24 +592,27 @@ class Alice {
         const sharedRecv = (await this.rootRatchet.next(dhRecv))[0];
         this.recvRatchet = new SymmRatchet(sharedRecv);
         console.log('[Alice]\tRecv ratchet seed:', b64(sharedRecv));
+        await this.saveToLocalStorage();
     }
 
-    async send(bob, msg) {
-        await this.send_dhRatchet(bob.DHratchet.publicKey)
+    async send(bob_public_key, msg) {
+        await this.send_dhRatchet(bob_public_key)
         const [key, iv] = await this.sendRatchet.next();
         const cipher = await encryptMessage(key, iv, msg);
-        console.log('[Alice]\tSending ciphertext to Bob:', b64(cipher));
-        await bob.recv(cipher, this.DHratchet.publicKey);
+        return {
+            cipher: b64(cipher),
+            ratchet_key: btoa(JSON.stringify(await exportKey('jwk', this.DHratchet.publicKey)))
+        }
     }
 
     async recv(cipher, bobPublicKey) {
         await this.receive_dhRatchet(bobPublicKey);
         const [key, iv] = await this.recvRatchet.next();
         try {
-            const decrypted = await decryptMessage(key, iv, cipher);
-            console.log('[Alice]\tDecrypted message:', decrypted);
+            const arrayBufferCipher = new Uint8Array([...atob(cipher)].map(char => char.charCodeAt(0)));
+            return await decryptMessage(key, iv, arrayBufferCipher)
         } catch (error) {
-            console.error('Error during decryption:', error);
+            return `Failed to decrypt message: ${error}`;
         }
     }
 }
