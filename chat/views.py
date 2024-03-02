@@ -110,12 +110,11 @@ def update_message_status(receiver_user, username):
         }
         new_signal_message.send(sender=username, receiver_username=receiver_user, message=message)
     else:
-        message_data = {
+        message = {
             'type': 'message_status_background',
-            'timestamp': time,
             'sender_username': username,
         }
-        send_pusher_update(message_data=message_data, receiver_username=receiver_user)
+        send_pusher_update(message_data=message, receiver_username=receiver_user)
 
 
 def extract_public_keys_from_bundle(key_bundle):
@@ -166,10 +165,15 @@ def load_messages(request, receiver):
             messages_db = Message.objects.filter(room=room)
             messages = list(
                 messages_db.values('message', 'sender__username', 'message_id', 'reply_id',
-                                   'timestamp', 'temp__username', 'saved', 'image_url'))
+                                   'timestamp', 'temp__username', 'saved', 'image_url', 'public_key'))
+            print(messages)
 
             messages_db = Message.objects.filter(room=room, temp=user, saved=False).exists()
             Message.objects.filter(room=room, temp=user, saved=True).update(temp=None)
+
+            for message in messages:
+                if 'public_key' in message and isinstance(message['public_key'], bytes):
+                    message['public_key'] = format_key(message['public_key'])
 
             if messages_db:
                 thread = threading.Thread(target=update_message_status, args=(receiver_user, user.username))
@@ -180,6 +184,7 @@ def load_messages(request, receiver):
             ratchet_public_key = None
             private_keys = None
             isNew = False
+        print(messages)
         messages = json.dumps(messages, cls=DjangoJSONEncoder)
         return JsonResponse({'status': 'success', 'data': messages, 'keys': {'public_keys': keys,
                                                                              'ratchet_public_key': ratchet_public_key,

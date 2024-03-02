@@ -277,6 +277,8 @@ class Message(models.Model):
     saved = models.BooleanField(default=False)
     image_url = models.URLField(default=None, null=True, blank=True)
 
+    public_key = models.BinaryField(default=None, null=True, blank=True)
+
     def save(self, *args, **kwargs):
         if self.temp and not self.saved and not get_connected_users().get(self.receiver.username):
             thread = threading.Thread(target=update_message_status, args=(
@@ -288,6 +290,9 @@ class Message(models.Model):
             ))
             thread.start()
 
+        if self.public_key:
+            self.set_public_key(self.public_key)
+
         super().save(*args, **kwargs)
 
     def get_sender_username(self):
@@ -295,6 +300,33 @@ class Message(models.Model):
 
     def get_receiver_username(self):
         return self.receiver.username
+
+    def set_public_key(self, public_key):
+        try:
+            decoded_key_bytes = base64.urlsafe_b64decode(public_key)
+            decoded_key_str = decoded_key_bytes.decode('utf-8')
+
+            # Deserialize JWK string
+            jwk = json.loads(decoded_key_str)
+
+            x_bytes = base64.urlsafe_b64decode(jwk['x'] + '==')
+            y_bytes = base64.urlsafe_b64decode(jwk['y'] + '==')
+
+            # Use the elliptic curve public key method
+            public_key = ec.EllipticCurvePublicNumbers(
+                x=int.from_bytes(x_bytes, 'big'),
+                y=int.from_bytes(y_bytes, 'big'),
+                curve=ec.SECP256R1()  # Adjust the curve as needed
+            ).public_key(default_backend())
+
+            # Get the public key in bytes (DER format)
+            public_key_bytes = public_key.public_bytes(
+                encoding=serialization.Encoding.DER,
+                format=serialization.PublicFormat.SubjectPublicKeyInfo
+            )
+            self.public_key = public_key_bytes
+        except binascii.Error as e:
+            print(f"Error decoding Base64: {e}")
 
 
 def update_request(type, sender, receiver, title, message, accept=False):

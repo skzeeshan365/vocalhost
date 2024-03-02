@@ -147,6 +147,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
             elif type == 'reply_message':
                 # Generate message_id
                 message_id = int(time.time() * 1000)
+
+                public_key = text_data_json.get('public_key')
+                await self.update_public_key_db(self.sender_username, public_key)
+
                 if channel_active:
                     await self.channel_layer.send(
                         channel_name,
@@ -156,6 +160,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                             "message_id": message_id,
                             'reply_id': reply_id,
                             "sender_username": self.sender_username,
+                            'public_key': public_key
                         },
                     )
                     if storeMessage:
@@ -188,9 +193,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
             elif type == 'message':
                 # Generate message_id
                 message_id = int(time.time() * 1000)
-                encrypted = text_data_json.get('encrypted')
-                key = text_data_json.get('key')
-                await self.update_public_key_db(self.sender_username, key)
+                public_key = text_data_json.get('public_key')
+                await self.update_public_key_db(self.sender_username, public_key)
                 if channel_active:
                     await self.channel_layer.send(
                         channel_name,
@@ -199,8 +203,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                             "message": message,
                             "message_id": message_id,
                             "sender_username": self.sender_username,
-                            'encrypted': encrypted,
-                            'key': key
+                            'public_key': public_key
                         },
                     )
                     if storeMessage:
@@ -215,9 +218,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
                             'sender_username': self.sender_username
                         }
                     )
-                    await self.save_message_db(message=message, message_id=message_id, temp=self.receiver)
+                    await self.save_message_db(message=message, message_id=message_id, temp=self.receiver, public_key=public_key)
                 else:
-                    await self.save_message_db(message=message, message_id=message_id, temp=self.receiver)
+                    await self.save_message_db(message=message, message_id=message_id, temp=self.receiver, public_key=public_key)
                 await self.send(
                     text_data=json.dumps(
                         {
@@ -360,9 +363,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         message = event["message"]
         message_id = event['message_id']
         reply_id = event.get('reply_id', None)
-
-        encrypted_message = event.get('encrypted')
-        key = event.get('key')
+        public_key = event.get('public_key')
 
         if reply_id:
             await self.send(
@@ -372,6 +373,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                         'message_id': message_id,
                         'reply_id': reply_id,
                         "sender_username": sender_username,
+                        'public_key': public_key
                     }
                 )
             )
@@ -382,8 +384,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                         "message": message,
                         'message_id': message_id,
                         "sender_username": sender_username,
-                        'encrypted': encrypted_message,
-                        'key': key
+                        'public_key': public_key
                     }
                 )
             )
@@ -526,7 +527,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def save_message_db(self, message=None, message_id=None, sender=None, receiver=None, reply_id=None, temp=None,
-                        saved=False, image_url=None):
+                        saved=False, image_url=None, public_key=None):
         if sender is None:
             sender = self.sender
         else:
@@ -547,6 +548,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             exists = Message.objects.get(message_id=message_id)
             if exists and temp is None:
                 exists.saved = True
+                exists.public_key = None
                 exists.save()
         except Message.DoesNotExist:
             if image_url is not None:
@@ -563,6 +565,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     temp=temp,
                     saved=saved,
                     image_url=image_url,
+                    public_key=public_key
                 )
 
     @database_sync_to_async
@@ -649,6 +652,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             elif self.room.receiver_username == username:
                 room.receiver_channel = channel
                 room.save()
+            self.room = room
         except Room.DoesNotExist:
             pass
 
@@ -659,6 +663,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 room = Room.objects.get(room=self.room.room)
                 room.set_ratchet_key(username, public_key)
                 room.save()
+                self.room = room
             except Room.DoesNotExist:
                 pass
 
