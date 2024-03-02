@@ -43,8 +43,8 @@ def send_message_to_device(user, title, message, timestamp=None):
         )
 
         device.send_message(message=message)
-    except Exception:
-        pass
+    except Exception as e:
+        print(e)
 
 
 def send_pusher_update(message_data, receiver_username):

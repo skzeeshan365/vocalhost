@@ -315,6 +315,12 @@ class ChatConsumer(AsyncWebsocketConsumer):
             data = json.loads(json_data)
 
             text_message = data.get("message")
+            if text_message is None:
+                text_message = ''
+            public_key = data.get('public_key')
+
+            if public_key:
+                await self.update_public_key_db(self.sender_username, public_key)
             message_id = int(time.time() * 1000)
 
             # Extract binary image data
@@ -329,6 +335,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                         "image_data": image_data,
                         'message_id': message_id,
                         "sender_username": self.sender_username,
+                        'public_key': public_key
                     }
                 )
                 if data.get("storeMessage"):
@@ -343,10 +350,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     }
                 )
                 await self.save_message_db(message=text_message, message_id=message_id, temp=self.receiver,
-                                           image_url=image_data)
+                                           image_url=image_data, public_key=public_key)
             else:
                 await self.save_message_db(message=text_message, message_id=message_id, temp=self.receiver,
-                                           image_url=image_data)
+                                           image_url=image_data, public_key=public_key)
 
             await self.send(
                 text_data=json.dumps(
@@ -408,8 +415,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         image_data = event["image_data"]
 
-        message = event["message"]
-        combined_data = f"{message_id}\n{message}\n{sender_username}".encode('utf-8') + b'\n' + image_data
+        message = event.get("message")
+        public_key = event.get("public_key")
+        combined_data = f"{message_id}\n{message}\n{sender_username}\n{public_key}\n".encode('utf-8') + b'' + image_data
 
         # Send the combined data as bytes_data
         await self.send(bytes_data=combined_data)
@@ -685,9 +693,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     public_id = get_image_public_id(message.image_url)
                     if public_id:
                         public_ids_to_delete.append(public_id)
+            messages_db.delete()
             if public_ids_to_delete:
                 try:
                     delete_resources(public_ids_to_delete)
                 except Exception:
                     pass
-            messages_db.delete()

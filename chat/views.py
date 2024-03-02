@@ -3,7 +3,7 @@ import hashlib
 import json
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 from cloudinary import uploader
 from cryptography.hazmat.backends import default_backend
@@ -87,6 +87,13 @@ def chat_box(request):
         reverse=True
     )
 
+    for item in room_messages_info:
+        if item['last_message_timestamp']:
+            utc_time = datetime.strptime(item['last_message_timestamp'], '%Y-%m-%d %H:%M:%S.%f%z')
+            kolkata_offset = timedelta(hours=5, minutes=30)  # Kolkata time zone offset
+            kolkata_time = utc_time + kolkata_offset
+            item['last_message_timestamp'] = kolkata_time.strftime('%I:%M %p')
+
     received_friend_request = FriendRequest.objects.filter(receiver=user).count()
 
     return render(request, "chat/chat.html",
@@ -166,25 +173,24 @@ def load_messages(request, receiver):
             messages = list(
                 messages_db.values('message', 'sender__username', 'message_id', 'reply_id',
                                    'timestamp', 'temp__username', 'saved', 'image_url', 'public_key'))
-            print(messages)
 
-            messages_db = Message.objects.filter(room=room, temp=user, saved=False).exists()
+            messages_db = Message.objects.filter(room=room, temp=user, saved=False)
             Message.objects.filter(room=room, temp=user, saved=True).update(temp=None)
 
             for message in messages:
                 if 'public_key' in message and isinstance(message['public_key'], bytes):
                     message['public_key'] = format_key(message['public_key'])
 
-            if messages_db:
+            if messages_db.exists():
                 thread = threading.Thread(target=update_message_status, args=(receiver_user, user.username))
                 thread.start()
+                messages_db.update(public_key=None)
         else:
             messages = []
             keys = None
             ratchet_public_key = None
             private_keys = None
             isNew = False
-        print(messages)
         messages = json.dumps(messages, cls=DjangoJSONEncoder)
         return JsonResponse({'status': 'success', 'data': messages, 'keys': {'public_keys': keys,
                                                                              'ratchet_public_key': ratchet_public_key,

@@ -61,7 +61,6 @@ def generate_sender_keys(room, username):
         room.set_receiver_key_bundle(key_bundle)
         room.receiver_ratchet = dhratchet_public_key_bytes
         room.save()
-        print('2')
 
     # Serialize keys to PEM format
     ik_private_key_pem = ik_private_key.private_bytes(
@@ -141,12 +140,10 @@ def generate_receiver_keys(room, username):
         room.set_sender_key_bundle(key_bundle)
         room.sender_ratchet = dhratchet_public_key_bytes
         room.save()
-        print('3')
     else:
         room.set_receiver_key_bundle(key_bundle)
         room.receiver_ratchet = dhratchet_public_key_bytes
         room.save()
-        print('4')
 
     # Serialize keys to PEM format
     ik_private_key_pem = ik_private_key.private_bytes(
