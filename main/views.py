@@ -1,4 +1,5 @@
 import asyncio
+import uuid
 from json import JSONDecodeError
 
 from django.contrib import auth
@@ -167,7 +168,8 @@ def login_view(request):
 
                 # Ensure 'next_page' is a relative URL
                 next_page = resolve_url(next_page)
-                return redirect(next_page)
+                response = redirect(next_page)
+                return response
             else:
                 form.add_error(None, 'Invalid username/email or password.')
     else:

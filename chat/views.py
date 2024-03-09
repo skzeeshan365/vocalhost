@@ -3,6 +3,7 @@ import hashlib
 import json
 import threading
 import time
+import uuid
 from datetime import datetime, timezone, timedelta
 
 from cloudinary import uploader
@@ -25,7 +26,7 @@ from main.Utils import send_pusher_update
 from chat.consumers import getRoom
 from main.forms import ImageUploadForm
 from chat.models import Message, Room, get_connected_users, new_signal_message, FriendRequest, SenderKeyBundle, \
-    ReceiverKeyBundle
+    ReceiverKeyBundle, Devices, DeviceIdentifier
 
 
 @login_required(login_url='/account/login/')
@@ -96,14 +97,24 @@ def chat_box(request):
 
     received_friend_request = FriendRequest.objects.filter(receiver=user).count()
 
-    return render(request, "chat/chat.html",
-                  {'protocol': protocol,
-                   'abcf': settings.FIREBASE_API_KEY,
-                   'users': room_messages_info,
-                   'storeMessage': user.userprofile.auto_save,
-                   'pusher': settings.PUSHER_KEY,
-                   'token_status': token,
-                   'received_requests': received_friend_request})
+    device_id_cookie = request.COOKIES.get('device_id')
+
+    response = render(request, "chat/chat.html",
+                      {'protocol': protocol,
+                       'abcf': settings.FIREBASE_API_KEY,
+                       'users': room_messages_info,
+                       'storeMessage': user.userprofile.auto_save,
+                       'pusher': settings.PUSHER_KEY,
+                       'token_status': token,
+                       'received_requests': received_friend_request})
+    if not device_id_cookie:
+        new_device_id = str(uuid.uuid4())
+        device, created = Devices.objects.get_or_create(user=user)
+
+        device.add_device_identifier(new_device_id)
+
+        response.set_cookie('device_id', new_device_id, max_age=365 * 24 * 60 * 60)
+    return response
 
 
 def update_message_status(receiver_user, username):
@@ -148,6 +159,7 @@ def load_messages(request, receiver):
 
         data = json.loads(request.body)
         generate_keys = data.get('generate_keys')
+        device_id = data.get('device_id')
 
         combined_usernames_set = frozenset([user.username, receiver_user])
         sorted_usernames = sorted(combined_usernames_set)
@@ -155,17 +167,16 @@ def load_messages(request, receiver):
         room = hashlib.sha256(str(sorted_usernames).encode()).hexdigest()
         room = Room.objects.filter(room=room).first()
         if room:
-            bundle = room.get_bundle_key(username=receiver_user)
-            keys = bundle.get_keys()
-            isNew = bundle.get_new()
+            receiver = User.objects.get(username=receiver_user)
+            public_keys = room.get_public_keys(receiver)
+            print(public_keys)
+            isNew = False
             ratchet_public_key = format_key(room.get_ratchet_key(username=receiver_user))
             if generate_keys:
                 if room.get_bundle_key(username=user.username).get_type() == 'sender':
-                    private_keys = generate_sender_keys(room, user.username)
-                    isNew = True
+                    private_keys = generate_sender_keys(room, user.username, device_id)
                 else:
-                    private_keys = generate_receiver_keys(room, user.username)
-                    isNew = True
+                    private_keys = generate_receiver_keys(room, user.username, device_id)
             else:
                 private_keys = None
 
@@ -187,12 +198,12 @@ def load_messages(request, receiver):
                 messages_db.update(public_key=None)
         else:
             messages = []
-            keys = None
+            public_keys = None
             ratchet_public_key = None
             private_keys = None
             isNew = False
         messages = json.dumps(messages, cls=DjangoJSONEncoder)
-        return JsonResponse({'status': 'success', 'data': messages, 'keys': {'public_keys': keys,
+        return JsonResponse({'status': 'success', 'data': messages, 'keys': {'public_keys': public_keys,
                                                                              'ratchet_public_key': ratchet_public_key,
                                                                              'private_keys': private_keys,
                                                                              'is_new': isNew}})
@@ -283,6 +294,7 @@ def send_friend_request(request):
     if request.method == 'POST':
         username = request.POST.get('username')
         send_request = request.POST.get('send_request')
+        device_id = request.POST.get('device_id')
         send_request = json.loads(send_request)
         try:
             friend_user = User.objects.get(username=username)
@@ -323,18 +335,20 @@ def send_friend_request(request):
                 format=serialization.PublicFormat.SubjectPublicKeyInfo
             )
 
-            # Convert bytes to base64-encoded strings
-            ik_public_key_base64 = base64.b64encode(ik_public_key_bytes).decode('utf-8')
-            ek_public_key_base64 = base64.b64encode(ek_public_key_bytes).decode('utf-8')
-            dhratchet_public_key_base64 = base64.b64encode(dhratchet_public_key_bytes).decode('utf-8')
+            try:
+                device_id = DeviceIdentifier.objects.get(identifier=device_id)
+            except DeviceIdentifier.DoesNotExist:
+                pass
 
             friend_request = FriendRequest(sender=request.user,
                                            receiver=friend_user,
-                                           status=FriendRequest.PENDING)
+                                           status=FriendRequest.PENDING,
+                                           sender_device_id=device_id)
+
             key_bundle = SenderKeyBundle(
-                ik_public_key=ik_public_key_base64,
-                ek_public_key=ek_public_key_base64,
-                DHratchet= dhratchet_public_key_base64,
+                ik_public_key=ik_public_key_bytes,
+                ek_public_key=ek_public_key_bytes,
+                DHratchet= dhratchet_public_key_bytes,
                 isNew=True,
                 username=username,
             )
@@ -384,6 +398,7 @@ def send_friend_request(request):
 def accept_friend_request(request):
     if request.method == 'POST':
         username = request.POST.get('username')
+        device_id = request.POST.get('device_id')
 
         # Check if the user with the specified username exists
         try:
@@ -421,18 +436,19 @@ def accept_friend_request(request):
             format=serialization.PublicFormat.SubjectPublicKeyInfo
         )
 
-        ik_public_key_base64 = base64.b64encode(ik_public_key_bytes).decode('utf-8')
-        spk_public_key_base64 = base64.b64encode(spk_public_key_bytes).decode('utf-8')
-        opk_public_key_base64 = base64.b64encode(opk_public_key_bytes).decode('utf-8')
-        dhratchet_public_key_base64 = base64.b64encode(dhratchet_public_key_bytes).decode('utf-8')
+        try:
+            device_id = DeviceIdentifier.objects.get(identifier=device_id)
+            friend_request.receiver_device_id = device_id
+        except DeviceIdentifier.DoesNotExist:
+            pass
 
         friend_request.status = FriendRequest.ACCEPTED
 
         key_bundle = ReceiverKeyBundle(
-            IKb=ik_public_key_base64,
-            SPKb=spk_public_key_base64,
-            OPKb=opk_public_key_base64,
-            DHratchet=dhratchet_public_key_base64,
+            IKb=ik_public_key_bytes,
+            SPKb=spk_public_key_bytes,
+            OPKb=opk_public_key_bytes,
+            DHratchet=dhratchet_public_key_bytes,
             isNew=True,
             username=username,
         )

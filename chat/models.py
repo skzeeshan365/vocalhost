@@ -5,6 +5,7 @@ import hashlib
 import json
 import pickle
 import threading
+import uuid
 
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
@@ -36,24 +37,12 @@ class SenderKeyBundle:
     def set_new(self, new):
         self.isNew = new
 
-    def to_dict(self):
-        return {
-            'ik_public_key': self.ik_public_key,
-            'ek_public_key': self.ek_public_key,
-            'DHratchet': self.DHratchet,
-            'username': self.username,
-            'isNew': self.isNew,
-        }
+    def to_pickle(self):
+        return pickle.dumps(self)
 
     @classmethod
-    def from_dict(cls, data):
-        return cls(
-            ik_public_key=data['ik_public_key'],
-            ek_public_key=data['ek_public_key'],
-            DHratchet=data['DHratchet'],
-            username=data['username'],
-            isNew=data['isNew'],
-        )
+    def from_pickle(cls, data):
+        return pickle.loads(data)
 
 
 class ReceiverKeyBundle:
@@ -77,51 +66,40 @@ class ReceiverKeyBundle:
     def set_new(self, new):
         self.isNew = new
 
-    def to_dict(self):
-        return {
-            'IKb': self.IKb,
-            'SPKb': self.SPKb,
-            'OPKb': self.OPKb,
-            'DHratchet': self.DHratchet,
-            'username': self.username,
-            'isNew': self.isNew,
-        }
+    def to_pickle(self):
+        return pickle.dumps(self)
 
     @classmethod
-    def from_dict(cls, data):
-        return cls(
-            IKb=data['IKb'],
-            SPKb=data['SPKb'],
-            OPKb=data['OPKb'],
-            DHratchet=data['DHratchet'],
-            username=data['username'],
-            isNew=data['isNew'],
-        )
+    def from_pickle(cls, data):
+        return pickle.loads(data)
 
 
-def create_room(sender_username, receiver_username, sender_key_bundle, receiver_key_bundle):
+def create_room(sender_username, receiver_username, sender_device_id, sender_key_bundle, receiver_key_bundle, receiver_device_id):
     combined_usernames_set = frozenset([sender_username, receiver_username])
     sorted_usernames = sorted(combined_usernames_set)
 
-    room_identifier = hashlib.sha256(str(sorted_usernames).encode()).hexdigest()
-    room = Room(
-        room=room_identifier,
-        sender_username=sorted_usernames[0],
-        receiver_username=sorted_usernames[1]
-    )
-    if sender_username == sorted_usernames[0]:
-        room.set_sender_key_bundle(sender_key_bundle)
-        room.set_receiver_key_bundle(receiver_key_bundle)
+    try:
+        sender = User.objects.get(username=sender_username)
+        receiver = User.objects.get(username=receiver_username)
 
-        room.sender_ratchet = base64.b64decode(sender_key_bundle.DHratchet)
-        room.receiver_ratchet = base64.b64decode(receiver_key_bundle.DHratchet)
-    else:
-        room.set_receiver_key_bundle(sender_key_bundle)
-        room.set_sender_key_bundle(receiver_key_bundle)
+        room_identifier = hashlib.sha256(str(sorted_usernames).encode()).hexdigest()
+        room = Room(
+            room=room_identifier,
+            sender_username=sorted_usernames[0],
+            receiver_username=sorted_usernames[1]
+        )
+        if sender_username == sorted_usernames[0]:
+            room.sender_ratchet = base64.b64decode(sender_key_bundle.DHratchet)
+            room.receiver_ratchet = base64.b64decode(receiver_key_bundle.DHratchet)
+        else:
+            room.receiver_ratchet = base64.b64decode(sender_key_bundle.DHratchet)
+            room.sender_ratchet = base64.b64decode(receiver_key_bundle.DHratchet)
+        room.save()
 
-        room.receiver_ratchet = base64.b64decode(sender_key_bundle.DHratchet)
-        room.sender_ratchet = base64.b64decode(receiver_key_bundle.DHratchet)
-    room.save()
+        PublicKey.create_key(bundle=sender_key_bundle, user=sender, room=room, device_identifier=sender_device_id)
+        PublicKey.create_key(bundle=receiver_key_bundle, user=receiver, room=room, device_identifier=receiver_device_id)
+    except User.DoesNotExist:
+        pass
 
 
 def get_or_create_room(sender_username, receiver_username):
@@ -147,9 +125,6 @@ class Room(models.Model):
     sender_username = models.CharField(max_length=128, default=None)
     receiver_username = models.CharField(max_length=128, default=None)
 
-    sender_key_bundle = models.JSONField(default=dict, blank=True, null=True)
-    receiver_key_bundle = models.JSONField(default=dict, blank=True, null=True)
-
     sender_ratchet = models.BinaryField(default=None, null=True, blank=True)
     receiver_ratchet = models.BinaryField(default=None, null=True, blank=True)
 
@@ -163,42 +138,6 @@ class Room(models.Model):
     def get_last_message(self):
         last_message = Message.objects.filter(room=self).order_by('-timestamp').first()
         return last_message if last_message else None
-
-    def set_sender_key_bundle(self, key_bundle):
-        self.sender_key_bundle = key_bundle.to_dict()
-
-    def set_receiver_key_bundle(self, key_bundle):
-        self.receiver_key_bundle = key_bundle.to_dict()
-
-    def get_sender_key_bundle(self):
-        return SenderKeyBundle.from_dict(self.sender_key_bundle) if self.sender_key_bundle else None
-
-    def get_receiver_key_bundle(self):
-        return ReceiverKeyBundle.from_dict(self.receiver_key_bundle) if self.receiver_key_bundle else None
-
-    def get_bundle_key(self, username):
-        if username == self.sender_username:
-            if self.sender_key_bundle.get('ik_public_key', False):
-                old_bundle = SenderKeyBundle.from_dict(self.sender_key_bundle)
-            else:
-                old_bundle = ReceiverKeyBundle.from_dict(self.sender_key_bundle)
-            if old_bundle.get_new():
-                old_bundle.set_new(False)
-                self.sender_key_bundle = old_bundle.to_dict()
-                self.save()
-                old_bundle.set_new(True)
-        else:
-            if self.receiver_key_bundle.get('ik_public_key', False):
-                old_bundle = SenderKeyBundle.from_dict(self.receiver_key_bundle)
-            else:
-                old_bundle = ReceiverKeyBundle.from_dict(self.receiver_key_bundle)
-            if old_bundle.get_new():
-                old_bundle.set_new(False)
-                self.receiver_key_bundle = old_bundle.to_dict()
-                self.save()
-                old_bundle.set_new(True)
-
-        return old_bundle
 
     def get_ratchet_key(self, username):
         if username == self.sender_username:
@@ -242,6 +181,28 @@ class Room(models.Model):
                 self.receiver_ratchet = public_key_bytes
         except binascii.Error as e:
             print(f"Error decoding Base64: {e}")
+
+    def get_public_key(self, user, device_id):
+        try:
+            public_key = PublicKey.objects.get(user=user, room=self, device_identifier=device_id)
+            key_bundle = public_key.get_bundle_key()
+            return PublicKey.format_keys(key_bundle.get_keys())
+        except PublicKey.DoesNotExist:
+            return None
+
+    def get_public_keys(self, user):
+        public_keys = {}
+        device_identifiers = Devices.objects.filter(user=user).values_list('device_identifiers__identifier', flat=True)
+
+        for device_identifier in device_identifiers:
+            try:
+                device_id = DeviceIdentifier.objects.get(identifier=device_identifier)
+                public_key = PublicKey.objects.get(user=user, room=self, device_identifier=device_id)
+                key_bundle = public_key.get_bundle_key()
+                public_keys[str(device_identifier)] = PublicKey.format_keys(key_bundle.get_keys())
+            except PublicKey.DoesNotExist:
+                public_keys[str(device_identifier)] = None
+        return public_keys
 
 
 new_signal_message = Signal()
@@ -355,6 +316,13 @@ def update_request(type, sender, receiver, title, message, accept=False):
         send_message_to_device(receiver, title=title, message=message)
 
 
+class DeviceIdentifier(models.Model):
+    identifier = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
+
+    def __str__(self):
+        return str(self.identifier)
+
+
 class FriendRequest(models.Model):
     DEFAULT = 0
     PENDING = 1
@@ -369,8 +337,11 @@ class FriendRequest(models.Model):
     receiver = models.ForeignKey(User, on_delete=models.CASCADE, related_name='receiver')
     status = models.IntegerField(choices=STATUS_CHOICES, default=DEFAULT)
 
-    key_bundle = models.JSONField(default=dict, blank=True, null=True)
-    receiver_key_bundle = models.JSONField(default=dict, blank=True, null=True)
+    sender_device_id = models.ForeignKey(DeviceIdentifier, on_delete=models.CASCADE, related_name='sender_device_id', default=None, null=True, blank=True)
+    receiver_device_id = models.ForeignKey(DeviceIdentifier, on_delete=models.CASCADE, related_name='receiver_device_id', default=None, null=True, blank=True)
+
+    key_bundle = models.BinaryField(default=None, null=True, blank=True)
+    receiver_key_bundle = models.BinaryField(default=None, null=True, blank=True)
 
     def __str__(self):
         return f"{self.sender} to {self.receiver}: {self.get_status_display()}"
@@ -382,8 +353,8 @@ class FriendRequest(models.Model):
                            title='Friend request accepted',
                            message=f'{self.receiver.username} has accepted your friend request', accept=True)
 
-            create_room(sender_username=self.sender.username, receiver_username=self.receiver.username,
-                        sender_key_bundle=self.get_key_bundle(), receiver_key_bundle=self.get_receiver_key_bundle())
+            create_room(sender_username=self.sender.username, receiver_username=self.receiver.username, sender_device_id=self.sender_device_id,
+                        sender_key_bundle=self.get_key_bundle(), receiver_key_bundle=self.get_receiver_key_bundle(), receiver_device_id=self.receiver_device_id)
 
             self.delete()
         elif self.status == self.PENDING:
@@ -397,13 +368,83 @@ class FriendRequest(models.Model):
             thread.start()
 
     def set_key_bundle(self, key_bundle):
-        self.key_bundle = key_bundle.to_dict()
+        self.key_bundle = pickle.dumps(key_bundle)
 
     def get_key_bundle(self):
-        return SenderKeyBundle.from_dict(self.key_bundle) if self.key_bundle else None
+        return pickle.loads(self.key_bundle) if self.key_bundle else None
 
     def set_receiver_key_bundle(self, key_bundle):
-        self.receiver_key_bundle = key_bundle.to_dict()
+        self.receiver_key_bundle = pickle.dumps(key_bundle)
 
     def get_receiver_key_bundle(self):
-        return ReceiverKeyBundle.from_dict(self.receiver_key_bundle) if self.receiver_key_bundle else None
+        return pickle.loads(self.receiver_key_bundle) if self.receiver_key_bundle else None
+
+
+class Devices(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='devices')
+    device_identifiers = models.ManyToManyField(DeviceIdentifier, related_name='device_ids')
+
+    def add_device_identifier(self, device_id):
+        device_identifier = DeviceIdentifier.objects.create(identifier=device_id)
+        self.device_identifiers.add(device_identifier)
+
+    def get_device_identifiers(self):
+        return self.device_identifiers.all()
+
+    def __str__(self):
+        return f"{self.user.username}'s Devices"
+
+
+class PublicKey(models.Model):
+    SENDER = 0
+    RECEIVER = 1
+    KEY_TYPE_CHOICES = [
+        (SENDER, 'Sender'),
+        (RECEIVER, 'Receiver'),
+    ]
+
+    key_type = models.IntegerField(choices=KEY_TYPE_CHOICES)
+    key_bundle = models.BinaryField()
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    device_identifier = models.ForeignKey(DeviceIdentifier, on_delete=models.CASCADE, related_name='public_key')
+    room = models.ForeignKey(Room, on_delete=models.CASCADE, related_name='public_key')
+
+    @classmethod
+    def create_key(cls, bundle, user, device_identifier, room):
+        if bundle.get_type() == 'Sender':
+            choice = cls.SENDER
+        else:
+            choice = cls.RECEIVER
+        key_bundle = pickle.dumps(bundle)
+        return cls.objects.create(
+            key_type=choice,
+            key_bundle=key_bundle,
+            user=user,
+            device_identifier=device_identifier,
+            room=room,
+        )
+
+    def get_bundle(self):
+        return pickle.loads(self.key_bundle)
+
+    def get_bundle_key(self):
+        key_bundle = pickle.loads(self.key_bundle)
+
+        if key_bundle.get_new():
+            key_bundle.set_new(False)
+            self.key_bundle = pickle.dumps(key_bundle)
+            self.save()
+            key_bundle.set_new(True)
+
+        return key_bundle
+
+    @staticmethod
+    def format_keys(keys):
+        key = []
+        for i in keys:
+            if isinstance(i, bytes):
+                key.append(base64.b64encode(i).decode('utf-8'))
+            else:
+                key.append(i)
+        return key

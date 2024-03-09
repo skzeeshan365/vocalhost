@@ -20,7 +20,7 @@ def format_key(key):
     return base64.b64encode(key).decode('utf-8')
 
 
-def generate_sender_keys(room, username):
+def generate_sender_keys(room, username, device_id):
     ik_private_key = ec.generate_private_key(ec.SECP256R1(), default_backend())
     ek_private_key = ec.generate_private_key(ec.SECP256R1(), default_backend())
     dhratchet_private_key = ec.generate_private_key(ec.SECP256R1(), default_backend())
@@ -99,7 +99,7 @@ def generate_sender_keys(room, username):
     return private_keys
 
 
-def generate_receiver_keys(room, username):
+def generate_receiver_keys(room, username, device_id):
     ik_private_key = ec.generate_private_key(ec.SECP256R1(), default_backend())
     spk_private_key = ec.generate_private_key(ec.SECP256R1(), default_backend())
     opk_private_key = ec.generate_private_key(ec.SECP256R1(), default_backend())
