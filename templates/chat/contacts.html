@@ -172,6 +172,7 @@
 <script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
 <script src="https://js.pusher.com/8.2.0/pusher.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/3.1.9-1/crypto-js.js"></script>
+<script src="{% static 'chat/js/test.js' %}"></script>
 
 <script>
     // Function to get the value of a cookie by its name
@@ -205,7 +206,7 @@ function getCookie(name) {
                     if (response.request_status) {
                         buttonElement.innerText = 'Added';
                         personElement.setAttribute('data-status', 'True');
-                        saveKeys(username, response.private_keys.ik_private_key, response.private_keys.ek_private_key, response.private_keys.dhratchet_private_key);
+                        saveKeys_sender(response.room, response.private_keys.ik_private_key, response.private_keys.ek_private_key, response.private_keys.dhratchet_private_key);
                     } else {
                         buttonElement.innerText = 'Add';
                         personElement.setAttribute('data-status', 'False');
@@ -237,7 +238,7 @@ function getCookie(name) {
                     buttonElement.innerText = 'Accepted'
                     buttonElement.removeAttribute('onclick')
                     sessionStorage.setItem('return_from_add_person', 'true');
-                    saveKeys_receiver(username, response.private_keys.ik_private_key, response.private_keys.spk_private_key, response.private_keys.opk_private_key , response.private_keys.dhratchet_private_key);
+                    saveKeys_receiver(response.room, response.private_keys.ik_private_key, response.private_keys.spk_private_key, response.private_keys.opk_private_key , response.private_keys.dhratchet_private_key);
                 } else {
                     alert(response.error);
                 }
@@ -248,122 +249,6 @@ function getCookie(name) {
             }
         });
     }
-
-    function saveKeys(username, ik_private_key, ek_private_key, dhratchet_private_key) {
-        let roomData = JSON.parse(localStorage.getItem(username));
-
-        if (!roomData) {
-            roomData = {};
-        }
-        
-        roomData.type = 'sender';
-
-        roomData.private_keys = {
-            ikPrivateKeyData: ik_private_key,
-            ekPrivateKeyData: ek_private_key,
-            dhratchet_key: dhratchet_private_key
-        };
-
-        localStorage.setItem(username, JSON.stringify(roomData));
-    }
-    
-    function saveKeys_receiver(username, ik_private_key, spk_private_key, opk_private_key, dhratchet_key) {
-
-        let roomData = JSON.parse(localStorage.getItem(username));
-
-        if (!roomData) {
-            roomData = {};
-        }
-        
-        roomData.type = 'receiver';
-
-        roomData.private_keys = {
-            ikPrivateKey: ik_private_key,
-            spkPrivateKey: spk_private_key,
-            opkPrivateKey: opk_private_key,
-            dhratchet_key: dhratchet_key
-        };
-
-        localStorage.setItem(username, JSON.stringify(roomData));
-    }
-    
-    async function importKeys(username) {
-    let roomData = JSON.parse(localStorage.getItem(username));
-
-    if (roomData && roomData.private_keys) {
-        let ikPrivateKeyJwk = roomData.private_keys.ikPrivateKeyData;
-        let ekPrivateKeyJwk = roomData.private_keys.ekPrivateKeyData;
-        
-        console.log(ikPrivateKeyJwk);
-        
-let importedIkPrivateKey = await crypto.subtle.importKey(
-    'jwk',
-    JSON.parse(ikPrivateKeyJwk),
-    {name: 'ECDH', namedCurve: 'P-256'},
-    true,
-    ['deriveKey']
-);
-let importedEkPrivateKey = await crypto.subtle.importKey(
-    'jwk',
-    JSON.parse(ekPrivateKeyJwk),
-    {name: 'ECDH', namedCurve: 'P-256'},
-    true,
-    ['deriveKey']
-);
-
-console.log(importedIkPrivateKey);
-    } else {
-        console.log('No keys found for this username');
-        return null;
-    }
-}
-
-    function removeKeys(username) {
-    let roomData = JSON.parse(localStorage.getItem(username));
-
-    if (roomData && roomData.private_keys) {
-        delete roomData.private_keys;
-
-        // If there's no other data for the room, remove the room data entirely
-        if (Object.keys(roomData).length === 0) {
-            localStorage.removeItem(username);
-        } else {
-            // Otherwise, save the updated room data back to local storage
-            localStorage.setItem(username, JSON.stringify(roomData));
-        }
-    }
-}
-
-function base64StringToArrayBuffer(base64) {
-    let binaryString = window.atob(base64);
-    let len = binaryString.length;
-    let bytes = new Uint8Array(len);
-    for (let i = 0; i < len; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-    }
-    return bytes.buffer;
-}
-
-function pemToJwk(pemKey) {
-    // Convert PEM to DER
-    const derKey = forge.pem.decode(pemKey)[0].body;
-
-    // Parse DER to get private key
-    const privateKey = forge.asn1.fromDer(derKey);
-    const privateKeyInfo = forge.pki.privateKeyInfoFromAsn1(privateKey);
-    const key = forge.pki.privateKeyFromAsn1(privateKeyInfo);
-
-    // Convert private key to JWK
-    const jwk = {
-        kty: 'EC',
-        crv: 'P-256',
-        d: forge.util.bytesToHex(key.privateKey.asBytes()),
-        x: forge.util.bytesToHex(key.publicKey.point.x.toBytes()),
-        y: forge.util.bytesToHex(key.publicKey.point.y.toBytes()),
-    };
-
-    return jwk;
-}
 </script>
 
 <script>

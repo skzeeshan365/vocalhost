@@ -424,6 +424,18 @@ function preloaderEnd() {
     }, 1000); // Adjust the delay time as needed
 }
 
+// Function to get the value of a cookie by its name
+function getCookie(name) {
+    const cookies = document.cookie.split(';');
+    for (const cookie of cookies) {
+        const [cookieName, cookieValue] = cookie.trim().split('=');
+        if (cookieName === name) {
+            return decodeURIComponent(cookieValue);
+        }
+    }
+    return null;
+}
+
 function load_chat(userName) {
     preloaderStart();
     if (window.innerWidth <= 768) {
@@ -474,7 +486,8 @@ function load_chat(userName) {
             url: `/chat/load/messages/${userName}/`,
             dataType: 'json',
             data: JSON.stringify({
-                generate_keys: false
+                generate_keys: false,
+                device_id: getCookie('device_id')
             }),
             success: function (response) {
                 if (response.status === 'success') {
@@ -498,7 +511,8 @@ function load_chat(userName) {
             url: `/chat/load/messages/${userName}/`,
             dataType: 'json',
             data: JSON.stringify({
-                generate_keys: true
+                generate_keys: true,
+                device_id: getCookie('device_id')
             }),
             success: function (response) {
                 if (response.status === 'success') {
@@ -803,7 +817,7 @@ function remove_user(username) {
 }
 
 function initialize_socket() {
-    const web_socket_url = `${protocol}://` + window.location.host + `/ws/chat/?sender_username=${userUsername}`
+    const web_socket_url = `${protocol}://` + window.location.host + `/ws/chat/?device_id=${getCookie('device_id')}`
     chatSocket = new WebSocket(web_socket_url);
     chatSocket.binaryType = 'blob'
 

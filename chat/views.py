@@ -21,12 +21,12 @@ from fcm_django.models import FCMDevice
 from jwcrypto import jwk
 
 from ReiserX_Tunnel import settings
-from chat.utils import format_key, format_keys, generate_sender_keys, generate_receiver_keys
+from chat.utils import format_key, format_keys, generate_sender_keys, generate_receiver_keys, generate_room_id
 from main.Utils import send_pusher_update
 from chat.consumers import getRoom
 from main.forms import ImageUploadForm
 from chat.models import Message, Room, get_connected_users, new_signal_message, FriendRequest, SenderKeyBundle, \
-    ReceiverKeyBundle, Devices, DeviceIdentifier
+    ReceiverKeyBundle, Devices, DeviceIdentifier, PublicKey
 
 
 @login_required(login_url='/account/login/')
@@ -171,12 +171,14 @@ def load_messages(request, receiver):
             public_keys = room.get_public_keys(receiver)
             print(public_keys)
             isNew = False
-            ratchet_public_key = format_key(room.get_ratchet_key(username=receiver_user))
+            ratchet_public_key = room.get_ratchet_key(user=receiver)
+            print(ratchet_public_key)
             if generate_keys:
-                if room.get_bundle_key(username=user.username).get_type() == 'sender':
-                    private_keys = generate_sender_keys(room, user.username, device_id)
+                if PublicKey.get_public_key(user=user, room=room, device_id=device_id).key_type == PublicKey.SENDER:
+                    private_keys = generate_sender_keys(room, user, device_id)
                 else:
-                    private_keys = generate_receiver_keys(room, user.username, device_id)
+                    private_keys = generate_receiver_keys(room, user, device_id)
+                print(private_keys)
             else:
                 private_keys = None
 
@@ -350,7 +352,6 @@ def send_friend_request(request):
                 ek_public_key=ek_public_key_bytes,
                 DHratchet= dhratchet_public_key_bytes,
                 isNew=True,
-                username=username,
             )
             friend_request.set_key_bundle(key_bundle=key_bundle)
             friend_request.save()
@@ -389,7 +390,7 @@ def send_friend_request(request):
                 'dhratchet_private_key': dhratchet_jwk_key
             }
 
-            return JsonResponse({'status': 'success', 'request_status': True, 'private_keys': private_keys})
+            return JsonResponse({'status': 'success', 'request_status': True, 'private_keys': private_keys, 'room': generate_room_id(request.user.username, username)})
 
     return JsonResponse({'status': 'error', 'message': 'Invalid request method'}, status=405)
 
@@ -450,7 +451,6 @@ def accept_friend_request(request):
             OPKb=opk_public_key_bytes,
             DHratchet=dhratchet_public_key_bytes,
             isNew=True,
-            username=username,
         )
         friend_request.set_receiver_key_bundle(key_bundle=key_bundle)
         friend_request.save()
@@ -499,7 +499,7 @@ def accept_friend_request(request):
             'dhratchet_private_key': ratchet_jwk_key
         }
 
-        return JsonResponse({'status': 'success', 'message': 'Friend request accepted', 'private_keys': private_keys})
+        return JsonResponse({'status': 'success', 'message': 'Friend request accepted', 'private_keys': private_keys, 'room': generate_room_id(request.user.username, username)})
 
     return JsonResponse({'status': 'error', 'message': 'Invalid request method'}, status=405)
 

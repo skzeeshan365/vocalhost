@@ -1,4 +1,5 @@
 import base64
+import hashlib
 import pickle
 
 from cryptography.hazmat.backends import default_backend
@@ -6,7 +7,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from jwcrypto import jwk
 
-from chat.models import SenderKeyBundle, ReceiverKeyBundle, Room
+from chat.models import SenderKeyBundle, ReceiverKeyBundle, Room, PublicKey
 
 
 def format_keys(keys):
@@ -20,7 +21,7 @@ def format_key(key):
     return base64.b64encode(key).decode('utf-8')
 
 
-def generate_sender_keys(room, username, device_id):
+def generate_sender_keys(room, user, device_id):
     ik_private_key = ec.generate_private_key(ec.SECP256R1(), default_backend())
     ek_private_key = ec.generate_private_key(ec.SECP256R1(), default_backend())
     dhratchet_private_key = ec.generate_private_key(ec.SECP256R1(), default_backend())
@@ -41,26 +42,14 @@ def generate_sender_keys(room, username, device_id):
         format=serialization.PublicFormat.SubjectPublicKeyInfo
     )
 
-    # Convert bytes to base64-encoded strings
-    ik_public_key_base64 = base64.b64encode(ik_public_key_bytes).decode('utf-8')
-    ek_public_key_base64 = base64.b64encode(ek_public_key_bytes).decode('utf-8')
-    dhratchet_public_key_base64 = base64.b64encode(dhratchet_public_key_bytes).decode('utf-8')
-
     key_bundle = SenderKeyBundle(
-        ik_public_key=ik_public_key_base64,
-        ek_public_key=ek_public_key_base64,
-        DHratchet=dhratchet_public_key_base64,
+        ik_public_key=ik_public_key_bytes,
+        ek_public_key=ek_public_key_bytes,
+        DHratchet=dhratchet_public_key_bytes,
         isNew=True,
-        username=username,
     )
-    if room.sender_username == username:
-        room.set_sender_key_bundle(key_bundle)
-        room.sender_ratchet = dhratchet_public_key_bytes
-        room.save()
-    else:
-        room.set_receiver_key_bundle(key_bundle)
-        room.receiver_ratchet = dhratchet_public_key_bytes
-        room.save()
+    PublicKey.update_keys(bundle=key_bundle, user=user, room=room, device_identifier=device_id,
+                          ratchet_key=dhratchet_public_key_bytes)
 
     # Serialize keys to PEM format
     ik_private_key_pem = ik_private_key.private_bytes(
@@ -99,7 +88,7 @@ def generate_sender_keys(room, username, device_id):
     return private_keys
 
 
-def generate_receiver_keys(room, username, device_id):
+def generate_receiver_keys(room, user, device_id):
     ik_private_key = ec.generate_private_key(ec.SECP256R1(), default_backend())
     spk_private_key = ec.generate_private_key(ec.SECP256R1(), default_backend())
     opk_private_key = ec.generate_private_key(ec.SECP256R1(), default_backend())
@@ -123,27 +112,15 @@ def generate_receiver_keys(room, username, device_id):
         format=serialization.PublicFormat.SubjectPublicKeyInfo
     )
 
-    ik_public_key_base64 = base64.b64encode(ik_public_key_bytes).decode('utf-8')
-    spk_public_key_base64 = base64.b64encode(spk_public_key_bytes).decode('utf-8')
-    opk_public_key_base64 = base64.b64encode(opk_public_key_bytes).decode('utf-8')
-    dhratchet_public_key_base64 = base64.b64encode(dhratchet_public_key_bytes).decode('utf-8')
-
     key_bundle = ReceiverKeyBundle(
-        IKb=ik_public_key_base64,
-        SPKb=spk_public_key_base64,
-        OPKb=opk_public_key_base64,
-        DHratchet=dhratchet_public_key_base64,
+        IKb=ik_public_key_bytes,
+        SPKb=spk_public_key_bytes,
+        OPKb=opk_public_key_bytes,
+        DHratchet=dhratchet_public_key_bytes,
         isNew=True,
-        username=username,
     )
-    if room.sender_username == username:
-        room.set_sender_key_bundle(key_bundle)
-        room.sender_ratchet = dhratchet_public_key_bytes
-        room.save()
-    else:
-        room.set_receiver_key_bundle(key_bundle)
-        room.receiver_ratchet = dhratchet_public_key_bytes
-        room.save()
+    PublicKey.update_keys(bundle=key_bundle, user=user, room=room, device_identifier=device_id,
+                          ratchet_key=dhratchet_public_key_bytes)
 
     # Serialize keys to PEM format
     ik_private_key_pem = ik_private_key.private_bytes(
@@ -190,3 +167,9 @@ def generate_receiver_keys(room, username, device_id):
         'type': 1
     }
     return private_keys
+
+
+def generate_room_id(sender_username, receiver_username):
+    combined_usernames_set = frozenset([sender_username, receiver_username])
+    sorted_usernames = sorted(combined_usernames_set)
+    return hashlib.sha256(str(sorted_usernames).encode()).hexdigest()

@@ -106,19 +106,6 @@ function b64(msg) {
 }
 
 
-function saveDHRatchetKey(dhratchet_private_key, username) {
-    console.log(`${username}: save`);
-        let roomData = JSON.parse(localStorage.getItem(username));
-
-        if (!roomData) {
-            roomData = {};
-        }
-
-        roomData.private_keys['dhratchet_key'] = JSON.stringify(dhratchet_private_key);
-
-        localStorage.setItem(username, JSON.stringify(roomData));
-    }
-
 class SymmRatchet {
     constructor(key) {
         this.state = key;
@@ -155,13 +142,14 @@ class SymmRatchet {
 }
 
 class Bob {
-    constructor(username) {
+    constructor(username, room) {
         this.IKb = {};
         this.SPKb = {};
         this.OPKb = {};
         this.DHratchet = {};
         this.username = username;
         this.receiver_public_key = null;
+        this.room = room;
     }
 
     async setReceiverKey(key) {
@@ -185,31 +173,6 @@ class Bob {
             true,
             []
         );
-    }
-
-    async generateKeys() {
-        this.IKb = await crypto.subtle.generateKey(
-            {name: 'ECDH', namedCurve: 'P-256'},
-            true,
-            ['deriveKey']
-        );
-        this.SPKb = await crypto.subtle.generateKey(
-            {name: 'ECDH', namedCurve: 'P-256'},
-            true,
-            ['deriveKey']
-        );
-        this.OPKb = await crypto.subtle.generateKey(
-            {name: 'ECDH', namedCurve: 'P-256'},
-            true,
-            ['deriveKey']
-        );
-        this.DHratchet = await crypto.subtle.generateKey(
-            {name: 'ECDH', namedCurve: 'P-256'},
-            true,
-            ['deriveKey']
-        );
-
-        await this.saveDhratchetKey();
     }
 
     async x3dh(keys) {
@@ -245,14 +208,8 @@ class Bob {
         console.log('[Bob]\tShared key:', b64(this.sk));
     }
 
-    async saveToLocalStorage() {
-        localStorage.setItem('rootRatchetState', btoa(String.fromCharCode.apply(null, new Uint8Array(this.rootRatchet.state))));
-        localStorage.setItem('recvRatchetState', btoa(String.fromCharCode.apply(null, new Uint8Array(this.recvRatchet.state))));
-        localStorage.setItem('sendRatchetState', btoa(String.fromCharCode.apply(null, new Uint8Array(this.sendRatchet.state))));
-    }
-
     async retrieveAndImportKeys() {
-        let roomData = JSON.parse(localStorage.getItem(this.username));
+        let roomData = getKeysByRoom(this.room);
 
         if (roomData && roomData.type && roomData.private_keys) {
             let ikPrivateKey = JSON.parse(roomData.private_keys.ikPrivateKey);
@@ -293,37 +250,24 @@ class Bob {
         }
     }
 
-    async loadFromLocalStorage() {
-        try {
-            // Retrieving the states
-            let retrievedRootRatchetState = new Uint8Array(atob(localStorage.getItem('rootRatchetState')).split("").map(function (c) {
-                return c.charCodeAt(0);
-            }));
-            let retrievedRecvRatchetState = new Uint8Array(atob(localStorage.getItem('recvRatchetState')).split("").map(function (c) {
-                return c.charCodeAt(0);
-            }));
-            let retrievedSendRatchetState = new Uint8Array(atob(localStorage.getItem('sendRatchetState')).split("").map(function (c) {
-                return c.charCodeAt(0);
-            }));
-
-            this.rootRatchet = new SymmRatchet(retrievedRootRatchetState);
-            this.recvRatchet = new SymmRatchet(retrievedRecvRatchetState);
-            this.sendRatchet = new SymmRatchet(retrievedSendRatchetState);
-        } catch (error) {
-            console.error("Error", error);
-        }
+    async saveToLocalStorage() {
+        let root = btoa(String.fromCharCode.apply(null, new Uint8Array(this.rootRatchet.state)));
+        let recv = btoa(String.fromCharCode.apply(null, new Uint8Array(this.recvRatchet.state)));
+        let send =  btoa(String.fromCharCode.apply(null, new Uint8Array(this.sendRatchet.state)));
+        saveRatchetState(this.room, root, recv, send);
     }
 
     removeFromLocalStorage() {
-        try {
-        localStorage.removeItem('rootRatchetState');
-        localStorage.removeItem('recvRatchetState');
-        localStorage.removeItem('sendRatchetState');
-        } catch (error) {
-            console.error("Error", error);
-        }
+        deleteRatchetStates(this.room);
     }
 
+    async loadFromLocalStorage() {
+        let states = getRatchetState(this.room);
+
+        this.rootRatchet = new SymmRatchet(states.rootRatchetState);
+        this.recvRatchet = new SymmRatchet(states.recvRatchetState);
+        this.sendRatchet = new SymmRatchet(states.sendRatchetState);
+    }
 
     async initRatchets(is_new) {
         let retrievedRootRatchetState = new Uint8Array(atob(localStorage.getItem('rootRatchetState')).split("").map(function (c) {
@@ -394,12 +338,13 @@ class Bob {
 }
 
 class Alice {
-    constructor(username) {
+    constructor(username, room) {
         this.IKa = {};
         this.EKa = {};
         this.DHratchet = {};
         this.username = username;
         this.receiver_public_key = null;
+        this.room = room;
     }
 
     async setReceiverKey(key) {
@@ -422,22 +367,6 @@ class Alice {
             {name: 'ECDH', namedCurve: 'P-256'},
             true,
             []
-        );
-    }
-
-    async generate_keys() {
-        this.IKa = null;
-        this.EKa = null;
-
-        this.IKa = await crypto.subtle.generateKey(
-            {name: 'ECDH', namedCurve: 'P-256'},
-            true,
-            ['deriveKey']
-        );
-        this.EKa = await crypto.subtle.generateKey(
-            {name: 'ECDH', namedCurve: 'P-256'},
-            true,
-            ['deriveKey']
         );
     }
 
@@ -486,8 +415,8 @@ class Alice {
 
     async initRatchets(is_new) {
         let retrievedRootRatchetState = new Uint8Array(atob(localStorage.getItem('alice_rootRatchetState')).split("").map(function (c) {
-                return c.charCodeAt(0);
-            }));
+            return c.charCodeAt(0);
+        }));
         if (is_new) {
             this.rootRatchet = new SymmRatchet(this.sk);
             this.sendRatchet = new SymmRatchet((await this.rootRatchet.next())[0]);
@@ -503,7 +432,7 @@ class Alice {
     }
 
     async retrieveAndImportKeys() {
-        let roomData = JSON.parse(localStorage.getItem(this.username));
+        let roomData = getKeysByRoom(this.room);
 
         if (roomData && roomData.type && roomData.private_keys) {
             let ikPrivateKeyData = JSON.parse(roomData.private_keys.ikPrivateKeyData);
@@ -536,39 +465,22 @@ class Alice {
     }
 
     async saveToLocalStorage() {
-        localStorage.setItem('alice_rootRatchetState', btoa(String.fromCharCode.apply(null, new Uint8Array(this.rootRatchet.state))));
-        localStorage.setItem('alice_recvRatchetState', btoa(String.fromCharCode.apply(null, new Uint8Array(this.recvRatchet.state))));
-        localStorage.setItem('alice_sendRatchetState', btoa(String.fromCharCode.apply(null, new Uint8Array(this.sendRatchet.state))));
+        let root = btoa(String.fromCharCode.apply(null, new Uint8Array(this.rootRatchet.state)));
+        let recv = btoa(String.fromCharCode.apply(null, new Uint8Array(this.recvRatchet.state)));
+        let send =  btoa(String.fromCharCode.apply(null, new Uint8Array(this.sendRatchet.state)));
+        saveRatchetState(this.room, root, recv, send);
     }
 
     removeFromLocalStorage() {
-        try {
-        localStorage.removeItem('alice_rootRatchetState');
-        localStorage.removeItem('alice_recvRatchetState');
-        localStorage.removeItem('alice_sendRatchetState');
-        } catch (error) {
-            console.error("Error", error);
-        }
+        deleteRatchetStates(this.room);
     }
 
     async loadFromLocalStorage() {
-        try {
-            let retrievedRootRatchetState = new Uint8Array(atob(localStorage.getItem('alice_rootRatchetState')).split("").map(function (c) {
-                return c.charCodeAt(0);
-            }));
-            let retrievedRecvRatchetState = new Uint8Array(atob(localStorage.getItem('alice_recvRatchetState')).split("").map(function (c) {
-                return c.charCodeAt(0);
-            }));
-            let retrievedSendRatchetState = new Uint8Array(atob(localStorage.getItem('alice_sendRatchetState')).split("").map(function (c) {
-                return c.charCodeAt(0);
-            }));
+        let states = getRatchetState(this.room);
 
-            this.rootRatchet = new SymmRatchet(retrievedRootRatchetState);
-            this.recvRatchet = new SymmRatchet(retrievedRecvRatchetState);
-            this.sendRatchet = new SymmRatchet(retrievedSendRatchetState);
-        } catch (error) {
-            console.error("Error", error);
-        }
+        this.rootRatchet = new SymmRatchet(states.rootRatchetState);
+        this.recvRatchet = new SymmRatchet(states.recvRatchetState);
+        this.sendRatchet = new SymmRatchet(states.sendRatchetState);
     }
 
     async send_dhRatchet(bobPublic) {
@@ -617,34 +529,101 @@ class Alice {
     }
 }
 
-// (async () => {
-//     const alice = new Alice();
-//     const bob = new Bob();
-//     await alice.generate_keys();
-//     await bob.generateKeys();
-//     // await bob.loadFromLocalStorage();
-//     // await alice.loadFromLocalStorage();
-//
-//     await alice.x3dh(bob);
-//     await bob.x3dh(alice);
-//
-//     await alice.initRatchets();
-//     await bob.initRatchets();
-//
-//     // Alice's sending ratchet is initialized with Bob's public key
-//     // await bob.loadDhratchetKey();
-//     await alice.dhRatchet(bob.DHratchet.publicKey);
-//
-//     await alice.send(bob, 'Hello Bob!');
-//     await alice.dhRatchet(bob.DHratchet.publicKey);
-//     await alice.send(bob, 'Hello Bob!');
-//
-//     await bob.send(alice, 'Hello to you too, Alice!');
-//     await bob.dhRatchet(alice.DHratchet.publicKey);
-//
-//     await bob.send(alice, 'Hello to you too, Alice!');
-//
-//     // await bob.saveToLocalStorage();
-//     // await alice.saveToLocalStorage();
-//     // await bob.saveDhratchetKey();
-// })();
+// Section: Save keys
+function saveKeys_sender(room, ik_private_key, ek_private_key, dhratchet_private_key) {
+    let roomData = JSON.parse(localStorage.getItem('ratchet')) || {};
+
+    if (!roomData[room]) {
+        roomData[room] = {};
+    }
+
+    roomData[room].type = 'sender';
+
+    roomData[room].private_keys = {
+        ikPrivateKeyData: ik_private_key,
+        ekPrivateKeyData: ek_private_key,
+        dhratchet_key: dhratchet_private_key
+    };
+
+    localStorage.setItem('ratchet', JSON.stringify(roomData));
+}
+
+function saveKeys_receiver(room, ik_private_key, spk_private_key, opk_private_key, dhratchet_key) {
+
+    let roomData = JSON.parse(localStorage.getItem('ratchet')) || {};
+
+    if (!roomData[room]) {
+        roomData[room] = {};
+    }
+
+    roomData[room].type = 'receiver';
+
+    roomData[room].private_keys = {
+        ikPrivateKey: ik_private_key,
+        spkPrivateKey: spk_private_key,
+        opkPrivateKey: opk_private_key,
+        dhratchet_key: dhratchet_key
+    };
+
+    localStorage.setItem('ratchet', JSON.stringify(roomData));
+}
+
+function getKeysByRoom(room) {
+    let ratchetData = JSON.parse(localStorage.getItem('ratchet')) || {};
+
+    if (ratchetData[room]) {
+        return ratchetData[room];
+    } else {
+        return null; // or handle the case when the room data is not found
+    }
+}
+
+function saveRatchetState(room, rootRatchetState, recvRatchetState, sendRatchetState) {
+    let ratchetData = JSON.parse(localStorage.getItem('ratchet')) || {};
+
+    ratchetData[room].rootRatchetState = btoa(String.fromCharCode.apply(null, new Uint8Array(rootRatchetState)));
+    ratchetData[room].recvRatchetState = btoa(String.fromCharCode.apply(null, new Uint8Array(recvRatchetState)));
+    ratchetData[room].sendRatchetState = btoa(String.fromCharCode.apply(null, new Uint8Array(sendRatchetState)));
+}
+
+function getRatchetState(room) {
+    const ratchetData = JSON.parse(localStorage.getItem('ratchet')) || {};
+
+    if (ratchetData[room]) {
+        const rootRatchetState = new Uint8Array(Array.from(atob(ratchetData[room].rootRatchetState), (c) => c.charCodeAt(0)));
+        const recvRatchetState = new Uint8Array(Array.from(atob(ratchetData[room].recvRatchetState), (c) => c.charCodeAt(0)));
+        const sendRatchetState = new Uint8Array(Array.from(atob(ratchetData[room].sendRatchetState), (c) => c.charCodeAt(0)));
+
+        return {
+            rootRatchetState,
+            recvRatchetState,
+            sendRatchetState,
+        };
+    } else {
+        return null; // or handle the case when the room data is not found
+    }
+}
+
+function deleteRatchetStates(room) {
+    let ratchetData = JSON.parse(localStorage.getItem('ratchet')) || {};
+
+    if (ratchetData[room]) {
+        delete ratchetData[room].rootRatchetState;
+        delete ratchetData[room].recvRatchetState;
+        delete ratchetData[room].sendRatchetState;
+
+        localStorage.setItem('ratchet', JSON.stringify(ratchetData));
+    }
+}
+
+function saveDHRatchetKey(dhratchet_private_key, room) {
+    let ratchetData = JSON.parse(localStorage.getItem('ratchet')) || {};
+
+    if (!ratchetData[room]) {
+        ratchetData[room] = {};
+    }
+
+    ratchetData[room].private_keys['dhratchet_key'] = JSON.stringify(dhratchet_private_key);
+
+    localStorage.setItem(room, JSON.stringify(ratchetData));
+}

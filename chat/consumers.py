@@ -16,7 +16,7 @@ from ReiserX_Tunnel import settings
 from ReiserX_Tunnel.AuthBackend import CustomAuthBackend
 from main import Utils
 from main.Utils import cloudinary_image_delete, cloudinary_image_upload, get_image_public_id
-from chat.models import Room, Message, new_signal_message, connected_users
+from chat.models import Room, Message, new_signal_message, connected_users, PublicKey, DeviceIdentifier
 from main.models import UserProfile
 
 
@@ -57,6 +57,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         self.receiver = None
         self.sender_username = None
         self.receiver_username = None
+        self.device_id = None
         self.api = None
 
     @database_sync_to_async
@@ -67,11 +68,12 @@ class ChatConsumer(AsyncWebsocketConsumer):
         await self.accept()
         query_string = self.scope['query_string'].decode('utf-8')
         query_params = parse_qs(query_string)
-        sender_username = query_params.get('sender_username', None)
+
         api = query_params.get('api', None)
+        device_id = query_params.get('device_id', None)
         await self.listen_for_signal_messages()
 
-        if api is not None:
+        if api is not None and device_id is not None:
             self.sender = await self.authenticate(api[0])
             self.sender_username = self.sender.get_username()
 
@@ -87,9 +89,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 connected_users[self.sender_username] = {'channel_name': self.channel_name}
             else:
                 await self.close()
-        elif sender_username is not None:
-            self.sender_username = sender_username[0]
-            self.sender = await self.get_user(self.sender_username)
+        elif device_id is not None:
+            self.device_id = device_id[0]
+            self.sender = await self.get_device_user(self.device_id)
+            self.sender_username = self.sender.get_username()
 
             if self.sender.is_authenticated:
                 await self.channel_layer.group_send(
@@ -149,7 +152,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 message_id = int(time.time() * 1000)
 
                 public_key = text_data_json.get('public_key')
-                await self.update_public_key_db(self.sender_username, public_key)
+                await self.update_public_key_db(self.sender, public_key, self.device_id)
 
                 if channel_active:
                     await self.channel_layer.send(
@@ -194,7 +197,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 # Generate message_id
                 message_id = int(time.time() * 1000)
                 public_key = text_data_json.get('public_key')
-                await self.update_public_key_db(self.sender_username, public_key)
+                await self.update_public_key_db(self.sender, public_key, self.device_id)
                 if channel_active:
                     await self.channel_layer.send(
                         channel_name,
@@ -320,7 +323,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             public_key = data.get('public_key')
 
             if public_key:
-                await self.update_public_key_db(self.sender_username, public_key)
+                await self.update_public_key_db(self.sender, public_key, self.device_id)
             message_id = int(time.time() * 1000)
 
             # Extract binary image data
@@ -534,6 +537,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
             return None
 
     @database_sync_to_async
+    def get_device_user(self, device_id):
+        return PublicKey.get_user_by_identifier(device_id)
+
+    @database_sync_to_async
     def save_message_db(self, message=None, message_id=None, sender=None, receiver=None, reply_id=None, temp=None,
                         saved=False, image_url=None, public_key=None):
         if sender is None:
@@ -665,14 +672,14 @@ class ChatConsumer(AsyncWebsocketConsumer):
             pass
 
     @database_sync_to_async
-    def update_public_key_db(self, username=None, public_key=None):
-        if self.room and username and public_key:
+    def update_public_key_db(self, user=None, public_key=None, device_id=None):
+        if self.room and public_key:
             try:
-                room = Room.objects.get(room=self.room.room)
-                room.set_ratchet_key(username, public_key)
-                room.save()
-                self.room = room
-            except Room.DoesNotExist:
+                device_id = DeviceIdentifier.objects.get(identifier=device_id)
+                public_key = PublicKey.objects.get(user=user, room=self.room, device_identifier=device_id)
+                public_key.set_ratchet_key(public_key)
+                public_key.save()
+            except PublicKey.DoesNotExist:
                 pass
 
     @staticmethod
