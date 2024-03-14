@@ -28,7 +28,7 @@ class SenderKeyBundle:
         return [self.ik_public_key, self.ek_public_key]
 
     def get_type(self):
-        return 'sender'
+        return 'Sender'
 
     def get_new(self):
         return self.isNew
@@ -56,7 +56,7 @@ class ReceiverKeyBundle:
         return [self.IKb, self.SPKb, self.OPKb]
 
     def get_type(self):
-        return 'receiver'
+        return 'Receiver'
 
     def get_new(self):
         return self.isNew
@@ -128,7 +128,7 @@ class Room(models.Model):
         last_message = Message.objects.filter(room=self).order_by('-timestamp').first()
         return last_message if last_message else None
 
-    def get_ratchet_key(self, user):
+    def get_ratchet_keys(self, user):
         public_keys = {}
         device_identifiers = Devices.objects.filter(user=user).values_list('device_identifiers__identifier', flat=True)
 
@@ -140,6 +140,15 @@ class Room(models.Model):
             except PublicKey.DoesNotExist:
                 public_keys[str(device_identifier)] = None
         return public_keys
+
+    @staticmethod
+    def get_ratchet_key(device_id, public_key):
+        device_id = DeviceIdentifier.objects.get(identifier=device_id)
+        ratchet_key = RatchetPublicKey.get_ratchet_public_key(device_id=device_id, public_keys=public_key)
+        if ratchet_key:
+            return PublicKey.format_key(public_key)
+        else:
+            return PublicKey.format_key(public_key.get_bundle_key().DHratchet)
 
     def get_public_key(self, user, device_id):
         try:
@@ -158,7 +167,10 @@ class Room(models.Model):
                 device_id = DeviceIdentifier.objects.get(identifier=device_identifier)
                 public_key = PublicKey.objects.get(user=user, room=self, device_identifier=device_id)
                 key_bundle = public_key.get_bundle_key()
-                public_keys[str(device_identifier)] = PublicKey.format_keys(key_bundle.get_keys())
+                public_keys[str(device_identifier)] = {
+                    'public_keys': PublicKey.format_keys(key_bundle.get_keys()),
+                    'ratchet_public_key': self.get_ratchet_key(device_identifier, public_key)
+                }
             except PublicKey.DoesNotExist:
                 public_keys[str(device_identifier)] = None
         return public_keys
@@ -371,7 +383,6 @@ class PublicKey(models.Model):
 
     key_type = models.IntegerField(choices=KEY_TYPE_CHOICES)
     key_bundle = models.BinaryField()
-    dhRatchet_key = models.BinaryField(default=None, null=True, blank=True)
 
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     device_identifier = models.OneToOneField(DeviceIdentifier, on_delete=models.CASCADE, related_name='public_key')
@@ -384,24 +395,25 @@ class PublicKey(models.Model):
         else:
             choice = cls.RECEIVER
         key_bundle = pickle.dumps(bundle)
-        return cls.objects.create(
+        public_key = cls.objects.create(
             key_type=choice,
             key_bundle=key_bundle,
             user=user,
             device_identifier=device_identifier,
             room=room,
-            dhRatchet_key=bundle.DHratchet
         )
+        return public_key
 
     @classmethod
     def update_keys(cls, bundle, ratchet_key, user, device_identifier, room):
+        device_id = Devices.get_device_by_id(device_id=device_identifier)
         try:
-            public_key = PublicKey.objects.get(user=user, room=room, device_identifier=Devices.get_device_by_id(device_id=device_identifier))
+            public_key = PublicKey.objects.get(user=user, room=room, device_identifier=device_id)
             public_key.key_bundle = pickle.dumps(bundle)
-            public_key.dhRatchet_key = ratchet_key
+            RatchetPublicKey.objects.filter(public_keys=public_key).delete()
             public_key.save()
         except PublicKey.DoesNotExist:
-            cls.create_key(bundle, user, device_identifier, room)
+            cls.create_key(bundle, user, device_id, room)
 
     @staticmethod
     def get_public_key(user, room, device_id):
@@ -424,6 +436,53 @@ class PublicKey(models.Model):
             key_bundle.set_new(True)
 
         return key_bundle
+
+    @staticmethod
+    def format_keys(keys):
+        key = []
+        for i in keys:
+            if isinstance(i, bytes):
+                key.append(base64.b64encode(i).decode('utf-8'))
+            else:
+                key.append(i)
+        return key
+
+    @staticmethod
+    def format_key(key):
+        return base64.b64encode(key).decode('utf-8')
+
+    @staticmethod
+    def get_user_by_identifier(identifier_value):
+        try:
+            # Assuming identifier_value is the UUID you want to search for
+            device_identifier = DeviceIdentifier.objects.get(identifier=identifier_value)
+            user = device_identifier.device.first().user  # Assuming devices is the related_name in the Devices model
+            return user
+        except DeviceIdentifier.DoesNotExist:
+            # Handle the case where the identifier is not found
+            return None
+
+
+class RatchetPublicKey(models.Model):
+    dhRatchet_key = models.BinaryField(default=None, null=True, blank=True)
+    device_id = models.OneToOneField(DeviceIdentifier, on_delete=models.CASCADE, related_name='device_id')
+    public_keys = models.ForeignKey(PublicKey, on_delete=models.CASCADE, related_name='public_keys')
+
+    @staticmethod
+    def get_ratchet_key(device_id, public_keys):
+        try:
+            ratchet_key = RatchetPublicKey.objects.get(device_id=device_id, public_keys=public_keys)
+            return ratchet_key
+        except RatchetPublicKey.DoesNotExist:
+            return None
+
+    @staticmethod
+    def get_ratchet_public_key(device_id, public_keys):
+        try:
+            ratchet_key = RatchetPublicKey.objects.get(device_id=device_id, public_keys=public_keys)
+            return ratchet_key.dhRatchet_key
+        except RatchetPublicKey.DoesNotExist:
+            return None
 
     def set_ratchet_key(self, ratchet_key):
         try:
@@ -453,30 +512,33 @@ class PublicKey(models.Model):
         except binascii.Error as e:
             print(f"Error decoding Base64: {e}")
 
-    def get_ratchet_key(self):
-        return self.dhRatchet_key
 
     @staticmethod
-    def format_keys(keys):
-        key = []
-        for i in keys:
-            if isinstance(i, bytes):
-                key.append(base64.b64encode(i).decode('utf-8'))
-            else:
-                key.append(i)
-        return key
-
-    @staticmethod
-    def format_key(key):
-        return base64.b64encode(key).decode('utf-8')
-
-    @staticmethod
-    def get_user_by_identifier(identifier_value):
+    def load_ratchet_key(ratchet_key):
         try:
-            # Assuming identifier_value is the UUID you want to search for
-            device_identifier = DeviceIdentifier.objects.get(identifier=identifier_value)
-            user = device_identifier.device.first().user  # Assuming devices is the related_name in the Devices model
-            return user
-        except DeviceIdentifier.DoesNotExist:
-            # Handle the case where the identifier is not found
+            decoded_key_bytes = base64.urlsafe_b64decode(ratchet_key)
+            decoded_key_str = decoded_key_bytes.decode('utf-8')
+
+            # Deserialize JWK string
+            jwk = json.loads(decoded_key_str)
+
+            x_bytes = base64.urlsafe_b64decode(jwk['x'] + '==')
+            y_bytes = base64.urlsafe_b64decode(jwk['y'] + '==')
+
+            # Use the elliptic curve public key method
+            public_key = ec.EllipticCurvePublicNumbers(
+                x=int.from_bytes(x_bytes, 'big'),
+                y=int.from_bytes(y_bytes, 'big'),
+                curve=ec.SECP256R1()  # Adjust the curve as needed
+            ).public_key(default_backend())
+
+            # Get the public key in bytes (DER format)
+            public_key_bytes = public_key.public_bytes(
+                encoding=serialization.Encoding.DER,
+                format=serialization.PublicFormat.SubjectPublicKeyInfo
+            )
+
+            return public_key_bytes
+        except binascii.Error as e:
+            print(f"Error decoding Base64: {e}")
             return None

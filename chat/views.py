@@ -72,8 +72,10 @@ def chat_box(request):
                 elif last_message.sender == other_user:
                     status = 1
 
+        print(room.room)
         room_messages_info.append({
             'user': other_user,
+            'room': room.room,
             'message_count': str(messages_count) if messages_count > 0 else '',
             'last_message': last_message.message if last_message else None,
             'last_message_timestamp': str(last_message.timestamp) if last_message else None,
@@ -169,16 +171,18 @@ def load_messages(request, receiver):
         if room:
             receiver = User.objects.get(username=receiver_user)
             public_keys = room.get_public_keys(receiver)
-            print(public_keys)
-            isNew = False
-            ratchet_public_key = room.get_ratchet_key(user=receiver)
-            print(ratchet_public_key)
-            if generate_keys:
-                if PublicKey.get_public_key(user=user, room=room, device_id=device_id).key_type == PublicKey.SENDER:
-                    private_keys = generate_sender_keys(room, user, device_id)
+            public_key = PublicKey.get_public_key(user=user, room=room, device_id=device_id)
+            if generate_keys or not public_key:
+                generate_keys = True
+                if public_key:
+                    print(public_key.key_type)
+                    print(PublicKey.SENDER)
+                    if public_key.key_type == PublicKey.SENDER:
+                        private_keys = generate_sender_keys(room, user, device_id)
+                    else:
+                        private_keys = generate_receiver_keys(room, user, device_id)
                 else:
-                    private_keys = generate_receiver_keys(room, user, device_id)
-                print(private_keys)
+                    private_keys = generate_sender_keys(room, user, device_id)
             else:
                 private_keys = None
 
@@ -201,14 +205,10 @@ def load_messages(request, receiver):
         else:
             messages = []
             public_keys = None
-            ratchet_public_key = None
             private_keys = None
-            isNew = False
         messages = json.dumps(messages, cls=DjangoJSONEncoder)
-        return JsonResponse({'status': 'success', 'data': messages, 'keys': {'public_keys': public_keys,
-                                                                             'ratchet_public_key': ratchet_public_key,
-                                                                             'private_keys': private_keys,
-                                                                             'is_new': isNew}})
+        return JsonResponse({'status': 'success', 'data': messages, 'generate_keys': generate_keys, 'keys': {'public_keys': public_keys,
+                                                                             'private_keys': private_keys}})
     else:
         return JsonResponse({'status': 'error', 'message': 'Invalid request'})
 
@@ -308,7 +308,7 @@ def send_friend_request(request):
             existing_request = FriendRequest.objects.filter(sender=request.user, receiver=friend_user)
             if existing_request.exists():
                 existing_request.delete()
-                return JsonResponse({'status': 'success', 'request_status': False})
+                return JsonResponse({'status': 'success', 'request_status': False, 'room': generate_room_id(request.user.username, username)})
             else:
                 return JsonResponse({'status': 'error', 'message': 'Request does not exist'})
         else:

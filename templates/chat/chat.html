@@ -105,7 +105,7 @@
             <ul class="people">
                 {% for user in users %}
                     <li onclick="load_chat('{{ user.user.username }}')" class="person context-menu-trigger"
-                        data-chat={{ user.user.username }}>
+                        data-chat="{{ user.user.username }}" data-room="{{ user.room }}">
                         {% if user.user.userprofile.image %}
                             {% if user.user.userprofile.image.url %}
                             <img id="users_profile_pic" class="users_profile_pic"
@@ -341,8 +341,8 @@
 
 <!-- CUSTOM FILES -->
 <script src="{% static 'chat/js/main.js' %}"></script>
-<script src="{% static 'chat/js/base_main-v'|add:ASSET_VERSION|add:'.js' %}"></script>
 <script src="{% static 'chat/js/test.js' %}"></script>
+<script src="{% static 'chat/js/base_main-v'|add:ASSET_VERSION|add:'.js' %}"></script>
 
 <!-- CUSTOM FILES -->
 

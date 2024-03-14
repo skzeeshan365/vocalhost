@@ -176,16 +176,16 @@
 
 <script>
     // Function to get the value of a cookie by its name
-function getCookie(name) {
-    const cookies = document.cookie.split(';');
-    for (const cookie of cookies) {
-        const [cookieName, cookieValue] = cookie.trim().split('=');
-        if (cookieName === name) {
-            return decodeURIComponent(cookieValue);
+    function getCookie(name) {
+        const cookies = document.cookie.split(';');
+        for (const cookie of cookies) {
+            const [cookieName, cookieValue] = cookie.trim().split('=');
+            if (cookieName === name) {
+                return decodeURIComponent(cookieValue);
+            }
         }
+        return null;
     }
-    return null;
-}
 
 
     function addFriend(username) {
@@ -202,6 +202,7 @@ function getCookie(name) {
             data: {'username': username, 'send_request': status, 'device_id': getCookie('device_id')},
             dataType: 'json',
             success: function (response) {
+                console.log(response)
                 if (response.status === 'success') {
                     if (response.request_status) {
                         buttonElement.innerText = 'Added';
@@ -210,7 +211,7 @@ function getCookie(name) {
                     } else {
                         buttonElement.innerText = 'Add';
                         personElement.setAttribute('data-status', 'False');
-                        removeKeys(username);
+                        removeKeys(response.room);
                     }
                 } else {
                     alert(response.error)
@@ -238,7 +239,7 @@ function getCookie(name) {
                     buttonElement.innerText = 'Accepted'
                     buttonElement.removeAttribute('onclick')
                     sessionStorage.setItem('return_from_add_person', 'true');
-                    saveKeys_receiver(response.room, response.private_keys.ik_private_key, response.private_keys.spk_private_key, response.private_keys.opk_private_key , response.private_keys.dhratchet_private_key);
+                    saveKeys_receiver(response.room, response.private_keys.ik_private_key, response.private_keys.spk_private_key, response.private_keys.opk_private_key, response.private_keys.dhratchet_private_key);
                 } else {
                     alert(response.error);
                 }
@@ -249,6 +250,13 @@ function getCookie(name) {
             }
         });
     }
+
+    function removeKeys(room) {
+        let ratchetData = JSON.parse(localStorage.getItem('ratchet')) || {};
+        delete ratchetData[room];
+        localStorage.setItem('ratchet', JSON.stringify(ratchetData));
+    }
+
 </script>
 
 <script>
