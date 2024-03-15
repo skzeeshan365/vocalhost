@@ -14,10 +14,10 @@ from django.core.serializers.json import DjangoJSONEncoder
 
 from ReiserX_Tunnel import settings
 from ReiserX_Tunnel.AuthBackend import CustomAuthBackend
+from chat.models import Room, Message, new_signal_message, connected_users, PublicKey, UserDevice, \
+    RatchetPublicKey, ChildMessage
 from main import Utils
 from main.Utils import cloudinary_image_delete, cloudinary_image_upload, get_image_public_id
-from chat.models import Room, Message, new_signal_message, connected_users, PublicKey, DeviceIdentifier, \
-    RatchetPublicKey, Devices
 from main.models import UserProfile
 
 
@@ -150,62 +150,15 @@ class ChatConsumer(AsyncWebsocketConsumer):
             if type == 'initialize_receiver':
                 receiver_username = text_data_json.get('receiver_username')
                 await self.initialize_receiver(receiver_username)
-            elif type == 'reply_message':
-                # Generate message_id
-                message_id = int(time.time() * 1000)
-
-                public_key = text_data_json.get('public_key')
-                await self.update_public_key_db(self.sender, public_key, self.device_id)
-
-                if channel_active:
-                    await self.channel_layer.send(
-                        channel_name,
-                        {
-                            "type": "chat_message",
-                            "message": message,
-                            "message_id": message_id,
-                            'reply_id': reply_id,
-                            "sender_username": self.sender_username,
-                            'public_key': public_key
-                        },
-                    )
-                    if storeMessage:
-                        await self.save_message_db(message=message, message_id=message_id, reply_id=reply_id,
-                                                   saved=True)
-                elif channel_name:
-                    await self.channel_layer.send(
-                        channel_name,
-                        {
-                            'type': 'new_message_background',
-                            'timestamp': message_id,
-                            'sender_username': self.sender_username
-                        }
-                    )
-                    await self.save_message_db(message=message, message_id=message_id, reply_id=reply_id,
-                                               temp=self.receiver)
-                else:
-                    await self.save_message_db(message=message, message_id=message_id, reply_id=reply_id,
-                                               temp=self.receiver)
-
-                await self.send(
-                    text_data=json.dumps(
-                        {
-                            "type": 'message_sent',
-                            'message_id': message_id,
-                            'data_type': 'text'
-                        }
-                    )
-                )
             elif type == 'message':
                 # Generate message_id
                 message_id = int(time.time() * 1000)
-                public_key = text_data_json.get('public_key')
-                print(message)
+
                 data = json.loads(message)
                 for device_id, properties in data.items():
                     cipher = properties.get('cipher')
                     public_key = properties.get('ratchet_key')
-                    await self.process_messages(device_id, public_key, cipher, message_id, storeMessage, reply_id)
+                    await self.process_messages(device_id, public_key, cipher, message_id, reply_id)
 
 
             elif type == 'save_message':
@@ -342,10 +295,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 )
             )
 
-    async def process_messages(self, device_id, public_key, message, message_id, storeMessage, reply_id):
+    async def process_messages(self, device_id, public_key, message, message_id, reply_id):
         channel_name = self.get_device_channel_name(self.receiver_username, device_id)
         channel_active = self.get_room_device_status_realtime(self.receiver_username, device_id)
-        await self.update_public_key_db(self.sender, public_key, device_id)
+
         print('1')
         if channel_active:
             print('2')
@@ -357,7 +310,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     "message_id": message_id,
                     "sender_username": self.sender_username,
                     'device_id': self.device_id,
-                    'public_key': public_key
+                    'public_key': public_key,
+                    'reply_id': reply_id
                 },
             )
             # if storeMessage:
@@ -373,11 +327,11 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     'sender_username': self.sender_username
                 }
             )
-            await self.save_message_db(message=message, message_id=message_id, temp=self.receiver,
+            await self.save_message_db_temp(device_id=device_id, cipher=message, message_id=message_id, temp=self.receiver,
                                        public_key=public_key)
         else:
             print('4')
-            await self.save_message_db(message=message, message_id=message_id, temp=self.receiver,
+            await self.save_message_db_temp(device_id=device_id, cipher=message, message_id=message_id, temp=self.receiver,
                                        public_key=public_key)
         await self.send(
             text_data=json.dumps(
@@ -388,6 +342,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 }
             )
         )
+        await self.update_public_key_db(self.sender, public_key, device_id)
 
     async def chat_message(self, event):
         sender_username = event["sender_username"]
@@ -397,30 +352,18 @@ class ChatConsumer(AsyncWebsocketConsumer):
         public_key = event.get('public_key')
         device_id = event.get('device_id', None)
 
-        if reply_id:
-            await self.send(
-                text_data=json.dumps(
-                    {
-                        "message": message,
-                        'message_id': message_id,
-                        'reply_id': reply_id,
-                        "sender_username": sender_username,
-                        'public_key': public_key
-                    }
-                )
+        await self.send(
+            text_data=json.dumps(
+                {
+                    "message": message,
+                    'message_id': message_id,
+                    'reply_id': reply_id,
+                    "sender_username": sender_username,
+                    'public_key': public_key,
+                    'device_id': device_id
+                }
             )
-        else:
-            await self.send(
-                text_data=json.dumps(
-                    {
-                        "message": message,
-                        'message_id': message_id,
-                        "sender_username": sender_username,
-                        'public_key': public_key,
-                        'device_id': device_id
-                    }
-                )
-            )
+        )
 
     async def message_seen(self, event):
         message_id = event.get("message_id")
@@ -561,7 +504,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def get_device_user(self, device_id):
-        return PublicKey.get_user_by_identifier(device_id)
+        return UserDevice.get_user_by_device(device_id)
 
     @database_sync_to_async
     def save_message_db(self, message=None, message_id=None, sender=None, receiver=None, reply_id=None, temp=None,
@@ -605,6 +548,49 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     image_url=image_url,
                     public_key=public_key
                 )
+
+    @database_sync_to_async
+    def save_message_db_temp(self, device_id, cipher=None, message_id=None, sender=None, receiver=None, reply_id=None, temp=None,
+                             image_url=None, public_key=None):
+        if sender is None:
+            sender = self.sender
+        else:
+            sender = User.objects.get(username=sender)
+        if receiver is None:
+            receiver = self.receiver
+        else:
+            receiver = User.objects.get(username=receiver)
+        if reply_id:
+            try:
+                reply_message = Message.objects.get(message_id=reply_id)
+            except Message.DoesNotExist:
+                reply_message = None
+        else:
+            reply_message = None
+        base_message = None
+        try:
+            base_message = Message.objects.get(message_id=message_id)
+        except Message.DoesNotExist:
+            if image_url is not None:
+                url = cloudinary_image_upload(image_data=image_url)
+                image_url = url if url else None
+            if message_id is not None and self.room is not None:
+                base_message = Message.objects.create(
+                    message=None,
+                    room=self.room,
+                    sender=sender,
+                    receiver=receiver,
+                    message_id=message_id,
+                    reply_id=reply_message,
+                    temp=temp,
+                    saved=False,
+                    image_url=image_url,
+                    public_key=None
+                )
+        if cipher:
+            device_id = UserDevice.get_device_by_id(device_id)
+            public_key = RatchetPublicKey.load_ratchet_key(public_key)
+            ChildMessage.create_child_message(cipher, public_key, device_id, base_message)
 
     @database_sync_to_async
     def delete_message_db(self, message_id):
@@ -705,8 +691,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
     def update_public_key_db(self, user=None, ratchet_public_key=None, device_id=None):
         if self.room and ratchet_public_key:
             try:
-                device_id = DeviceIdentifier.objects.get(identifier=device_id)
-                public_key = PublicKey.objects.get(user=user, room=self.room, device_identifier=Devices.get_device_by_id(self.device_id))
+                device_id = UserDevice.objects.get(identifier=device_id)
+                public_key = PublicKey.objects.get(user=user, room=self.room, device_identifier=UserDevice.get_device_by_id(self.device_id))
                 ratchet_key = RatchetPublicKey.get_ratchet_key(device_id=device_id, public_keys=public_key)
                 if ratchet_key:
                     ratchet_key.set_ratchet_key(ratchet_public_key)

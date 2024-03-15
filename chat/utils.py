@@ -1,13 +1,12 @@
 import base64
 import hashlib
-import pickle
 
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from jwcrypto import jwk
 
-from chat.models import SenderKeyBundle, ReceiverKeyBundle, Room, PublicKey
+from chat.models import SenderKeyBundle, ReceiverKeyBundle, PublicKey
 
 
 def format_keys(keys):

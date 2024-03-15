@@ -8,10 +8,11 @@ const firebaseConfig = {
         appId: "1:835148268492:web:80ad338c12a76e5c019369",
         measurementId: "G-RZJHM8Y21L"
     };
-    // Initialize Firebase
+let messaging = null;
+    try {
     firebase.initializeApp(firebaseConfig);
     firebase.analytics();
-    const messaging = firebase.messaging();
+    messaging = firebase.messaging();
 
     if (!token_status) {
         handlePermission();
@@ -68,3 +69,8 @@ const firebaseConfig = {
             .then((data) => console.log('Server response:', data))
             .catch((error) => console.error('Error:', error));
     }
+
+    } catch (error) {
+    // Handle the error here
+    console.log('Error initializing Firebase:', error);
+}

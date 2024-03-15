@@ -115,22 +115,14 @@ class SymmRatchet {
         console.log('State:', b64(this.state));
     }
 
-    async next(inp = new Uint8Array()) {
+    async next(inp) {
+        if (inp) {
+            inp = await crypto.subtle.exportKey('raw', inp);
+        }
         const stateArray = new Uint8Array(this.state);
         const inputArray = new Uint8Array(inp);
 
-        const concatenatedData = new Uint8Array(stateArray.length + inputArray.length);
-        concatenatedData.set(stateArray, 0);
-        concatenatedData.set(inputArray, stateArray.length);
-
-        const cryptoKey = await importKey(concatenatedData, ['deriveBits'])
-
-        // Derive 80 bytes using HKDF
-        const derivedBits = await crypto.subtle.deriveBits(
-            {name: 'HKDF', hash: 'SHA-256', info: new Uint8Array(), salt: new Uint8Array()},
-            cryptoKey,
-            80 * 8
-        );
+        let derivedBits = await hkdf(new Uint8Array([...stateArray, ...inputArray]), 80);
 
         const derivedArray = new Uint8Array(derivedBits);
         this.state = derivedArray.slice(0, 32)
@@ -142,14 +134,14 @@ class SymmRatchet {
 }
 
 class Bob {
-    constructor(username, room) {
+    constructor(room, device_id) {
         this.IKb = {};
         this.SPKb = {};
         this.OPKb = {};
         this.DHratchet = {};
-        this.username = username;
         this.receiver_public_key = null;
         this.room = room;
+        this.device_id = device_id
     }
 
     async setReceiverKey(key) {
@@ -215,7 +207,7 @@ class Bob {
             let ikPrivateKey = JSON.parse(roomData.private_keys.ikPrivateKey);
             let spkPrivateKey = JSON.parse(roomData.private_keys.spkPrivateKey);
             let opkPrivateKey = JSON.parse(roomData.private_keys.opkPrivateKey);
-            let dhratchet_privateKey = JSON.parse(roomData.private_keys.dhratchet_key);
+            let dhratchet_privateKey = JSON.parse(getDHRatchetKey(this.room, this.device_id));
 
             this.IKb.privateKey = await crypto.subtle.importKey(
                 'jwk',
@@ -254,40 +246,29 @@ class Bob {
         let root = btoa(String.fromCharCode.apply(null, new Uint8Array(this.rootRatchet.state)));
         let recv = btoa(String.fromCharCode.apply(null, new Uint8Array(this.recvRatchet.state)));
         let send =  btoa(String.fromCharCode.apply(null, new Uint8Array(this.sendRatchet.state)));
-        saveRatchetState(this.room, root, recv, send);
+        saveRatchetState(this.room, this.device_id, root, recv, send);
     }
 
-    removeFromLocalStorage() {
-        deleteRatchetStates(this.room);
-    }
+    async initRatchets() {
+        let currentSk = b64(this.sk);
+        let previousSk = getSk(this.room, this.device_id);
+        if (currentSk === previousSk) {
+            let states = getRatchetState(this.room, this.device_id);
 
-    async loadFromLocalStorage() {
-        let states = getRatchetState(this.room);
-
-        this.rootRatchet = new SymmRatchet(states.rootRatchetState);
-        this.recvRatchet = new SymmRatchet(states.recvRatchetState);
-        this.sendRatchet = new SymmRatchet(states.sendRatchetState);
-    }
-
-    async initRatchets(is_new) {
-        let retrievedRootRatchetState = new Uint8Array(atob(localStorage.getItem('rootRatchetState')).split("").map(function (c) {
-            return c.charCodeAt(0);
-        }));
-
-        if (is_new) {
-            console.log('1');
-            this.rootRatchet = new SymmRatchet(this.sk);
-            this.recvRatchet = new SymmRatchet((await this.rootRatchet.next())[0]);
-            this.sendRatchet = new SymmRatchet((await this.rootRatchet.next())[0]);
-            this.removeFromLocalStorage();
-        } else if (retrievedRootRatchetState) {
-            console.log('2');
-            await this.loadFromLocalStorage();
+            if (states) {
+                this.rootRatchet = new SymmRatchet(states.rootRatchetState);
+                this.recvRatchet = new SymmRatchet(states.recvRatchetState);
+                this.sendRatchet = new SymmRatchet(states.sendRatchetState);
+            } else {
+                this.rootRatchet = new SymmRatchet(this.sk);
+                this.sendRatchet = new SymmRatchet((await this.rootRatchet.next())[0]);
+                this.recvRatchet = new SymmRatchet((await this.rootRatchet.next())[0]);
+            }
         } else {
-            console.log('3');
             this.rootRatchet = new SymmRatchet(this.sk);
-            this.recvRatchet = new SymmRatchet((await this.rootRatchet.next())[0]);
             this.sendRatchet = new SymmRatchet((await this.rootRatchet.next())[0]);
+            this.recvRatchet = new SymmRatchet((await this.rootRatchet.next())[0]);
+            saveSk(this.room, b64(this.sk), this.device_id);
         }
     }
 
@@ -298,7 +279,7 @@ class Bob {
             ['deriveKey']
         );
 
-        saveDHRatchetKey(await exportKey('jwk', this.DHratchet.privateKey), this.username);
+        saveDHRatchetKey(await exportKey('jwk', this.DHratchet.privateKey), this.room, this.device_id);
 
         const dhSend = await deriveKey(this.DHratchet.privateKey, alicePublic);
         const sharedSend = (await this.rootRatchet.next(dhSend))[0];
@@ -315,8 +296,8 @@ class Bob {
         await this.saveToLocalStorage();
     }
 
-    async send(alice_public_key, msg) {
-        await this.send_dhRatchet(alice_public_key);
+    async send(msg) {
+        await this.send_dhRatchet(this.receiver_public_key);
         const [key, iv] = await this.sendRatchet.next();
         const cipher = await encryptMessage(key, iv, msg);
         return {
@@ -338,13 +319,13 @@ class Bob {
 }
 
 class Alice {
-    constructor(username, room) {
+    constructor(room, device_id) {
         this.IKa = {};
         this.EKa = {};
         this.DHratchet = {};
-        this.username = username;
         this.receiver_public_key = null;
         this.room = room;
+        this.device_id = device_id
     }
 
     async setReceiverKey(key) {
@@ -413,21 +394,26 @@ class Alice {
         console.log('[alice]\tShared key:', b64(this.sk));
     }
 
-    async initRatchets(is_new) {
-        let retrievedRootRatchetState = new Uint8Array(atob(localStorage.getItem('alice_rootRatchetState')).split("").map(function (c) {
-            return c.charCodeAt(0);
-        }));
-        if (is_new) {
-            this.rootRatchet = new SymmRatchet(this.sk);
-            this.sendRatchet = new SymmRatchet((await this.rootRatchet.next())[0]);
-            this.recvRatchet = new SymmRatchet((await this.rootRatchet.next())[0]);
-            this.removeFromLocalStorage();
-        } else if (retrievedRootRatchetState) {
-            await this.loadFromLocalStorage();
+    async initRatchets() {
+        let currentSk = b64(this.sk);
+        let previousSk = getSk(this.room, this.device_id);
+        if (currentSk === previousSk) {
+            let states = getRatchetState(this.room, this.device_id);
+
+            if (states) {
+                this.rootRatchet = new SymmRatchet(states.rootRatchetState);
+                this.recvRatchet = new SymmRatchet(states.recvRatchetState);
+                this.sendRatchet = new SymmRatchet(states.sendRatchetState);
+            } else {
+                this.rootRatchet = new SymmRatchet(this.sk);
+                this.sendRatchet = new SymmRatchet((await this.rootRatchet.next())[0]);
+                this.recvRatchet = new SymmRatchet((await this.rootRatchet.next())[0]);
+            }
         } else {
             this.rootRatchet = new SymmRatchet(this.sk);
             this.sendRatchet = new SymmRatchet((await this.rootRatchet.next())[0]);
             this.recvRatchet = new SymmRatchet((await this.rootRatchet.next())[0]);
+            saveSk(this.room, b64(this.sk), this.device_id);
         }
     }
 
@@ -437,7 +423,7 @@ class Alice {
         if (roomData && roomData.type && roomData.private_keys) {
             let ikPrivateKeyData = JSON.parse(roomData.private_keys.ikPrivateKeyData);
             let ekPrivateKeyData = JSON.parse(roomData.private_keys.ekPrivateKeyData);
-            let dhRatchetPrivateKey = JSON.parse(roomData.private_keys.dhratchet_key);
+            let dhRatchetPrivateKey = JSON.parse(getDHRatchetKey(this.room, this.device_id));
 
             this.IKa.privateKey = await crypto.subtle.importKey(
                 'jwk',
@@ -468,19 +454,7 @@ class Alice {
         let root = btoa(String.fromCharCode.apply(null, new Uint8Array(this.rootRatchet.state)));
         let recv = btoa(String.fromCharCode.apply(null, new Uint8Array(this.recvRatchet.state)));
         let send =  btoa(String.fromCharCode.apply(null, new Uint8Array(this.sendRatchet.state)));
-        saveRatchetState(this.room, root, recv, send);
-    }
-
-    removeFromLocalStorage() {
-        deleteRatchetStates(this.room);
-    }
-
-    async loadFromLocalStorage() {
-        let states = getRatchetState(this.room);
-
-        this.rootRatchet = new SymmRatchet(states.rootRatchetState);
-        this.recvRatchet = new SymmRatchet(states.recvRatchetState);
-        this.sendRatchet = new SymmRatchet(states.sendRatchetState);
+        saveRatchetState(this.room, this.device_id, root, recv, send);
     }
 
     async send_dhRatchet(bobPublic) {
@@ -490,7 +464,7 @@ class Alice {
             ['deriveKey']
         );
 
-        saveDHRatchetKey(await exportKey('jwk', this.DHratchet.privateKey), this.username);
+        saveDHRatchetKey(await exportKey('jwk', this.DHratchet.privateKey), this.room, this.device_id);
 
         const dhSend = await deriveKey(this.DHratchet.privateKey, bobPublic);
         const sharedSend = (await this.rootRatchet.next(dhSend))[0];
@@ -507,8 +481,8 @@ class Alice {
         await this.saveToLocalStorage();
     }
 
-    async send(bob_public_key, msg) {
-        await this.send_dhRatchet(bob_public_key)
+    async send(msg) {
+        await this.send_dhRatchet(this.receiver_public_key);
         const [key, iv] = await this.sendRatchet.next();
         const cipher = await encryptMessage(key, iv, msg);
         return {
@@ -574,25 +548,47 @@ function getKeysByRoom(room) {
     if (ratchetData[room]) {
         return ratchetData[room];
     } else {
-        return null; // or handle the case when the room data is not found
+        return null;
     }
 }
 
-function saveRatchetState(room, rootRatchetState, recvRatchetState, sendRatchetState) {
+function saveRatchetState(room, device_id, rootRatchetState, recvRatchetState, sendRatchetState) {
     let ratchetData = JSON.parse(localStorage.getItem('ratchet')) || {};
 
-    ratchetData[room].rootRatchetState = btoa(String.fromCharCode.apply(null, new Uint8Array(rootRatchetState)));
-    ratchetData[room].recvRatchetState = btoa(String.fromCharCode.apply(null, new Uint8Array(recvRatchetState)));
-    ratchetData[room].sendRatchetState = btoa(String.fromCharCode.apply(null, new Uint8Array(sendRatchetState)));
+    if (!ratchetData[room]) {
+        ratchetData[room] = {};
+    }
+
+    if (!ratchetData[room][device_id]) {
+        ratchetData[room][device_id] = {};
+    }
+
+    ratchetData[room][device_id].rootRatchetState = rootRatchetState;
+    ratchetData[room][device_id].recvRatchetState = recvRatchetState;
+    ratchetData[room][device_id].sendRatchetState = sendRatchetState;
+
+    localStorage.setItem('ratchet', JSON.stringify(ratchetData));
 }
 
-function getRatchetState(room) {
+function getRatchetState(room, device_id) {
     const ratchetData = JSON.parse(localStorage.getItem('ratchet')) || {};
 
-    if (ratchetData[room]) {
-        const rootRatchetState = new Uint8Array(Array.from(atob(ratchetData[room].rootRatchetState), (c) => c.charCodeAt(0)));
-        const recvRatchetState = new Uint8Array(Array.from(atob(ratchetData[room].recvRatchetState), (c) => c.charCodeAt(0)));
-        const sendRatchetState = new Uint8Array(Array.from(atob(ratchetData[room].sendRatchetState), (c) => c.charCodeAt(0)));
+    if (!ratchetData[room]) {
+        ratchetData[room] = {};
+    }
+
+    if (!ratchetData[room][device_id]) {
+        ratchetData[room][device_id] = {};
+    }
+
+    let root = ratchetData[room][device_id].rootRatchetState;
+    let recv = ratchetData[room][device_id].recvRatchetState;
+    let send = ratchetData[room][device_id].sendRatchetState;
+
+    if (root && recv && send) {
+        const rootRatchetState = new Uint8Array(Array.from(atob(root), (c) => c.charCodeAt(0)));
+        const recvRatchetState = new Uint8Array(Array.from(atob(recv), (c) => c.charCodeAt(0)));
+        const sendRatchetState = new Uint8Array(Array.from(atob(send), (c) => c.charCodeAt(0)));
 
         return {
             rootRatchetState,
@@ -600,30 +596,96 @@ function getRatchetState(room) {
             sendRatchetState,
         };
     } else {
-        return null; // or handle the case when the room data is not found
+        return null;
     }
 }
 
-function deleteRatchetStates(room) {
-    let ratchetData = JSON.parse(localStorage.getItem('ratchet')) || {};
-
-    if (ratchetData[room]) {
-        delete ratchetData[room].rootRatchetState;
-        delete ratchetData[room].recvRatchetState;
-        delete ratchetData[room].sendRatchetState;
-
-        localStorage.setItem('ratchet', JSON.stringify(ratchetData));
-    }
-}
-
-function saveDHRatchetKey(dhratchet_private_key, room) {
+function deleteRatchetStates(room, device_id) {
     let ratchetData = JSON.parse(localStorage.getItem('ratchet')) || {};
 
     if (!ratchetData[room]) {
         ratchetData[room] = {};
     }
 
-    ratchetData[room].private_keys['dhratchet_key'] = JSON.stringify(dhratchet_private_key);
+    if (!ratchetData[room][device_id]) {
+        ratchetData[room][device_id] = {};
+    }
 
-    localStorage.setItem(room, JSON.stringify(ratchetData));
+    if (ratchetData[room]) {
+        delete ratchetData[room][device_id].rootRatchetState;
+        delete ratchetData[room][device_id].recvRatchetState;
+        delete ratchetData[room][device_id].sendRatchetState;
+
+        localStorage.setItem('ratchet', JSON.stringify(ratchetData));
+    }
+}
+
+function saveDHRatchetKey(dhratchet_private_key, room, device_id) {
+    let ratchetData = JSON.parse(localStorage.getItem('ratchet')) || {};
+
+    if (!ratchetData[room]) {
+        ratchetData[room] = {};
+    }
+
+    if (!ratchetData[room][device_id]) {
+        ratchetData[room][device_id] = {};
+    }
+
+    ratchetData[room][device_id].dhratchet_key = JSON.stringify(dhratchet_private_key);
+
+    localStorage.setItem('ratchet', JSON.stringify(ratchetData));
+}
+
+function getDHRatchetKey(room, device_id) {
+    let ratchetData = JSON.parse(localStorage.getItem('ratchet')) || {};
+
+    if (!ratchetData[room]) {
+        ratchetData[room] = {};
+    }
+
+    if (!ratchetData[room][device_id]) {
+        ratchetData[room][device_id] = {};
+    }
+
+    if (ratchetData[room][device_id].dhratchet_key) {
+        return ratchetData[room][device_id].dhratchet_key;
+    } else if (ratchetData[room].private_keys.dhratchet_key) {
+        return ratchetData[room].private_keys.dhratchet_key;
+    } else {
+        return null;
+    }
+}
+
+function saveSk(room, sk, device_id) {
+    let ratchetData = JSON.parse(localStorage.getItem('ratchet')) || {};
+
+    if (!ratchetData[room]) {
+        ratchetData[room] = {};
+    }
+
+    if (!ratchetData[room][device_id]) {
+        ratchetData[room][device_id] = {};
+    }
+
+    ratchetData[room][device_id].sk = JSON.stringify(sk);
+
+    localStorage.setItem('ratchet', JSON.stringify(ratchetData));
+}
+
+function getSk(room, device_id) {
+    let ratchetData = JSON.parse(localStorage.getItem('ratchet')) || {};
+
+    if (!ratchetData[room]) {
+        ratchetData[room] = {};
+    }
+
+    if (!ratchetData[room][device_id]) {
+        ratchetData[room][device_id] = {};
+    }
+
+    if (ratchetData[room][device_id].sk) {
+        return JSON.parse(ratchetData[room][device_id].sk);
+    } else {
+        return null;
+    }
 }

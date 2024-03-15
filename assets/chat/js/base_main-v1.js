@@ -393,6 +393,7 @@ let bytes_message = null;
 let sent_reply_id = null;
 
 let encryption = null;
+const encryption_instance = {};
 
 function close_chat() {
     document.getElementById('chat_parent_container').style.display = 'none';
@@ -477,53 +478,34 @@ function load_chat(userName) {
             'receiver_username': userName,
         }));
     }
-    let roomData = JSON.parse(localStorage.getItem(userName));
+    let roomData = getKeysByRoom(getActiveRoom());
+    let generate_keys = false;
     if (roomData && roomData.type && roomData.private_keys) {
-        console.log('1');
-
-        $.ajax({
-            type: 'POST',
-            url: `/chat/load/messages/${userName}/`,
-            dataType: 'json',
-            data: JSON.stringify({
-                generate_keys: false,
-                device_id: getCookie('device_id')
-            }),
-            success: function (response) {
-                if (response.status === 'success') {
-                    var messages = JSON.parse(response.data);
-                    (async () => {
-                        await initialize_keys(userName, response.keys.public_keys, response.keys.ratchet_public_key, response.keys.is_new, messages);
-                    })();
-                } else {
-                    console.error('Error loading messages:', response.message);
-                }
-            },
-            error: function (error) {
-                console.error('Error loading messages:', error);
-                preloaderEnd();
-            }
-        });
+        generate_keys = false;
     } else {
-        console.log('2');
-        $.ajax({
+        generate_keys = true;
+    }
+
+    $.ajax({
             type: 'POST',
             url: `/chat/load/messages/${userName}/`,
             dataType: 'json',
             data: JSON.stringify({
-                generate_keys: true,
+                generate_keys: generate_keys,
                 device_id: getCookie('device_id')
             }),
             success: function (response) {
                 if (response.status === 'success') {
-                    if (response.keys.private_keys.type === 0) {
-                        saveKeys(userName, response.keys.private_keys.ik_private_key, response.keys.private_keys.ek_private_key, response.keys.private_keys.dhratchet_private_key);
-                    } else if (response.keys.private_keys.type === 1) {
-                        saveKeys_receiver(userName, response.keys.private_keys.ik_private_key, response.keys.private_keys.spk_private_key, response.keys.private_keys.opk_private_key, response.keys.private_keys.dhratchet_private_key)
+                    if (response.generate_keys) {
+                        if (response.keys.private_keys.type === 0) {
+                            saveKeys_sender(getActiveRoom(), response.keys.private_keys.ik_private_key, response.keys.private_keys.ek_private_key, response.keys.private_keys.dhratchet_private_key);
+                        } else if (response.keys.private_keys.type === 1) {
+                            saveKeys_receiver(getActiveRoom(), response.keys.private_keys.ik_private_key, response.keys.private_keys.spk_private_key, response.keys.private_keys.opk_private_key, response.keys.private_keys.dhratchet_private_key)
+                        }
                     }
                     var messages = JSON.parse(response.data);
                     (async () => {
-                        await initialize_keys(userName, response.keys.public_keys, response.keys.ratchet_public_key, response.keys.is_new, messages);
+                        await initialize_keys(getActiveRoom(), response.keys.public_keys, messages);
                     })();
                 } else {
                     console.error('Error loading messages:', response.message);
@@ -534,7 +516,6 @@ function load_chat(userName) {
                 preloaderEnd();
             }
         });
-    }
 
 
     header_content.addEventListener('click', function (event) {
@@ -624,6 +605,15 @@ function getActivePerson() {
 
     if (activePersonElement) {
         return activePersonElement.getAttribute('data-chat');
+    } else {
+        return null;
+    }
+}
+
+function getActiveRoom() {
+    var activePersonElement = document.querySelector('.person.active');
+    if (activePersonElement) {
+        return activePersonElement.getAttribute('data-room');
     } else {
         return null;
     }
@@ -991,11 +981,11 @@ function initialize_socket() {
             } else {
                 if (data.sender_username === getActivePerson()) {
                     // Determine if the message is sent or received based on the sender
-                    const messageType = data.sender_username === userUsername ? 'you' : getActivePerson();
 
-                    // Display the message with the appropriate indicator
-                    await encryption.setReceiverKey_JWK(data.public_key);
-                    let text_message = await encryption.recv(data.message, encryption.receiver_public_key);
+                    if (encryption_instance[data.device_id]) {
+                        const messageType = data.sender_username === userUsername ? 'you' : getActivePerson();
+                    await encryption_instance[data.device_id].setReceiverKey_JWK(data.public_key);
+                    let text_message = await encryption_instance[data.device_id].recv(data.message, encryption_instance[data.device_id].receiver_public_key);
                     if (messageType === "you") {
                         addSnapMessage(data.message_id, text_message, null, null, null, data.reply_id || null)
                     } else {
@@ -1011,7 +1001,8 @@ function initialize_socket() {
                     loadingIcon.style.display = 'none';
                     handleNewMessage(getActivePerson(), data.message_id, false);
                     message_seen(data.message_id);
-                    update_message_status(STATUS_RECEIVED, data.sender_username)
+                    update_message_status(STATUS_RECEIVED, data.sender_username);
+                    }
                 } else {
                     handleNewMessage(data.sender_username, data.message_id, true);
                 }
@@ -1109,32 +1100,32 @@ const sendMessage = async function () {
                         let current_time = new Date();
                         handleNewMessage(getActivePerson(), current_time, false);
                         update_message_status(STATUS_DELIVERED, getActivePerson());
-                    }, 'image/webp', 0.7); // Adjust quality as needed
+                    }, 'image/webp', 0.7);
                 };
             } else {
                 var replyMessageHolder = document.getElementById('reply_message_holder');
 
                 var containsSnapMessage = replyMessageHolder.querySelector('snap-message') !== null;
-                let encrypted_message = await encryption.send(encryption.receiver_public_key, message);
+                let encrypted_message = await encryption_send(message);
 
                 if (containsSnapMessage) {
                     const reply_id = replyMessageHolder.querySelector('snap-message').id;
-                    // Send only the message if no image is selected
-                    chatSocket.send(JSON.stringify({
-                        'type': 'reply_message',
-                        'message': encrypted_message.cipher,
+
+                    let data = JSON.stringify({
+                        'type': 'message',
+                        'message': encrypted_message,
                         'storeMessage': storeMessage,
                         'reply_id': reply_id,
-                        'public_key': encrypted_message.ratchet_key
-                    }));
+                    });
+
+                    chatSocket.send(data);
                     sent_reply_id = reply_id;
                     bytes_message = message;
                 } else {
                     chatSocket.send(JSON.stringify({
                         'type': 'message',
-                        'message': encrypted_message.cipher,
+                        'message': encrypted_message,
                         'storeMessage': storeMessage,
-                        'public_key': encrypted_message.ratchet_key
                     }));
                     bytes_message = message;
                 }
@@ -1631,69 +1622,42 @@ async function import_public_keys(keys) {
     console.log(ikpublic_key);
 }
 
-async function initialize_keys(username, keys, ratchet_public_key, is_new, messages) {
-    let roomData = JSON.parse(localStorage.getItem(username));
-    console.log(keys);
-    console.log(ratchet_public_key);
-    console.log(is_new);
+async function initialize_keys(room, publicKeysInfo, messages) {
+    let roomData = getKeysByRoom(getActiveRoom());
+    for (const device_id in publicKeysInfo) {
+        if (publicKeysInfo.hasOwnProperty(device_id)) {
+            const keysInfo = publicKeysInfo[device_id];
 
-    if (roomData && roomData.type && roomData.private_keys) {
-        if (roomData.type === 'sender') {
-            encryption = new Alice(username);
-            await encryption.retrieveAndImportKeys();
-            await encryption.x3dh(keys);
-            await encryption.initRatchets(is_new);
-            await encryption.setReceiverKey(ratchet_public_key);
-        } else if (roomData.type === 'receiver') {
-            encryption = new Bob(username);
-            await encryption.retrieveAndImportKeys();
-            await encryption.x3dh(keys);
-            await encryption.initRatchets(is_new);
-            await encryption.setReceiverKey(ratchet_public_key);
+            let encryptionInstance;
+            if (roomData.type === 'sender') {
+                encryptionInstance = new Alice(room, device_id);
+            } else if (roomData.type === 'receiver') {
+                encryptionInstance = new Bob(room, device_id);
+            }
+            await encryptionInstance.retrieveAndImportKeys();
+            await encryptionInstance.x3dh(keysInfo.public_keys);
+            await encryptionInstance.initRatchets();
+            await encryptionInstance.setReceiverKey(keysInfo.ratchet_public_key);
+            encryption_instance[device_id] = encryptionInstance;
         }
-        if (encryption) {
-            await load_chat_message(messages);
-        }
-    } else {
-        console.log('No keys found for this username');
-        return null;
     }
+    await load_chat_message(messages);
 }
 
-function saveKeys(username, ik_private_key, ek_private_key, dhratchet_private_key) {
-    let roomData = JSON.parse(localStorage.getItem(username));
+async function encryption_send(message) {
+    const responses = {};
 
-    if (!roomData) {
-        roomData = {};
-    }
+    // Use Object.values to get an array of instances
+    const instances = Object.values(encryption_instance);
 
-    roomData.type = 'sender';
+    // Use Promise.all to execute the send method for each instance
+    const sendPromises = instances.map(async (instance) => {
+        responses[instance.device_id] = await instance.send(message);
+    });
 
-    roomData.private_keys = {
-        ikPrivateKeyData: ik_private_key,
-        ekPrivateKeyData: ek_private_key,
-        dhratchet_key: dhratchet_private_key
-    };
+    // Wait for all sendPromises to resolve
+    await Promise.all(sendPromises);
 
-    localStorage.setItem(username, JSON.stringify(roomData));
-}
-
-function saveKeys_receiver(username, ik_private_key, spk_private_key, opk_private_key, dhratchet_key) {
-
-    let roomData = JSON.parse(localStorage.getItem(username));
-
-    if (!roomData) {
-        roomData = {};
-    }
-
-    roomData.type = 'receiver';
-
-    roomData.private_keys = {
-        ikPrivateKey: ik_private_key,
-        spkPrivateKey: spk_private_key,
-        opkPrivateKey: opk_private_key,
-        dhratchet_key: dhratchet_key
-    };
-
-    localStorage.setItem(username, JSON.stringify(roomData));
+    // Now 'responses' contains the responses for each device_id
+    return JSON.stringify(responses);
 }

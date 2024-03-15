@@ -1,11 +1,10 @@
 import base64
 
-from cryptography.hazmat.primitives import hashes, serialization
+from Cryptodome.Cipher import AES
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
-from cryptography.hazmat.backends import default_backend
-
-from Cryptodome.Cipher import AES
 
 
 def b64(msg):
@@ -39,6 +38,7 @@ class SymmRatchet(object):
         print(f'initial_state: {b64(self.state)}')
 
     def next(self, inp=b''):
+        print(b64(inp))
         # turn the ratchet, changing the state and yielding a new key and IV
         output = hkdf(self.state + inp, 80)
         self.state = output[:32]
@@ -91,6 +91,7 @@ class Bob(object):
         # to get a new recv ratchet
         self.recv_ratchet = SymmRatchet(shared_recv)
         print('[Bob]\tRecv ratchet seed:', b64(shared_recv))
+        self.DHratchet = X25519PrivateKey.generate()
 
     def dh_ratchet_rotation_send(self, alice_public_key):
         self.DHratchet = X25519PrivateKey.generate()
@@ -199,19 +200,13 @@ bob.init_ratchets()
 
 # Alice sends Bob a message and her new DH ratchet public key
 alice.send(bob, b'Hello Bob!')
+alice.send(bob, b'Hello Bob!')
+
 
 # alice.send(bob, b'Hello Bob!')
 
 
 # Bob uses that information to sync with Alice and send her a message
-bob.send(alice, b'Hello to you too, Alice!')
-alice.send(bob, b'Hello Bob!')
-alice.send(bob, b'Hello Bob!')
-alice.send(bob, b'Hello Bob!')
-alice.send(bob, b'Hello Bob!')
-alice.send(bob, b'Hello Bob!')
-bob.send(alice, b'Hello to you too, Alice!')
-bob.send(alice, b'Hello to you too, Alice!')
 bob.send(alice, b'Hello to you too, Alice!')
 
 

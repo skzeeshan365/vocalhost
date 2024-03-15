@@ -4,7 +4,7 @@ from django.contrib.auth.admin import UserAdmin
 from django.contrib.auth.models import User
 
 from main.models import Client, UserProfile
-from chat.models import Room, Message, FriendRequest, Devices, DeviceIdentifier, PublicKey, RatchetPublicKey
+from chat.models import Room, Message, FriendRequest, UserDevice, PublicKey, RatchetPublicKey, ChildMessage
 
 
 class UserProfileInline(admin.StackedInline):
@@ -22,8 +22,9 @@ admin.site.register(Client)
 admin.site.register(Room)
 
 admin.site.register(Message)
+admin.site.register(ChildMessage)
+
 admin.site.register(FriendRequest)
-admin.site.register(Devices)
-admin.site.register(DeviceIdentifier)
+admin.site.register(UserDevice)
 admin.site.register(PublicKey)
 admin.site.register(RatchetPublicKey)

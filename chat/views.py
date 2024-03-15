@@ -1,4 +1,4 @@
-import base64
+import hashlib
 import hashlib
 import json
 import threading
@@ -10,7 +10,6 @@ from cloudinary import uploader
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
-from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.core.serializers.json import DjangoJSONEncoder
@@ -21,12 +20,12 @@ from fcm_django.models import FCMDevice
 from jwcrypto import jwk
 
 from ReiserX_Tunnel import settings
-from chat.utils import format_key, format_keys, generate_sender_keys, generate_receiver_keys, generate_room_id
-from main.Utils import send_pusher_update
 from chat.consumers import getRoom
-from main.forms import ImageUploadForm
 from chat.models import Message, Room, get_connected_users, new_signal_message, FriendRequest, SenderKeyBundle, \
-    ReceiverKeyBundle, Devices, DeviceIdentifier, PublicKey
+    ReceiverKeyBundle, PublicKey, UserDevice
+from chat.utils import format_key, generate_sender_keys, generate_receiver_keys, generate_room_id
+from main.Utils import send_pusher_update
+from main.forms import ImageUploadForm
 
 
 @login_required(login_url='/account/login/')
@@ -109,13 +108,14 @@ def chat_box(request):
                        'pusher': settings.PUSHER_KEY,
                        'token_status': token,
                        'received_requests': received_friend_request})
-    if not device_id_cookie:
+
+    if device_id_cookie:
+        UserDevice.objects.get_or_create(user=user, identifier=device_id_cookie)
+    else:
         new_device_id = str(uuid.uuid4())
-        device, created = Devices.objects.get_or_create(user=user)
-
-        device.add_device_identifier(new_device_id)
-
-        response.set_cookie('device_id', new_device_id, max_age=365 * 24 * 60 * 60)
+        device, created = UserDevice.objects.create(user=user, identifier=new_device_id)
+        if created:
+            response.set_cookie('device_id', new_device_id, max_age=365 * 24 * 60 * 60)
     return response
 
 
@@ -170,13 +170,11 @@ def load_messages(request, receiver):
         room = Room.objects.filter(room=room).first()
         if room:
             receiver = User.objects.get(username=receiver_user)
-            public_keys = room.get_public_keys(receiver)
+            public_keys = room.get_public_keys(receiver, device_id)
             public_key = PublicKey.get_public_key(user=user, room=room, device_id=device_id)
             if generate_keys or not public_key:
                 generate_keys = True
                 if public_key:
-                    print(public_key.key_type)
-                    print(PublicKey.SENDER)
                     if public_key.key_type == PublicKey.SENDER:
                         private_keys = generate_sender_keys(room, user, device_id)
                     else:
@@ -338,8 +336,8 @@ def send_friend_request(request):
             )
 
             try:
-                device_id = DeviceIdentifier.objects.get(identifier=device_id)
-            except DeviceIdentifier.DoesNotExist:
+                device_id = UserDevice.objects.get(identifier=device_id)
+            except UserDevice.DoesNotExist:
                 pass
 
             friend_request = FriendRequest(sender=request.user,
@@ -438,9 +436,9 @@ def accept_friend_request(request):
         )
 
         try:
-            device_id = DeviceIdentifier.objects.get(identifier=device_id)
+            device_id = UserDevice.objects.get(identifier=device_id)
             friend_request.receiver_device_id = device_id
-        except DeviceIdentifier.DoesNotExist:
+        except UserDevice.DoesNotExist:
             pass
 
         friend_request.status = FriendRequest.ACCEPTED
