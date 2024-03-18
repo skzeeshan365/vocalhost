@@ -325,7 +325,6 @@ function handleNewMessage(username, timestamp, background = true) {
 }
 
 function update_message_status(seen, username, previous = true) {
-    console.log(seen);
     var personElement = document.querySelector(`[data-chat='${username}']`);
     if (personElement) {
         var previewElement = personElement.querySelector('.preview');
@@ -658,6 +657,32 @@ function get_user_public_keys(username, room) {
     });
 }
 
+function get_user_private_keys_secondary() {
+    let device_id = getCookie('device_id');
+    $.ajax({
+        type: 'POST',
+        url: `/chat/get/private-keys/secondary/`,
+        dataType: 'json',
+        data: JSON.stringify({
+            device_id: device_id
+        }),
+        success: function (response) {
+            if (response.status === 'success') {
+                saveSecondaryKey(response.private_key);
+                device_public_keys[device_id] = response.public_key;
+                (async () => {
+                    await initialize_asymmetric_devices();
+                })();
+            } else {
+                console.error('Error loading messages:', response.error);
+            }
+        },
+        error: function (error) {
+            console.error('Error loading messages:', error);
+        }
+    });
+}
+
 function getActivePerson() {
     var activePersonElement = document.querySelector('.person.active');
 
@@ -749,10 +774,13 @@ function resizeTextarea() {
 document.addEventListener('DOMContentLoaded', function () {
     initialize_socket();
     saveSecondaryKey(key);
-
-    (async () => {
+    if (!getSecondaryKey()) {
+        get_user_private_keys_secondary();
+    } else {
+        (async () => {
         await initialize_asymmetric_devices(device_public_keys);
     })();
+    }
 
     displayImages();
     const ulElement = document.querySelector('.people');
@@ -1079,10 +1107,8 @@ function initialize_socket() {
                 remove_user(data.username);
             } else if (data.type === 'chat_sent_message') {
                 if (data.room === getActiveRoom()) {
-                    if (asymmetricInstances[data.device_id]) {
-                        let message = await decryptSentMessage(data.cipher, data.AES);
-                        addSnapMessage(data.message_id, message, null, null, null, data.reply_id || null)
-                    }
+                    let message = await decryptSentMessage(data.cipher, data.AES);
+                    addSnapMessage(data.message_id, message, null, null, null, data.reply_id || null)
                     update_message_status(STATUS_DELIVERED, getUsernameByRoom(data.room));
                 } else {
                     handleNewMessage(getUsernameByRoom(data.room), data.message_id, true);
@@ -1158,10 +1184,7 @@ const sendMessage = async function () {
                 const img = new Image();
                 img.src = URL.createObjectURL(file);
 
-                console.log(encrypted_message);
-
                 img.onload = async function () {
-                    console.log('2');
                     const canvas = document.createElement('canvas');
                     const ctx = canvas.getContext('2d');
                     canvas.width = img.width;
@@ -1172,9 +1195,7 @@ const sendMessage = async function () {
                     canvas.toBlob((webpBlob) => {
 
                         // Create a new Blob containing text and binary data
-                        console.log('3');
                         if (encrypted_message) {
-                            console.log(encrypted_message);
                             const combinedBlob = new Blob([JSON.stringify({
                                 message: encrypted_message.cipher,
                                 storeMessage: storeMessage,
@@ -1718,9 +1739,7 @@ function base64StringToArrayBuffer(base64) {
 }
 
 async function import_public_keys(keys) {
-    console.log(keys[0]);
     let key = base64StringToArrayBuffer(keys[0]);
-    console.log(key);
     let ikpublic_key = await crypto.subtle.importKey(
         'spki',
         key,
@@ -1728,7 +1747,6 @@ async function import_public_keys(keys) {
         true,
         []
     );
-    console.log(ikpublic_key);
 }
 
 async function initialize_keys(room, publicKeysInfo, messages) {
