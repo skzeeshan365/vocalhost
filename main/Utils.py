@@ -31,9 +31,9 @@ def get_sender_receiver(sender_username, receiver_username):
     return sorted_usernames[0], sorted_usernames[1]
 
 
-def send_message_to_device(user, title, message, timestamp=None):
+def send_message_to_device(user, title, message, device_id):
     try:
-        device = FCMDevice.objects.get(user=user)
+        device = FCMDevice.objects.get(user=user, device_id=device_id)
         message = Message(
             data={
                 "title": title,

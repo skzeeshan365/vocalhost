@@ -1,5 +1,4 @@
 import hashlib
-import hashlib
 import json
 import threading
 import time
@@ -13,17 +12,20 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.core.serializers.json import DjangoJSONEncoder
+from django.db.models import Exists, OuterRef, Subquery
 from django.http import HttpResponse, JsonResponse, Http404
 from django.shortcuts import render, redirect
 from django.template.loader import render_to_string
+from django.utils.safestring import mark_safe
 from fcm_django.models import FCMDevice
 from jwcrypto import jwk
 
 from ReiserX_Tunnel import settings
 from chat.consumers import getRoom
 from chat.models import Message, Room, get_connected_users, new_signal_message, FriendRequest, SenderKeyBundle, \
-    ReceiverKeyBundle, PublicKey, UserDevice
-from chat.utils import format_key, generate_sender_keys, generate_receiver_keys, generate_room_id
+    ReceiverKeyBundle, PublicKey, UserDevice, ChildMessage
+from chat.utils import format_key, generate_sender_keys, generate_receiver_keys, generate_room_id, \
+    process_messages, clear_temp_messages, generate_key_pair
 from main.Utils import send_pusher_update
 from main.forms import ImageUploadForm
 
@@ -46,37 +48,48 @@ def chat_box(request):
         if room is None:
             continue
 
-        # Get the count of messages
-        messages_count = Message.objects.filter(
+        messages_with_child_messages = ChildMessage.objects.filter(
+            base_message_id=OuterRef('message_id'),  # Link to the primary key of the outer Message
+            cipher__isnull=False
+        ).values('base_message_id')
+
+        # Get all Message instances where at least one related ChildMessage has a non-None cipher
+        messages_with_cipher = Message.objects.filter(
             room=room,
-            temp=user,
-        ).count()
+            receiver=user,
+            saved=False,
+            message_id__in=Subquery(messages_with_child_messages)
+        )
+
+        messages_with_cipher_other = Message.objects.filter(
+            room=room,
+            receiver=other_user,
+            saved=False,
+            message_id__in=Subquery(messages_with_child_messages)
+        )
+
+        # Then you can count the number of such messages
+        messages_count = messages_with_cipher.count()
 
         last_message = room.get_last_message()
 
         status = -1
         new_message = None
         if last_message:
-            if last_message.temp == user:
+            if last_message.receiver == user and messages_with_cipher:
                 new_message = True
             else:
                 new_message = False
-            if last_message.temp == other_user:
-                status = 2
-            elif last_message.temp == user:
-                status = 1
-            elif last_message.temp is None:
-                if last_message.sender == user:
-                    status = 0
-                elif last_message.sender == other_user:
-                    status = 1
 
-        print(room.room)
+            if last_message.receiver == other_user and messages_with_cipher_other.exists():
+                    status = 2
+            elif messages_with_cipher is None and messages_with_cipher_other is None:
+                status = -1
         room_messages_info.append({
             'user': other_user,
             'room': room.room,
             'message_count': str(messages_count) if messages_count > 0 else '',
-            'last_message': last_message.message if last_message else None,
+            'last_message': last_message.message_id if last_message else None,
             'last_message_timestamp': str(last_message.timestamp) if last_message else None,
             'new': new_message,
             'status': status
@@ -100,22 +113,43 @@ def chat_box(request):
 
     device_id_cookie = request.COOKIES.get('device_id')
 
-    response = render(request, "chat/chat.html",
-                      {'protocol': protocol,
-                       'abcf': settings.FIREBASE_API_KEY,
-                       'users': room_messages_info,
-                       'storeMessage': user.userprofile.auto_save,
-                       'pusher': settings.PUSHER_KEY,
-                       'token_status': token,
-                       'received_requests': received_friend_request})
+    # private_key, public_key = generate_key_pair()
+    # UserDevice.objects.filter(identifier=device_id_cookie, user=user).update(identifier=device_id_cookie)
 
+    device_keys = UserDevice.get_user_device_public_keys(request.user)
+
+    context = {'protocol': protocol,
+                           'abcf': settings.FIREBASE_API_KEY,
+                           'users': room_messages_info,
+                           'storeMessage': user.userprofile.auto_save,
+                           'pusher': settings.PUSHER_KEY,
+                           'token_status': token,
+                           'received_requests': received_friend_request,
+               'device_keys': mark_safe(device_keys)}
+    response = render(request, "chat/chat.html",
+                      context)
+    user_device = None
     if device_id_cookie:
-        UserDevice.objects.get_or_create(user=user, identifier=device_id_cookie)
+        user_device = UserDevice.get_user_by_device(device_id_cookie)
+
+    if user_device and user_device.username == user.username:
+        pass
     else:
         new_device_id = str(uuid.uuid4())
-        device, created = UserDevice.objects.create(user=user, identifier=new_device_id)
-        if created:
-            response.set_cookie('device_id', new_device_id, max_age=365 * 24 * 60 * 60)
+        private_key, public_key = generate_key_pair()
+        UserDevice.objects.create(user=user, identifier=new_device_id, device_public_key=public_key)
+        context = {'protocol': protocol,
+                   'abcf': settings.FIREBASE_API_KEY,
+                   'users': room_messages_info,
+                   'storeMessage': user.userprofile.auto_save,
+                   'pusher': settings.PUSHER_KEY,
+                   'token_status': token,
+                   'received_requests': received_friend_request,
+                   'device_keys': mark_safe(device_keys),
+                   'private_key': mark_safe(private_key)}
+        response = render(request, "chat/chat.html",
+                          context)
+        response.set_cookie('device_id', new_device_id, max_age=365 * 24 * 60 * 60)
     return response
 
 
@@ -135,23 +169,6 @@ def update_message_status(receiver_user, username):
             'sender_username': username,
         }
         send_pusher_update(message_data=message, receiver_username=receiver_user)
-
-
-def extract_public_keys_from_bundle(key_bundle):
-    ik_public_key = key_bundle.ik_public_key
-    ek_public_key = key_bundle.ek_public_key
-    spk_public_key = key_bundle.spk_public_key
-    opk_public_key = key_bundle.opk_public_key
-    dhratchet_public_key = key_bundle.dhratchet_public_key
-
-    return ik_public_key, ek_public_key, spk_public_key, opk_public_key, dhratchet_public_key
-
-def extract_public_keys_from_bundle_sender(key_bundle):
-    ik_public_key = key_bundle.ik_public_key
-    ek_public_key = key_bundle.ek_public_key
-
-    return ik_public_key, ek_public_key
-
 
 @login_required(login_url='/account/login/')
 def load_messages(request, receiver):
@@ -180,17 +197,17 @@ def load_messages(request, receiver):
                     else:
                         private_keys = generate_receiver_keys(room, user, device_id)
                 else:
-                    private_keys = generate_sender_keys(room, user, device_id)
+                    if room.get_user_type(user.username) == 'Sender':
+                        private_keys = generate_sender_keys(room, user, device_id)
+                    else:
+                        private_keys = generate_receiver_keys(room, user, device_id)
             else:
                 private_keys = None
 
             messages_db = Message.objects.filter(room=room)
-            messages = list(
-                messages_db.values('message', 'sender__username', 'message_id', 'reply_id',
-                                   'timestamp', 'temp__username', 'saved', 'image_url', 'public_key'))
+            messages = process_messages(messages_db, device_id)
 
-            messages_db = Message.objects.filter(room=room, temp=user, saved=False)
-            Message.objects.filter(room=room, temp=user, saved=True).update(temp=None)
+            messages_db = Message.objects.filter(room=room, receiver=user, saved=False)
 
             for message in messages:
                 if 'public_key' in message and isinstance(message['public_key'], bytes):
@@ -199,14 +216,56 @@ def load_messages(request, receiver):
             if messages_db.exists():
                 thread = threading.Thread(target=update_message_status, args=(receiver_user, user.username))
                 thread.start()
-                messages_db.update(public_key=None)
         else:
             messages = []
             public_keys = None
             private_keys = None
+        print(messages)
         messages = json.dumps(messages, cls=DjangoJSONEncoder)
         return JsonResponse({'status': 'success', 'data': messages, 'generate_keys': generate_keys, 'keys': {'public_keys': public_keys,
                                                                              'private_keys': private_keys}})
+    else:
+        return JsonResponse({'status': 'error', 'message': 'Invalid request'})
+
+
+@login_required(login_url='/account/login/')
+def process_temp_messages(request):
+    if request.method == 'POST':
+        user = request.user
+        data = json.loads(request.body)
+        device_id = data.get('device_id')
+        receiver_username = data.get('receiver_username')
+
+        room = generate_room_id(user.username, receiver_username)
+        room = Room.objects.filter(room=room).first()
+        if room:
+            messages_db = Message.objects.filter(room=room)
+
+            clear_temp_messages(messages_db, device_id)
+            return JsonResponse({'status': 'success'})
+        else:
+            return JsonResponse({'status': 'error'})
+    else:
+        return JsonResponse({'status': 'error', 'message': 'Invalid request'})
+
+
+@login_required(login_url='/account/login/')
+def get_user_public_keys(request):
+    if request.method == 'POST':
+        user = request.user
+        data = json.loads(request.body)
+        device_id = data.get('device_id')
+        receiver_username = data.get('receiver_username')
+
+        room = generate_room_id(user.username, receiver_username)
+        room = Room.objects.filter(room=room).first()
+        if room:
+            receiver = User.objects.get(username=receiver_username)
+            public_keys = room.get_public_keys(receiver, device_id)
+
+            return JsonResponse({'status': 'success', 'public_keys': public_keys})
+        else:
+            return JsonResponse({'status': 'error'})
     else:
         return JsonResponse({'status': 'error', 'message': 'Invalid request'})
 
@@ -231,16 +290,18 @@ def register_device(request):
         data = json.loads(request.body)
         user = request.user
         registration_token = data.get('token')
-        device_type = data.get('device_type', 'web')  # Default to 'web' if not provided
+        device_type = data.get('device_type', 'web')
+        device_id = data.get('device_id')
 
         # Check if the device is already registered for the user
 
-        objects = FCMDevice.objects.filter(user=user)
+        objects = FCMDevice.objects.filter(user=user, device_id=device_id)
         objects.delete()
         FCMDevice.objects.create(
             user=user,
             registration_id=registration_token,
             type=device_type,
+            device_id=device_id
         )
 
         return JsonResponse({'status': 'success'})
@@ -575,8 +636,8 @@ def chat_profile(request, username):
             user = User.objects.get(username=username)
             if user:
                 room = getRoom(request.user.username, username)
-                count = Message.objects.filter(room=room).count()
-                messages = Message.objects.filter(room=room).order_by('-timestamp')[:4]
+                count = Message.objects.filter(room=room, saved=True).count()
+                messages = Message.objects.filter(room=room, saved=True).order_by('-timestamp')[:4]
                 form = ImageUploadForm()
                 if user.userprofile.image:
                     image = user.userprofile.image.url

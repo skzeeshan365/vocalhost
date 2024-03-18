@@ -257,12 +257,9 @@ function handleHover(event) {
 
     }
 
-    // Access the shadow DOM of the snap-message element
     const shadowRoot = actualFirstElement.shadowRoot;
 
-    // Check if the shadow DOM is available
     if (shadowRoot) {
-        // Retrieve the value of the 'additional-text' attribute inside the shadow DOM
         const additionalText = shadowRoot.querySelector('.additional-text');
 
         if (additionalText) {
@@ -328,6 +325,7 @@ function handleNewMessage(username, timestamp, background = true) {
 }
 
 function update_message_status(seen, username, previous = true) {
+    console.log(seen);
     var personElement = document.querySelector(`[data-chat='${username}']`);
     if (personElement) {
         var previewElement = personElement.querySelector('.preview');
@@ -394,6 +392,7 @@ let sent_reply_id = null;
 
 let encryption = null;
 const encryption_instance = {};
+const asymmetricInstances = {};
 
 function close_chat() {
     document.getElementById('chat_parent_container').style.display = 'none';
@@ -487,35 +486,35 @@ function load_chat(userName) {
     }
 
     $.ajax({
-            type: 'POST',
-            url: `/chat/load/messages/${userName}/`,
-            dataType: 'json',
-            data: JSON.stringify({
-                generate_keys: generate_keys,
-                device_id: getCookie('device_id')
-            }),
-            success: function (response) {
-                if (response.status === 'success') {
-                    if (response.generate_keys) {
-                        if (response.keys.private_keys.type === 0) {
-                            saveKeys_sender(getActiveRoom(), response.keys.private_keys.ik_private_key, response.keys.private_keys.ek_private_key, response.keys.private_keys.dhratchet_private_key);
-                        } else if (response.keys.private_keys.type === 1) {
-                            saveKeys_receiver(getActiveRoom(), response.keys.private_keys.ik_private_key, response.keys.private_keys.spk_private_key, response.keys.private_keys.opk_private_key, response.keys.private_keys.dhratchet_private_key)
-                        }
+        type: 'POST',
+        url: `/chat/load/messages/${userName}/`,
+        dataType: 'json',
+        data: JSON.stringify({
+            generate_keys: generate_keys,
+            device_id: getCookie('device_id')
+        }),
+        success: function (response) {
+            if (response.status === 'success') {
+                if (response.generate_keys) {
+                    if (response.keys.private_keys.type === 0) {
+                        saveKeys_sender(getActiveRoom(), response.keys.private_keys.ik_private_key, response.keys.private_keys.ek_private_key, response.keys.private_keys.dhratchet_private_key);
+                    } else if (response.keys.private_keys.type === 1) {
+                        saveKeys_receiver(getActiveRoom(), response.keys.private_keys.ik_private_key, response.keys.private_keys.spk_private_key, response.keys.private_keys.opk_private_key, response.keys.private_keys.dhratchet_private_key)
                     }
-                    var messages = JSON.parse(response.data);
-                    (async () => {
-                        await initialize_keys(getActiveRoom(), response.keys.public_keys, messages);
-                    })();
-                } else {
-                    console.error('Error loading messages:', response.message);
                 }
-            },
-            error: function (error) {
-                console.error('Error loading messages:', error);
-                preloaderEnd();
+                var messages = JSON.parse(response.data);
+                (async () => {
+                    await initialize_keys(getActiveRoom(), response.keys.public_keys, messages);
+                })();
+            } else {
+                console.error('Error loading messages:', response.message);
             }
-        });
+        },
+        error: function (error) {
+            console.error('Error loading messages:', error);
+            preloaderEnd();
+        }
+    });
 
 
     header_content.addEventListener('click', function (event) {
@@ -557,36 +556,49 @@ async function load_chat_message(messages) {
             }
 
             const save = message.saved;
-            if (newMessage) {
-                if (message.temp__username === userUsername) {
-                    addSnapNotice(null, "New message")
-                    newMessage = false;
-                    message_seen(message.message_id);
-                    update_message_status(STATUS_RECEIVED, getActivePerson());
-                }
-            }
             let text_message;
-            if (message.public_key) {
-                await encryption.setReceiverKey(message.public_key);
-                text_message = await encryption.recv(message.message, encryption.receiver_public_key);
-            } else {
-                text_message = message.message;
-            }
-            if (messageType === 'you') {
-                if (message.reply_id !== null) {
-                    addSnapMessage(message.message_id, text_message, null, save, message.image_url || null, message.reply_id, message.timestamp);
+            if (message.child_message) {
+                encryption = encryption_instance[message.child_message.device_id]
+                if (encryption) {
+                    if (message.child_message.public_key) {
+                        await encryption.setReceiverKey(message.child_message.public_key);
+                        if (message.child_message.cipher) {
+                            text_message = await encryption.recv(message.child_message.cipher);
+                        } else {
+                            await encryption.recv(null);
+                            text_message = null;
+                        }
+                    } else {
+                        text_message = message.message || null;
+                    }
                 } else {
-                    addSnapMessage(message.message_id, text_message, null, save, message.image_url || null, null, message.timestamp);
+                    text_message = message.message || null;
                 }
+            } else if (message.sent_message) {
+                text_message = await decryptSentMessage(message.sent_message.cipher, message.sent_message.AES);
             } else {
-                if (message.reply_id !== null) {
-                    addSnapMessage(message.message_id, text_message, getActivePerson(), save, message.image_url || null, message.reply_id, message.timestamp);
+                text_message = message.message || null;
+            }
+
+            if (text_message || message.image_url) {
+                if (newMessage) {
+                    if (message.child_message) {
+                        addSnapNotice(null, "New message")
+                        newMessage = false;
+                        message_seen(message.message_id);
+                        update_message_status(STATUS_RECEIVED, getActivePerson());
+                    }
+                }
+                if (messageType === 'you') {
+                    addSnapMessage(message.message_id, text_message, null, save, message.image_url || null, message.reply_id || null, message.timestamp);
                 } else {
-                    addSnapMessage(message.message_id, text_message, getActivePerson(), save, message.image_url || null, null, message.timestamp);
+                    addSnapMessage(message.message_id, text_message, getActivePerson(), save, message.image_url || null, message.reply_id || null, message.timestamp);
                 }
             }
         }
     }
+
+    process_temp_messages(getActivePerson());
 
     setTimeout(function () {
         var preloader = document.getElementById('preloader');
@@ -598,6 +610,52 @@ async function load_chat_message(messages) {
         header_content.style.display = 'inline-block';
         chatContainer.scrollTop = chatContainer.scrollHeight;
     }, 300); // Adjust the delay time as needed
+}
+
+function process_temp_messages(username) {
+    $.ajax({
+        type: 'POST',
+        url: `/chat/process/temp/messages/`,
+        dataType: 'json',
+        data: JSON.stringify({
+            receiver_username: username,
+            device_id: getCookie('device_id')
+        }),
+        success: function (response) {
+            if (response.status === 'success') {
+
+            } else {
+                console.error('Error loading messages:', response.error);
+            }
+        },
+        error: function (error) {
+            console.error('Error loading messages:', error);
+        }
+    });
+}
+
+function get_user_public_keys(username, room) {
+    $.ajax({
+        type: 'POST',
+        url: `/chat/get/public-keys/`,
+        dataType: 'json',
+        data: JSON.stringify({
+            receiver_username: username,
+            device_id: getCookie('device_id')
+        }),
+        success: function (response) {
+            if (response.status === 'success') {
+                (async () => {
+                    await initialize_keys(room, response.public_keys);
+                })();
+            } else {
+                console.error('Error loading messages:', response.error);
+            }
+        },
+        error: function (error) {
+            console.error('Error loading messages:', error);
+        }
+    });
 }
 
 function getActivePerson() {
@@ -614,6 +672,24 @@ function getActiveRoom() {
     var activePersonElement = document.querySelector('.person.active');
     if (activePersonElement) {
         return activePersonElement.getAttribute('data-room');
+    } else {
+        return null;
+    }
+}
+
+function getUsernameByRoom(room) {
+    var userElements = document.querySelectorAll('.person[data-room="' + room + '"]');
+    if (userElements.length > 0) {
+        return userElements[0].getAttribute('data-chat');
+    } else {
+        return null;
+    }
+}
+
+function getRoomByUsername(username) {
+    var userElement = document.querySelector('.person[data-chat="' + username + '"]');
+    if (userElement) {
+        return userElement.getAttribute('data-room');
     } else {
         return null;
     }
@@ -672,6 +748,11 @@ function resizeTextarea() {
 
 document.addEventListener('DOMContentLoaded', function () {
     initialize_socket();
+    saveSecondaryKey(key);
+
+    (async () => {
+        await initialize_asymmetric_devices(device_public_keys);
+    })();
 
     displayImages();
     const ulElement = document.querySelector('.people');
@@ -910,6 +991,24 @@ function initialize_socket() {
                         personElement.setAttribute('status', `${data.status}`);
                     }
                 }
+            } else if (data.type === 'device_online') {
+                if (data.room === getActiveRoom()) {
+                    if (data.public_keys) {
+                        initialize_single_key(data.room, data.public_keys, data.device_id);
+                        for (const device_id in encryption_instance) {
+                            if (!data.active_device_ids.includes(device_id)) {
+                                delete encryption_instance[device_id];
+                            }
+                        }
+                    } else {
+                        if (encryption_instance[data.device_id]) {
+                            delete encryption_instance[data.device_id]
+                            if (Object.keys(encryption_instance).length === 0) {
+                                get_user_public_keys(getActivePerson(), getActiveRoom());
+                            }
+                        }
+                    }
+                }
             } else if (data.type === 'message_sent') {
                 if (data.data_type === 'bytes') {
                     updateImage(bytes_webpBlob, null, data.message_id, null, bytes_message)
@@ -978,30 +1077,38 @@ function initialize_socket() {
                     close_all_chats();
                 }
                 remove_user(data.username);
+            } else if (data.type === 'chat_sent_message') {
+                if (data.room === getActiveRoom()) {
+                    if (asymmetricInstances[data.device_id]) {
+                        let message = await decryptSentMessage(data.cipher, data.AES);
+                        addSnapMessage(data.message_id, message, null, null, null, data.reply_id || null)
+                    }
+                    update_message_status(STATUS_DELIVERED, getUsernameByRoom(data.room));
+                } else {
+                    handleNewMessage(getUsernameByRoom(data.room), data.message_id, true);
+                }
             } else {
                 if (data.sender_username === getActivePerson()) {
-                    // Determine if the message is sent or received based on the sender
-
                     if (encryption_instance[data.device_id]) {
                         const messageType = data.sender_username === userUsername ? 'you' : getActivePerson();
-                    await encryption_instance[data.device_id].setReceiverKey_JWK(data.public_key);
-                    let text_message = await encryption_instance[data.device_id].recv(data.message, encryption_instance[data.device_id].receiver_public_key);
-                    if (messageType === "you") {
-                        addSnapMessage(data.message_id, text_message, null, null, null, data.reply_id || null)
-                    } else {
-                        addSnapMessage(data.message_id, text_message, getActivePerson(), null, null, data.reply_id || null)
-                    }
+                        await encryption_instance[data.device_id].setReceiverKey_JWK(data.public_key);
+                        let text_message = await encryption_instance[data.device_id].recv(data.message);
+                        if (messageType === "you") {
+                            addSnapMessage(data.message_id, text_message, null, null, null, data.reply_id || null)
+                        } else {
+                            addSnapMessage(data.message_id, text_message, getActivePerson(), null, null, data.reply_id || null)
+                        }
 
-                    // Scroll to the bottom
-                    var snapUiContainer = document.getElementById('snap-ui-container');
-                    snapUiContainer.scrollTop = snapUiContainer.scrollHeight;
+                        // Scroll to the bottom
+                        var snapUiContainer = document.getElementById('snap-ui-container');
+                        snapUiContainer.scrollTop = snapUiContainer.scrollHeight;
 
-                    // Hide the loading icon after receiving a message
-                    const loadingIcon = document.getElementById('loading');
-                    loadingIcon.style.display = 'none';
-                    handleNewMessage(getActivePerson(), data.message_id, false);
-                    message_seen(data.message_id);
-                    update_message_status(STATUS_RECEIVED, data.sender_username);
+                        // Hide the loading icon after receiving a message
+                        const loadingIcon = document.getElementById('loading');
+                        loadingIcon.style.display = 'none';
+                        handleNewMessage(getActivePerson(), data.message_id, false);
+                        message_seen(data.message_id);
+                        update_message_status(STATUS_RECEIVED, data.sender_username);
                     }
                 } else {
                     handleNewMessage(data.sender_username, data.message_id, true);
@@ -1105,20 +1212,21 @@ const sendMessage = async function () {
             } else {
                 var replyMessageHolder = document.getElementById('reply_message_holder');
 
-                var containsSnapMessage = replyMessageHolder.querySelector('snap-message') !== null;
                 let encrypted_message = await encryption_send(message);
+                var containsSnapMessage = replyMessageHolder.querySelector('snap-message') !== null;
+
+                let encrypted_sent_messages = await encryptSentMessage(message);
 
                 if (containsSnapMessage) {
                     const reply_id = replyMessageHolder.querySelector('snap-message').id;
 
-                    let data = JSON.stringify({
+                    chatSocket.send(JSON.stringify({
                         'type': 'message',
                         'message': encrypted_message,
                         'storeMessage': storeMessage,
                         'reply_id': reply_id,
-                    });
-
-                    chatSocket.send(data);
+                        'sent_message': encrypted_sent_messages
+                    }));
                     sent_reply_id = reply_id;
                     bytes_message = message;
                 } else {
@@ -1126,6 +1234,7 @@ const sendMessage = async function () {
                         'type': 'message',
                         'message': encrypted_message,
                         'storeMessage': storeMessage,
+                        'sent_message': encrypted_sent_messages
                     }));
                     bytes_message = message;
                 }
@@ -1641,7 +1750,24 @@ async function initialize_keys(room, publicKeysInfo, messages) {
             encryption_instance[device_id] = encryptionInstance;
         }
     }
-    await load_chat_message(messages);
+    if (messages) {
+        await load_chat_message(messages);
+    }
+}
+
+async function initialize_single_key(room, keysInfo, device_id) {
+    let roomData = getKeysByRoom(getActiveRoom());
+    let encryptionInstance;
+    if (roomData.type === 'sender') {
+        encryptionInstance = new Alice(room, device_id);
+    } else if (roomData.type === 'receiver') {
+        encryptionInstance = new Bob(room, device_id);
+    }
+    await encryptionInstance.retrieveAndImportKeys();
+    await encryptionInstance.x3dh(keysInfo.public_keys);
+    await encryptionInstance.initRatchets();
+    await encryptionInstance.setReceiverKey(keysInfo.ratchet_public_key);
+    encryption_instance[device_id] = encryptionInstance;
 }
 
 async function encryption_send(message) {
@@ -1660,4 +1786,44 @@ async function encryption_send(message) {
 
     // Now 'responses' contains the responses for each device_id
     return JSON.stringify(responses);
+}
+
+async function initialize_asymmetric_devices() {
+    if (device_public_keys) {
+        for (const [device_id, public_key] of Object.entries(device_public_keys)) {
+            const asymmetricInstance = new asymmetric(device_id);
+
+            await asymmetricInstance.setReceiverKey(public_key);
+            asymmetricInstances[device_id] = asymmetricInstance;
+        }
+    }
+}
+
+async function get_device_asym_key(device_id) {
+    if (device_public_keys) {
+        let public_key = device_public_keys[device_id]
+        if (public_key) {
+            return public_key
+        } else {
+            return null;
+        }
+    } else {
+        return null;
+    }
+}
+
+async function encryptSentMessage(message) {
+    const encryptedMessages = {};
+    for (const device_id in asymmetricInstances) {
+        if (asymmetricInstances.hasOwnProperty(device_id)) {
+            const instance = asymmetricInstances[device_id];
+            const encryptedMessage = await instance.encrypt(message);
+            encryptedMessages[device_id] = encryptedMessage;
+        }
+    }
+    return encryptedMessages;
+}
+
+async function decryptSentMessage(cipher, aes) {
+    return await decryptASYM_Message(cipher, aes);
 }

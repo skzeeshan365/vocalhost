@@ -331,6 +331,10 @@
     const icon_received_fill = '{% static 'img/status_received.svg' %}'
     const token_status = {{ token_status|yesno:"true,false" }};
     const default_user_icon = "{% static 'img/user.png' %}";
+    const key = '{{ private_key }}';
+    {% if device_keys %}
+    const device_public_keys = {{ device_keys }}
+    {% endif %}
 </script>
 <!-- VARIABLE DEFINITION -->
 

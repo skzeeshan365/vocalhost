@@ -56,14 +56,27 @@ let messaging = null;
             });
     }
 
+    function getCookie(name) {
+    const cookies = document.cookie.split(';');
+    for (const cookie of cookies) {
+        const [cookieName, cookieValue] = cookie.trim().split('=');
+        if (cookieName === name) {
+            return decodeURIComponent(cookieValue);
+        }
+    }
+    return null;
+}
+
+
     function sendRegistrationTokenToServer(token) {
+        console.log(getCookie('device_id'))
         // Use AJAX, fetch, or any other method to send the token to your Django server
         fetch('/chat/push/register_device/', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({token}),
+            body: JSON.stringify({token: token, device_id: getCookie('device_id')}),
         })
             .then((response) => response.json())
             .then((data) => console.log('Server response:', data))

@@ -245,7 +245,7 @@ class Bob {
     async saveToLocalStorage() {
         let root = btoa(String.fromCharCode.apply(null, new Uint8Array(this.rootRatchet.state)));
         let recv = btoa(String.fromCharCode.apply(null, new Uint8Array(this.recvRatchet.state)));
-        let send =  btoa(String.fromCharCode.apply(null, new Uint8Array(this.sendRatchet.state)));
+        let send = btoa(String.fromCharCode.apply(null, new Uint8Array(this.sendRatchet.state)));
         saveRatchetState(this.room, this.device_id, root, recv, send);
     }
 
@@ -269,6 +269,7 @@ class Bob {
             this.sendRatchet = new SymmRatchet((await this.rootRatchet.next())[0]);
             this.recvRatchet = new SymmRatchet((await this.rootRatchet.next())[0]);
             saveSk(this.room, b64(this.sk), this.device_id);
+            deleteRatchetStates(this.room, this.device_id);
         }
     }
 
@@ -306,14 +307,16 @@ class Bob {
         }
     }
 
-    async recv(cipher, alicePublicKey) {
-        await this.receive_dhRatchet(alicePublicKey);
-        const [key, iv] = await this.recvRatchet.next();
-        try {
-            const arrayBufferCipher = new Uint8Array([...atob(cipher)].map(char => char.charCodeAt(0)));
-            return await decryptMessage(key, iv, arrayBufferCipher)
-        } catch (error) {
-            return `Failed to decrypt message: ${error}`;
+    async recv(cipher) {
+        await this.receive_dhRatchet(this.receiver_public_key);
+        if (cipher) {
+            const [key, iv] = await this.recvRatchet.next();
+            try {
+                const arrayBufferCipher = new Uint8Array([...atob(cipher)].map(char => char.charCodeAt(0)));
+                return await decryptMessage(key, iv, arrayBufferCipher)
+            } catch (error) {
+                return `Failed to decrypt message: ${error}`;
+            }
         }
     }
 }
@@ -414,6 +417,7 @@ class Alice {
             this.sendRatchet = new SymmRatchet((await this.rootRatchet.next())[0]);
             this.recvRatchet = new SymmRatchet((await this.rootRatchet.next())[0]);
             saveSk(this.room, b64(this.sk), this.device_id);
+            deleteRatchetStates(this.room, this.device_id);
         }
     }
 
@@ -453,7 +457,7 @@ class Alice {
     async saveToLocalStorage() {
         let root = btoa(String.fromCharCode.apply(null, new Uint8Array(this.rootRatchet.state)));
         let recv = btoa(String.fromCharCode.apply(null, new Uint8Array(this.recvRatchet.state)));
-        let send =  btoa(String.fromCharCode.apply(null, new Uint8Array(this.sendRatchet.state)));
+        let send = btoa(String.fromCharCode.apply(null, new Uint8Array(this.sendRatchet.state)));
         saveRatchetState(this.room, this.device_id, root, recv, send);
     }
 
@@ -491,15 +495,148 @@ class Alice {
         }
     }
 
-    async recv(cipher, bobPublicKey) {
-        await this.receive_dhRatchet(bobPublicKey);
-        const [key, iv] = await this.recvRatchet.next();
-        try {
-            const arrayBufferCipher = new Uint8Array([...atob(cipher)].map(char => char.charCodeAt(0)));
-            return await decryptMessage(key, iv, arrayBufferCipher)
-        } catch (error) {
-            return `Failed to decrypt message: ${error}`;
+    async recv(cipher) {
+        await this.receive_dhRatchet(this.receiver_public_key);
+        if (cipher) {
+            const [key, iv] = await this.recvRatchet.next();
+            try {
+                const arrayBufferCipher = new Uint8Array([...atob(cipher)].map(char => char.charCodeAt(0)));
+                return await decryptMessage(key, iv, arrayBufferCipher)
+            } catch (error) {
+                return `Failed to decrypt message: ${error}`;
+            }
         }
+    }
+}
+
+
+// Section: Asymmetric encryption
+class asymmetric {
+    constructor(device_id) {
+        this.public_key = null;
+        this.device_id = device_id
+    }
+
+    async setReceiverKey(key) {
+        try {
+            let public_key = base64StringToArrayBuffer(key);
+            this.public_key = await crypto.subtle.importKey(
+                'spki',
+                public_key,
+                {
+                    name: 'RSA-OAEP',
+                    hash: {name: 'SHA-256'}
+                },
+                true,
+                ['encrypt']
+            );
+        } catch (e) {
+            console.error(e);
+        }
+    }
+
+    async encrypt(plaintext) {
+        try {
+            if (!this.public_key) {
+                throw new Error('Public key not set.');
+            }
+
+            let plaintextBuffer = new TextEncoder().encode(plaintext);
+
+            let iv = window.crypto.getRandomValues(new Uint8Array(12));
+
+            // Generate a new AES key
+            let aesKey = await window.crypto.subtle.generateKey(
+                {name: 'AES-GCM', length: 256},
+                true,
+                ['encrypt', 'decrypt']
+            );
+
+            // Encrypt the plaintext with AES-GCM
+            let ciphertext = await window.crypto.subtle.encrypt(
+                {name: 'AES-GCM', iv: iv},
+                aesKey,
+                plaintextBuffer
+            );
+
+            let aesKeyBuffer = await window.crypto.subtle.exportKey('raw', aesKey);
+
+            // Encrypt the AES key with RSA-OAEP
+            let encryptedAesKey = await window.crypto.subtle.encrypt(
+                {name: 'RSA-OAEP'},
+                this.public_key,
+                aesKeyBuffer
+            );
+
+            // Prepend IV to the ciphertext
+            let ivAndCiphertext = new Uint8Array(iv.byteLength + ciphertext.byteLength);
+            ivAndCiphertext.set(iv, 0);
+            ivAndCiphertext.set(new Uint8Array(ciphertext), iv.byteLength);
+
+            // Return the combined IV and ciphertext, and the encrypted AES key
+            return {
+                cipher: b64(ivAndCiphertext),
+                Aes: b64(encryptedAesKey)
+            };
+        } catch (e) {
+            console.error(e);
+        }
+    }
+}
+
+async function decryptASYM_Message(cipher, aes_key) {
+    try {
+        let private_key = null;
+        let private_key_jwk = getSecondaryKey();
+        if (private_key_jwk) {
+            private_key_data = JSON.parse(private_key_jwk);
+            private_key = await crypto.subtle.importKey(
+                'jwk',
+                private_key_data,
+                {
+                    name: 'RSA-OAEP',
+                    hash: {name: 'SHA-256'}
+                },
+                false,
+                ['decrypt']
+            );
+        }
+
+        if (!private_key) {
+            throw new Error('Private key not loaded.');
+        }
+
+        let iv = base64StringToArrayBuffer(cipher).slice(0, 12);
+
+        // Extract the ciphertext (excluding the IV)
+        let ciphertext = base64StringToArrayBuffer(cipher).slice(12);
+
+        // Decrypt the AES key using RSA-OAEP with the private key
+        let aesKeyBuffer = await window.crypto.subtle.decrypt(
+            {name: 'RSA-OAEP'},
+            private_key,
+            base64StringToArrayBuffer(aes_key)
+        );
+
+        let decryptedAesKey = await window.crypto.subtle.importKey(
+            'raw',
+            aesKeyBuffer,
+            {name: 'AES-GCM'},
+            true,
+            ['encrypt', 'decrypt']
+        );
+
+        // Decrypt the ciphertext using AES-GCM with the extracted IV and decrypted AES key
+        let decryptedPlaintext = await window.crypto.subtle.decrypt(
+            {name: 'AES-GCM', iv: iv},
+            decryptedAesKey,
+            ciphertext
+        );
+
+        // Return the decrypted plaintext
+        return new TextDecoder().decode(decryptedPlaintext);
+    } catch (e) {
+        console.error(e);
     }
 }
 
@@ -685,6 +822,30 @@ function getSk(room, device_id) {
 
     if (ratchetData[room][device_id].sk) {
         return JSON.parse(ratchetData[room][device_id].sk);
+    } else {
+        return null;
+    }
+}
+
+function saveSecondaryKey(key) {
+    if (key) {
+        let storage = JSON.parse(localStorage.getItem('secondary_key')) || {};
+
+        if (!storage['key']) {
+            storage['key'] = {};
+        }
+
+        storage.key = key;
+
+        localStorage.setItem('secondary_key', JSON.stringify(storage));
+    }
+}
+
+function getSecondaryKey() {
+    let storage = JSON.parse(localStorage.getItem('secondary_key')) || {};
+
+    if (storage.key) {
+        return storage.key;
     } else {
         return null;
     }
