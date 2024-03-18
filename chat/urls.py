@@ -12,7 +12,10 @@ urlpatterns = [
     path("delete/<str:receiver>/", views.delete_messages, name="delete_messages"),
     path("load/messages/<str:receiver>/", views.load_messages, name="load_messages"),
     path('process/temp/messages/', views.process_temp_messages, name='process_temp_messages'),
+
     path('get/public-keys/', views.get_user_public_keys, name='get_user_public_keys'),
+    path('get/private-keys/secondary/', views.generate_secondary_key_pair, name='get_user_private_key_secondary'),
+
     path("push/register_device/", views.register_device, name='register_device'),
     path('add/chat/', views.add_chat, name='add_chat'),
     path('clear/chat/', views.clear_chat, name='clear_chat'),

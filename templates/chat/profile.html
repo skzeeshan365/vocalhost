@@ -221,6 +221,9 @@
                 <a onclick="clear_chat('{{ username }}')" class="wishlist-border pt-2">
                     <span class="wishlist">Clear chat</span>
                 </a>
+                <a onclick="reset_keys('{{ username }}')" class="wishlist-border pt-2">
+                    <span class="wishlist">Reset encryption keys</span>
+                </a>
                 <a onclick="remove_chat('{{ username }}')" class="wishlist-border pt-2">
                     <span class="wishlist">Remove friend</span>
                 </a>
@@ -239,7 +242,6 @@
         <div id="save_message_loader" style="margin-top: 20px; display: none;"
              class="reverse-spinner"></div>
     </div>
-
 </div>
 
 <!-- Modal -->

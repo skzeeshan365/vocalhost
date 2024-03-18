@@ -191,7 +191,6 @@ def process_messages(messages, device_id):
             'timestamp': message.timestamp,
             'saved': message.saved,
             'image_url': message.image_url,
-            'public_key': message.public_key,
             'child_message': child_message,
             'sent_message': {'cipher': sent_message.cipher, 'AES': sent_message.AES} if sent_message else None
         })

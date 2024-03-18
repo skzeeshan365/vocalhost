@@ -381,7 +381,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
         await self.update_public_key_db(self.sender, public_key, device_id)
 
     async def process_sent_messages(self, sent_messages, message_id, reply_id):
-
         base_message = await Message.get_message_by_id_async(message_id)
         instances = []
 
@@ -408,7 +407,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
                         'room': self.room.room,
                         'message_id': message_id,
                         'reply_id': reply_id,
-                        'device_id': self.device_id
                     }
                 )
 
@@ -440,7 +438,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
         reply_id = event.get('reply_id', None)
         cipher = event.get('cipher')
         AES = event.get('AES')
-        device_id = event.get('device_id')
         room = event.get('room')
 
         await self.send(
@@ -452,7 +449,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     'room': room,
                     'message_id': message_id,
                     'reply_id': reply_id,
-                    'device_id': device_id
                 }
             )
         )
@@ -689,7 +685,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     reply_id=reply_message,
                     saved=saved,
                     image_url=image_url,
-                    public_key=None
                 )
 
     @database_sync_to_async
@@ -727,7 +722,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     reply_id=reply_message,
                     saved=False,
                     image_url=image_url,
-                    public_key=None
                 )
         if cipher:
             device_id = UserDevice.get_device_by_id(device_id)

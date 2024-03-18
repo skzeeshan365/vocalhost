@@ -153,6 +153,23 @@ def chat_box(request):
     return response
 
 
+def generate_secondary_key_pair(request):
+    if request.method == 'POST':
+        data = json.loads(request.body)
+        device_id = data.get('device_id')
+        device = UserDevice.get_device_by_id(device_id)
+
+        if device and UserDevice.get_user_by_device(device_id).username == request.user.username:
+            private_key, public_key = generate_key_pair()
+            device.device_public_key = public_key
+            device.save()
+            return JsonResponse({'status': 'success', 'private_key': mark_safe(private_key), 'public_key': PublicKey.format_key(public_key)})
+        else:
+            return JsonResponse({'status': 'error', 'message': 'Unauthorized'})
+    else:
+        return JsonResponse({'status': 'error', 'message': 'Invalid request'})
+
+
 def update_message_status(receiver_user, username):
     from django.utils import timezone
     timestamp = timezone.now()
@@ -220,7 +237,6 @@ def load_messages(request, receiver):
             messages = []
             public_keys = None
             private_keys = None
-        print(messages)
         messages = json.dumps(messages, cls=DjangoJSONEncoder)
         return JsonResponse({'status': 'success', 'data': messages, 'generate_keys': generate_keys, 'keys': {'public_keys': public_keys,
                                                                              'private_keys': private_keys}})
@@ -572,7 +588,7 @@ def clear_chat(request):
             try:
                 room = getRoom(user.username, username)
                 if room:
-                    room.delete_all_messages()
+                    room.clear_chat()
                     return JsonResponse({'success': True})
                 else:
                     return JsonResponse({'error': 'Failed to clear chat'})
