@@ -12,7 +12,7 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.core.serializers.json import DjangoJSONEncoder
-from django.db.models import Exists, OuterRef, Subquery
+from django.db.models import OuterRef, Subquery
 from django.http import HttpResponse, JsonResponse, Http404
 from django.shortcuts import render, redirect
 from django.template.loader import render_to_string
@@ -21,7 +21,6 @@ from fcm_django.models import FCMDevice
 from jwcrypto import jwk
 
 from ReiserX_Tunnel import settings
-from chat.consumers import getRoom
 from chat.models import Message, Room, get_connected_users, new_signal_message, FriendRequest, SenderKeyBundle, \
     ReceiverKeyBundle, PublicKey, UserDevice, ChildMessage
 from chat.utils import format_key, generate_sender_keys, generate_receiver_keys, generate_room_id, \
@@ -44,7 +43,7 @@ def chat_box(request):
     room_messages_info = []
 
     for other_user in users:
-        room = getRoom(user.username, other_user.username)
+        room = Room.getRoom(user.username, other_user.username)
         if room is None:
             continue
 
@@ -339,7 +338,7 @@ def add_chat(request):
     users_with_no_requests = []
 
     for other_user in users:
-        room = getRoom(user.username, other_user.username)
+        room = Room.getRoom(user.username, other_user.username)
         if room:
             continue
 
@@ -579,6 +578,26 @@ def accept_friend_request(request):
     return JsonResponse({'status': 'error', 'message': 'Invalid request method'}, status=405)
 
 
+@login_required
+def generate_ratchet_keys(request):
+    if request.method == 'POST':
+        data = json.loads(request.body)
+        device_id = data.get('device_id')
+        receiver_username = data.get('receiver_username')
+
+        room = Room.getRoom(request.user.username, receiver_username)
+        user = request.user
+        if room:
+            if room.get_user_type(user.username) == 'Sender':
+                private_keys = generate_sender_keys(room, user, device_id)
+            else:
+                private_keys = generate_receiver_keys(room, user, device_id)
+            return JsonResponse({'status': 'success', 'room': room.room, 'private_keys': private_keys})
+        return JsonResponse({'status': 'error', 'message': 'Room not found'})
+    else:
+        return JsonResponse({'error': 'Invalid request'})
+
+
 def clear_chat(request):
     if request.method == 'POST':
         user = request.user
@@ -586,7 +605,7 @@ def clear_chat(request):
         username = data.get('username')
         if user is not None and username is not None:
             try:
-                room = getRoom(user.username, username)
+                room = Room.getRoom(user.username, username)
                 if room:
                     room.clear_chat()
                     return JsonResponse({'success': True})
@@ -606,7 +625,7 @@ def remove_chat(request):
         username = data.get('username')
         if user is not None and username is not None:
             try:
-                room = getRoom(user.username, username)
+                room = Room.getRoom(user.username, username)
                 if room:
                     room.delete()
                     message_data = {
@@ -651,7 +670,7 @@ def chat_profile(request, username):
         else:
             user = User.objects.get(username=username)
             if user:
-                room = getRoom(request.user.username, username)
+                room = Room.getRoom(request.user.username, username)
                 count = Message.objects.filter(room=room, saved=True).count()
                 messages = Message.objects.filter(room=room, saved=True).order_by('-timestamp')[:4]
                 form = ImageUploadForm()

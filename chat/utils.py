@@ -1,13 +1,12 @@
 import base64
 import hashlib
 
-from Cryptodome.PublicKey import RSA
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec, rsa
 from jwcrypto import jwk
 
-from chat.models import SenderKeyBundle, ReceiverKeyBundle, PublicKey, Message, ChildMessage, UserDevice, SentMessage
+from chat.models import SenderKeyBundle, ReceiverKeyBundle, PublicKey, ChildMessage, UserDevice, SentMessage
 
 
 def format_keys(keys):

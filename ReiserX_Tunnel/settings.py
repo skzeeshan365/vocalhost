@@ -52,6 +52,7 @@ MIDDLEWARE = [
 ROOT_URLCONF = "ReiserX_Tunnel.urls"
 
 ASSET_VERSION = '1'
+ASSET_VERSION_RATCHET = '1'
 
 TEMPLATES = [
     {

@@ -169,25 +169,25 @@
                     <p class="mail">{{ username }}</p>
                 </div>
             </div>
-                <div class="add-friend-container">
-                    {% if status == 0 %}
-                        <button class="add-friend-icon" data-status="False"
-                                onclick="addFriend('{{ username }}')">Add
-                        </button>
-                    {% elif status == 1 %}
-                        <button class="add-friend-icon" data-status="True"
-                                onclick="addFriend('{{ username }}')">Added
-                        </button>
-                    {% elif status == 2 %}
-                        <button class="add-friend-icon"
-                                onclick="acceptRequest('{{ username }}')">Accept
-                        </button>
-                        {% else %}
-                        <button class="add-friend-icon" style="display: none;"
-                                onclick="addFriend('{{ username }}')" data-status="False">Accept
-                        </button>
-                    {% endif %}
-                </div>
+            <div class="add-friend-container">
+                {% if status == 0 %}
+                    <button class="add-friend-icon" data-status="False"
+                            onclick="addFriend('{{ username }}')">Add
+                    </button>
+                {% elif status == 1 %}
+                    <button class="add-friend-icon" data-status="True"
+                            onclick="addFriend('{{ username }}')">Added
+                    </button>
+                {% elif status == 2 %}
+                    <button class="add-friend-icon"
+                            onclick="acceptRequest('{{ username }}')">Accept
+                    </button>
+                {% else %}
+                    <button class="add-friend-icon" style="display: none;"
+                            onclick="addFriend('{{ username }}')" data-status="False">Accept
+                    </button>
+                {% endif %}
+            </div>
 
             <div class="middle-container d-flex justify-content-between align-items-center mt-3 p-2">
                 <div class="dollar-div px-3">
@@ -202,7 +202,7 @@
 
             </div>
             <div class="wishlist-border mt-4">
-                <span class="wishlist">Recent messages</span>
+                <span class="wishlist">Saved messages</span>
             </div>
             <div id="snap_ui_holder">
                 <snap-ui style="flex-grow: 1;">
@@ -221,7 +221,7 @@
                 <a onclick="clear_chat('{{ username }}')" class="wishlist-border pt-2">
                     <span class="wishlist">Clear chat</span>
                 </a>
-                <a onclick="reset_keys('{{ username }}')" class="wishlist-border pt-2">
+                <a onclick="generate_ratchet_keys('{{ username }}')" class="wishlist-border pt-2">
                     <span class="wishlist">Reset encryption keys</span>
                 </a>
                 <a onclick="remove_chat('{{ username }}')" class="wishlist-border pt-2">
@@ -236,6 +236,9 @@
                         <label style="color:#fff0ff;" class="custom-control-label" for="storeCheckbox">Auto save my
                             messages</label>
                     </div>
+                </a>
+                <a onclick="generate_secondary_key()" class="wishlist-border pt-2">
+                    <span class="wishlist">Reset master key</span>
                 </a>
             {% endif %}
         </div>
@@ -311,6 +314,8 @@
 <script src="https://js.pusher.com/8.2.0/pusher.min.js"></script>
 
 <script src="{% static 'chat/js/main_secondary.js' %}"></script>
+<script src="{% static 'chat/js/utils.js' %}"></script>
+<script src="{% static 'chat/js/ratchet-v'|add:ASSET_VERSION_RATCHET|add:'.js' %}"></script>
 
 <script>
     let saveMessageLoader = document.getElementById("save_message_loader");
@@ -525,7 +530,7 @@
                     buttonElement.style.display = 'block';
                     buttonElement.innerText = 'Add';
                     buttonElement.setAttribute('data-status', 'False');
-                    buttonElement.onclick = function() {
+                    buttonElement.onclick = function () {
                         addFriend(username);
                     };
 
@@ -594,6 +599,62 @@
             }
         });
     }
+
+    function generate_ratchet_keys(username) {
+        saveMessageLoader.style.display = 'block';
+        let device_id = getCookie('device_id');
+        $.ajax({
+            type: 'POST',
+            url: '{% url "get_user_private_key_ratchet" %}',
+            dataType: 'json',
+            data: JSON.stringify({
+                receiver_username: username,
+                device_id: device_id
+            }),
+            success: function (response) {
+                console.log(response);
+                if (response.status === 'success') {
+                    if (response.private_keys.type === 0) {
+                        saveKeys_sender(response.room, response.private_keys.ik_private_key, response.private_keys.ek_private_key, response.private_keys.dhratchet_private_key);
+                    } else if (response.private_keys.type === 1) {
+                        saveKeys_receiver(response.room, response.private_keys.ik_private_key, response.private_keys.spk_private_key, response.private_keys.opk_private_key, response.private_keys.dhratchet_private_key)
+                    }
+                } else {
+                    console.error('Error loading messages:', response.error);
+                }
+                saveMessageLoader.style.display = 'none';
+            },
+            error: function (error) {
+                console.error('Error loading messages:', error);
+                saveMessageLoader.style.display = 'none';
+            }
+        });
+    }
+
+    function generate_secondary_key() {
+        saveMessageLoader.style.display = 'block';
+        let device_id = getCookie('device_id');
+        $.ajax({
+            type: 'POST',
+            url: '{% url "get_user_private_key_secondary" %}',
+            dataType: 'json',
+            data: JSON.stringify({
+                device_id: device_id
+            }),
+            success: function (response) {
+                if (response.status === 'success') {
+                    saveSecondaryKey(response.private_key);
+                } else {
+                    console.error('Error loading messages:', response.error);
+                }
+                saveMessageLoader.style.display = 'none';
+            },
+            error: function (error) {
+                console.error('Error loading messages:', error);
+                saveMessageLoader.style.display = 'none';
+            }
+        });
+    }
 </script>
 
 <script>
@@ -618,7 +679,7 @@
             buttonElement.innerText = 'Add';
             buttonElement.setAttribute('data-status', 'False');
             buttonElement.style.display = 'block';
-            buttonElement.onclick = function() {
+            buttonElement.onclick = function () {
                 addFriend(data.username);
             };
 

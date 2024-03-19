@@ -39,15 +39,6 @@ def get_room_db(sender_username, receiver_username):
         return None
 
 
-def getRoom(sender_username, receiver_username):
-    combined_usernames_set = frozenset([sender_username, receiver_username])
-    sorted_usernames = sorted(combined_usernames_set)
-
-    room = hashlib.sha256(str(sorted_usernames).encode()).hexdigest()
-    room = Room.objects.filter(room=room).first()
-    return room
-
-
 class ChatConsumer(AsyncWebsocketConsumer):
 
     def __init__(self, *args, **kwargs):

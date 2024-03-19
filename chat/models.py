@@ -262,6 +262,17 @@ class Room(models.Model):
         else:
             return []
 
+    @staticmethod
+    def getRoom(sender_username, receiver_username):
+        try:
+            combined_usernames_set = frozenset([sender_username, receiver_username])
+            sorted_usernames = sorted(combined_usernames_set)
+
+            room = hashlib.sha256(str(sorted_usernames).encode()).hexdigest()
+            return Room.objects.get(room=room)
+        except Room.DoesNotExist:
+            return None
+
 
 new_signal_message = Signal()
 connected_users = {}

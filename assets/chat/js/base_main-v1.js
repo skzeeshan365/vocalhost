@@ -565,7 +565,7 @@ async function load_chat_message(messages) {
                             text_message = await encryption.recv(message.child_message.cipher);
                         } else {
                             await encryption.recv(null);
-                            text_message = null;
+                            text_message = message.message || null;
                         }
                     } else {
                         text_message = message.message || null;
