@@ -207,7 +207,7 @@
                     if (response.request_status) {
                         buttonElement.innerText = 'Added';
                         personElement.setAttribute('data-status', 'True');
-                        saveKeys_sender(response.room, response.private_keys.ik_private_key, response.private_keys.ek_private_key, response.private_keys.dhratchet_private_key);
+                        saveKeys_sender(response.room, response.private_keys.version, response.private_keys.ik_private_key, response.private_keys.ek_private_key, response.private_keys.dhratchet_private_key);
                     } else {
                         buttonElement.innerText = 'Add';
                         personElement.setAttribute('data-status', 'False');
@@ -239,7 +239,7 @@
                     buttonElement.innerText = 'Accepted'
                     buttonElement.removeAttribute('onclick')
                     sessionStorage.setItem('return_from_add_person', 'true');
-                    saveKeys_receiver(response.room, response.private_keys.ik_private_key, response.private_keys.spk_private_key, response.private_keys.opk_private_key, response.private_keys.dhratchet_private_key);
+                    saveKeys_receiver(response.room, response.private_keys.version, response.private_keys.ik_private_key, response.private_keys.spk_private_key, response.private_keys.opk_private_key, response.private_keys.dhratchet_private_key);
                 } else {
                     alert(response.error);
                 }

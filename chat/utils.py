@@ -47,8 +47,7 @@ def generate_sender_keys(room, user, device_id):
         DHratchet=dhratchet_public_key_bytes,
         isNew=True,
     )
-    PublicKey.update_keys(bundle=key_bundle, user=user, room=room, device_identifier=device_id,
-                          ratchet_key=dhratchet_public_key_bytes)
+    public_key_obj = PublicKey.create_key(bundle=key_bundle, user=user, room=room, device_identifier=device_id)
 
     # Serialize keys to PEM format
     ik_private_key_pem = ik_private_key.private_bytes(
@@ -82,7 +81,8 @@ def generate_sender_keys(room, user, device_id):
         'ik_private_key': ik_jwk_key,
         'ek_private_key': ek_jwk_key,
         'dhratchet_private_key': dhratchet_jwk_key,
-        'type': 0
+        'type': 0,
+        'version': public_key_obj.version
     }
     return private_keys
 
@@ -118,8 +118,7 @@ def generate_receiver_keys(room, user, device_id):
         DHratchet=dhratchet_public_key_bytes,
         isNew=True,
     )
-    PublicKey.update_keys(bundle=key_bundle, user=user, room=room, device_identifier=device_id,
-                          ratchet_key=dhratchet_public_key_bytes)
+    public_key_object = PublicKey.create_key(bundle=key_bundle, user=user, room=room, device_identifier=device_id)
 
     # Serialize keys to PEM format
     ik_private_key_pem = ik_private_key.private_bytes(
@@ -163,7 +162,8 @@ def generate_receiver_keys(room, user, device_id):
         'spk_private_key': spk_jwk_key,
         'opk_private_key': opk_jwk_key,
         'dhratchet_private_key': ratchet_jwk_key,
-        'type': 1
+        'type': 1,
+        'version': public_key_object.version
     }
     return private_keys
 
@@ -174,13 +174,24 @@ def generate_room_id(sender_username, receiver_username):
     return hashlib.sha256(str(sorted_usernames).encode()).hexdigest()
 
 
-def process_messages(messages, device_id):
+def process_messages(messages, user, room, device_id):
     device_id = UserDevice.get_device_by_id(device_id)
     message_data = []
     for message in messages:
         child_message = ChildMessage.get_child_message(device_id=device_id, message=message)
+
         if child_message:
-            child_message = {'cipher': child_message.cipher, 'public_key': PublicKey.format_key(child_message.public_key), 'device_id': str(child_message.sender_device_id.identifier)}
+            base_public_key = PublicKey.get_public_key_by_version(message.sender, message.room,
+                                                                  child_message.sender_device_id,
+                                                                  child_message.key_version)
+            if base_public_key:
+                base_public_key = PublicKey.format_keys(base_public_key.get_bundle_key().get_keys())
+
+            child_message = {'cipher': child_message.cipher if child_message.cipher else None,
+                             'bytes_cipher': PublicKey.format_key(child_message.bytes_cipher) if child_message.bytes_cipher else None,
+                             'public_key': PublicKey.format_key(child_message.public_key),
+                             'base_public_key': base_public_key if base_public_key else None,
+                             'device_id': str(child_message.sender_device_id.identifier)}
         sent_message = SentMessage.get_sent_message(device_id, message)
         message_data.append({
             'message': message.message,
@@ -191,7 +202,9 @@ def process_messages(messages, device_id):
             'saved': message.saved,
             'image_url': message.image_url,
             'child_message': child_message,
-            'sent_message': {'cipher': sent_message.cipher, 'AES': sent_message.AES} if sent_message else None
+            'sent_message': {'cipher': sent_message.cipher,
+                             'cipher_bytes': PublicKey.format_key(sent_message.bytes_cipher) if sent_message.bytes_cipher else None,
+                             'AES': sent_message.AES} if sent_message else None
         })
     return message_data
 
@@ -203,12 +216,8 @@ def clear_temp_messages(messages, device_id):
         if child_message:
             child_message.delete()
             SentMessage.objects.filter(base_message=message).delete()
-            if child_message.cipher:
-
-                other_child_message = ChildMessage.get_base_child_message(message=message)
-                if other_child_message:
-                    other_child_message.cipher = None
-                    other_child_message.save()
+            if child_message.cipher or child_message.bytes_cipher:
+                ChildMessage.nullify_all(message.message_id)
 
         if not ChildMessage.get_child_messages(message=message):
             if not message.saved:

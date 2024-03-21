@@ -7,14 +7,16 @@ import threading
 import uuid
 
 from channels.db import database_sync_to_async
+from cloudinary.api import delete_resources
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from django.contrib.auth.models import User
 from django.db import models
+from django.db.models import Max, Exists, OuterRef, Subquery
 from django.dispatch import Signal
 
-from main.Utils import send_message_to_device, send_pusher_update
+from main.Utils import send_message_to_device, send_pusher_update, get_image_public_id, cloudinary_image_delete
 
 
 class UserDevice(models.Model):
@@ -131,7 +133,8 @@ class ReceiverKeyBundle:
         return pickle.loads(data)
 
 
-def create_room(sender_username, receiver_username, sender_device_id, sender_key_bundle, receiver_key_bundle, receiver_device_id):
+def create_room(sender_username, receiver_username, sender_device_id, sender_key_bundle, receiver_key_bundle,
+                receiver_device_id):
     combined_usernames_set = frozenset([sender_username, receiver_username])
     sorted_usernames = sorted(combined_usernames_set)
 
@@ -149,8 +152,9 @@ def create_room(sender_username, receiver_username, sender_device_id, sender_key
 
         PublicKey.create_key(bundle=sender_key_bundle, user=sender, room=room, device_identifier=sender_device_id)
         PublicKey.create_key(bundle=receiver_key_bundle, user=receiver, room=room, device_identifier=receiver_device_id)
+        return room.room
     except User.DoesNotExist:
-        pass
+        return None
 
 
 class Room(models.Model):
@@ -161,7 +165,7 @@ class Room(models.Model):
     receiver_username = models.CharField(max_length=128, default=None)
 
     def __str__(self):
-        return f'{self.room}'
+        return f'{self.room[:30]}'
 
     def get_user_type(self, username):
         if username == self.sender_username:
@@ -190,7 +194,7 @@ class Room(models.Model):
         for device_identifier in device_identifiers:
             try:
                 device_id = UserDevice.objects.get(identifier=device_identifier)
-                public_key = PublicKey.objects.get(user=user, room=self, device_identifier=device_id)
+                public_key = PublicKey.get_latest_public_key(user=user, room=self, device_id=device_id)
                 public_keys[str(device_identifier)] = PublicKey.format_key(public_key.get_ratchet_key())
             except PublicKey.DoesNotExist:
                 public_keys[str(device_identifier)] = None
@@ -209,16 +213,17 @@ class Room(models.Model):
             return None
 
     def get_public_key(self, user, device_id, user_device_id):
-        try:
-            device_id = UserDevice.get_device_by_id(device_id)
-            public_key = PublicKey.objects.get(user=user, room=self, device_identifier=device_id)
+        device_id = UserDevice.get_device_by_id(device_id)
+        public_key = PublicKey.get_latest_public_key(user=user, room=self, device_id=device_id)
+        if public_key:
             key_bundle = public_key.get_bundle_key()
             key = {
                 'public_keys': PublicKey.format_keys(key_bundle.get_keys()),
-                'ratchet_public_key': self.get_ratchet_key(user_device_id, public_key)
+                'ratchet_public_key': self.get_ratchet_key(user_device_id, public_key),
+                'version': public_key.version
             }
             return key
-        except PublicKey.DoesNotExist:
+        else:
             return None
 
     def get_public_keys(self, user, user_device_id):
@@ -228,29 +233,33 @@ class Room(models.Model):
         if active_devices:
             for device_identifier in device_identifiers:
                 device_id = UserDevice.objects.get(identifier=device_identifier)
-                if str(device_identifier) in active_devices or ChildMessage.get_child_messages_exists(device_id.id, UserDevice.get_device_by_id(user_device_id)):
-                    try:
-                        public_key = PublicKey.objects.get(user=user, room=self, device_identifier=device_id)
+                if str(device_identifier) in active_devices or ChildMessage.get_child_messages_exists(device_id.id,
+                                                                                                      UserDevice.get_device_by_id(
+                                                                                                              user_device_id)):
+                    public_key = PublicKey.get_latest_public_key(user=user, room=self, device_id=device_id)
+                    if public_key:
                         key_bundle = public_key.get_bundle_key()
                         public_keys[str(device_identifier)] = {
                             'public_keys': PublicKey.format_keys(key_bundle.get_keys()),
-                            'ratchet_public_key': self.get_ratchet_key(user_device_id, public_key)
+                            'ratchet_public_key': self.get_ratchet_key(user_device_id, public_key),
+                            'version': public_key.version
                         }
-                    except PublicKey.DoesNotExist:
-                        pass
+                    else:
+                        continue
                 else:
                     continue
         else:
             for device_identifier in device_identifiers:
-                try:
-                    device_id = UserDevice.objects.get(identifier=device_identifier)
-                    public_key = PublicKey.objects.get(user=user, room=self, device_identifier=device_id)
+                device_id = UserDevice.objects.get(identifier=device_identifier)
+                public_key = PublicKey.get_latest_public_key(user=user, room=self, device_id=device_id)
+                if public_key:
                     key_bundle = public_key.get_bundle_key()
                     public_keys[str(device_identifier)] = {
                         'public_keys': PublicKey.format_keys(key_bundle.get_keys()),
-                        'ratchet_public_key': self.get_ratchet_key(user_device_id, public_key)
+                        'ratchet_public_key': self.get_ratchet_key(user_device_id, public_key),
+                        'version': public_key.version
                     }
-                except PublicKey.DoesNotExist:
+                else:
                     pass
         return public_keys
 
@@ -272,6 +281,127 @@ class Room(models.Model):
             return Room.objects.get(room=room)
         except Room.DoesNotExist:
             return None
+
+
+class PublicKey(models.Model):
+    SENDER = 0
+    RECEIVER = 1
+    KEY_TYPE_CHOICES = [
+        (SENDER, 'Sender'),
+        (RECEIVER, 'Receiver'),
+    ]
+
+    key_type = models.IntegerField(choices=KEY_TYPE_CHOICES)
+    key_bundle = models.BinaryField()
+    version = models.PositiveIntegerField(default=1)
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    device_identifier = models.ForeignKey(UserDevice, on_delete=models.CASCADE, related_name='public_key')
+    room = models.ForeignKey(Room, on_delete=models.CASCADE, related_name='public_key')
+
+    def __str__(self):
+        return f'{self.user} - PublicKey - v{self.version}'
+
+    @classmethod
+    def create_key(cls, bundle, user, device_identifier, room):
+        device_identifier = UserDevice.get_device_by_id(device_identifier)
+        max_version = \
+        cls.objects.filter(user=user, device_identifier=device_identifier, room=room).aggregate(Max('version'))[
+            'version__max']
+        version = max_version + 1 if max_version is not None else 1
+        if bundle.get_type() == 'Sender':
+            choice = cls.SENDER
+        else:
+            choice = cls.RECEIVER
+        key_bundle = pickle.dumps(bundle)
+        public_key = cls.objects.create(
+            key_type=choice,
+            key_bundle=key_bundle,
+            user=user,
+            device_identifier=device_identifier,
+            room=room,
+            version=version
+        )
+        return public_key
+
+    @classmethod
+    def update_keys(cls, bundle, ratchet_key, user, device_identifier, room):
+        device_id = UserDevice.get_device_by_id(device_id=device_identifier)
+        try:
+            public_key = PublicKey.get_latest_public_key(user, room, device_id)
+            public_key.key_bundle = pickle.dumps(bundle)
+            RatchetPublicKey.objects.filter(public_keys=public_key).delete()
+            public_key.save()
+        except PublicKey.DoesNotExist:
+            cls.create_key(bundle, user, device_id, room)
+
+    @staticmethod
+    def get_public_key_by_version(user, room, device_id, version):
+        try:
+            public_key = PublicKey.objects.get(user=user, room=room, device_identifier=device_id, version=version)
+            return public_key
+        except PublicKey.DoesNotExist:
+            return None
+
+    @staticmethod
+    def get_latest_public_key(user, room, device_id):
+        try:
+            public_key = PublicKey.objects.filter(user=user, room=room, device_identifier=device_id).latest('version')
+            return public_key
+        except PublicKey.DoesNotExist:
+            return None
+
+    def get_bundle(self):
+        return pickle.loads(self.key_bundle)
+
+    def get_bundle_key(self):
+        key_bundle = pickle.loads(self.key_bundle)
+
+        if key_bundle.get_new():
+            key_bundle.set_new(False)
+            self.key_bundle = pickle.dumps(key_bundle)
+            self.save()
+            key_bundle.set_new(True)
+
+        return key_bundle
+
+    @staticmethod
+    def format_keys(keys):
+        key = []
+        for i in keys:
+            if isinstance(i, bytes):
+                key.append(base64.b64encode(i).decode('utf-8'))
+            else:
+                key.append(i)
+        return key
+
+    @staticmethod
+    def format_key(key):
+        return base64.b64encode(key).decode('utf-8')
+
+    @staticmethod
+    def delete_unused_public_keys(user, room, device_id):
+        device_id = UserDevice.get_device_by_id(device_id)
+        latest_version = PublicKey.objects.filter(user=user, room=room, device_identifier=device_id) \
+            .aggregate(latest_version=Max('version'))['latest_version']
+
+        if latest_version is not None:
+            public_keys_with_related_child_messages = PublicKey.objects.filter(
+                Exists(ChildMessage.objects.filter(
+                    key_version=OuterRef('version'),
+                    base_message__room=room
+                ))
+            )
+
+            public_keys_to_delete = PublicKey.objects.filter(
+                user=user, room=room, device_identifier=device_id
+            ).exclude(
+                version=latest_version
+            ).exclude(
+                version__in=Subquery(public_keys_with_related_child_messages.values('version'))
+            )
+
+            public_keys_to_delete.delete()
 
 
 new_signal_message = Signal()
@@ -309,6 +439,20 @@ class Message(models.Model):
     def __str__(self):
         return self.message_id
 
+    def delete(self, *args, **kwargs):
+        if self.image_url:
+            thread = threading.Thread(target=self.delete_image,
+                                      args=(self.image_url,))
+            thread.start()
+        super().delete(*args, **kwargs)
+
+    @staticmethod
+    def delete_image(image_url):
+        try:
+            cloudinary_image_delete(image_url)
+        except Exception:
+            pass
+
     def get_sender_username(self):
         return self.sender.username
 
@@ -336,22 +480,46 @@ class Message(models.Model):
         except Message.DoesNotExist:
             return None
 
+    @staticmethod
+    @database_sync_to_async
+    def create_message_from_id(message_id, sender, receiver, room, message=None, reply_id=None, saved=False,
+                               image_url=None):
+        base_message = Message.objects.create(
+            message=message,
+            room=room,
+            sender=sender,
+            receiver=receiver,
+            message_id=message_id,
+            reply_id_id=reply_id,
+            saved=saved,
+            image_url=image_url,
+        )
+        return base_message
+
 
 class ChildMessage(models.Model):
     cipher = models.TextField(null=True, blank=True)
+    bytes_cipher = models.BinaryField(default=None, null=True, blank=True)
+
     public_key = models.BinaryField(default=None, null=True, blank=True)
+    key_version = models.PositiveIntegerField(default=1)
+
     sender_device_id = models.ForeignKey(UserDevice, on_delete=models.CASCADE, related_name='message_sender_device_id',
-                                           default=None, null=True, blank=True)
-    receiver_device_id = models.ForeignKey(UserDevice, on_delete=models.CASCADE, related_name='message_receiver_device_id',
                                          default=None, null=True, blank=True)
+    receiver_device_id = models.ForeignKey(UserDevice, on_delete=models.CASCADE,
+                                           related_name='message_receiver_device_id',
+                                           default=None, null=True, blank=True)
     base_message = models.ForeignKey(Message, on_delete=models.CASCADE, related_name='base_message')
 
     def __str__(self):
         return f'ChildMessage - {self.base_message.message_id}'
 
     @staticmethod
-    def create_child_message(cipher, public_key, sender_device_id, receiver_device_id, message):
-        child_message = ChildMessage.objects.create(cipher=cipher, public_key=public_key, sender_device_id=sender_device_id, receiver_device_id=receiver_device_id, base_message=message)
+    def create_child_message(public_key, key_version, sender_device_id, receiver_device_id, message, cipher=None,
+                             bytes_cipher=None):
+        child_message = ChildMessage.objects.create(cipher=cipher, bytes_cipher=bytes_cipher, public_key=public_key,
+                                                    key_version=key_version, sender_device_id=sender_device_id,
+                                                    receiver_device_id=receiver_device_id, base_message=message)
         return child_message
 
     @staticmethod
@@ -380,7 +548,8 @@ class ChildMessage(models.Model):
 
     @staticmethod
     def get_child_messages_exists(sender_device_id, receiver_device_id):
-        child_messages = ChildMessage.objects.filter(sender_device_id=sender_device_id, receiver_device_id=receiver_device_id).exists()
+        child_messages = ChildMessage.objects.filter(sender_device_id=sender_device_id,
+                                                     receiver_device_id=receiver_device_id).exists()
         if child_messages:
             return True
         return False
@@ -412,17 +581,28 @@ class ChildMessage(models.Model):
         except binascii.Error as e:
             print(f"Error decoding Base64: {e}")
 
+    def nullify_all(self):
+        self.cipher = None
+        self.bytes_cipher = None
+
+    @staticmethod
+    def nullify_all(message_id):
+        ChildMessage.objects.filter(base_message_id=message_id).update(cipher=None, bytes_cipher=None)
+
 
 class SentMessage(models.Model):
     cipher = models.TextField(null=True, blank=True)
+    bytes_cipher = models.BinaryField(default=None, null=True, blank=True)
+
     AES = models.TextField(null=True, blank=True)
     device_id = models.ForeignKey(UserDevice, on_delete=models.CASCADE,
-                                           related_name='sent_receiver_device_id',
-                                           default=None, null=True, blank=True)
+                                  related_name='sent_receiver_device_id',
+                                  default=None, null=True, blank=True)
     base_message = models.ForeignKey(Message, on_delete=models.CASCADE, related_name='sent_base_message')
 
     def __str__(self):
         return f'SentMessage - {self.base_message.message_id}'
+
     @staticmethod
     def get_sent_message(device_id, base_message):
         try:
@@ -430,12 +610,14 @@ class SentMessage(models.Model):
         except SentMessage.DoesNotExist:
             return None
 
-def update_request(type, sender, receiver, title, message, accept=False):
+
+def update_request(type, room, sender, receiver, title, message, accept=False):
     if accept:
         if get_connected_users().get(receiver.username):
             message_data = {
                 'type': type,
                 'username': sender.username,
+                'room': room,
                 'fullname': sender.get_full_name(),
                 'image_url': sender.userprofile.image.url if sender.userprofile.image else None,
             }
@@ -455,6 +637,7 @@ def update_request(type, sender, receiver, title, message, accept=False):
         send_pusher_update(message_data=message_data, receiver_username=receiver.username)
         send_message_to_device(receiver, title=title, message=message)
 
+
 class FriendRequest(models.Model):
     DEFAULT = 0
     PENDING = 1
@@ -469,8 +652,10 @@ class FriendRequest(models.Model):
     receiver = models.ForeignKey(User, on_delete=models.CASCADE, related_name='receiver')
     status = models.IntegerField(choices=STATUS_CHOICES, default=DEFAULT)
 
-    sender_device_id = models.ForeignKey(UserDevice, on_delete=models.CASCADE, related_name='sender_device_id', default=None, null=True, blank=True)
-    receiver_device_id = models.ForeignKey(UserDevice, on_delete=models.CASCADE, related_name='receiver_device_id', default=None, null=True, blank=True)
+    sender_device_id = models.ForeignKey(UserDevice, on_delete=models.CASCADE, related_name='sender_device_id',
+                                         default=None, null=True, blank=True)
+    receiver_device_id = models.ForeignKey(UserDevice, on_delete=models.CASCADE, related_name='receiver_device_id',
+                                           default=None, null=True, blank=True)
 
     key_bundle = models.BinaryField(default=None, null=True, blank=True)
     receiver_key_bundle = models.BinaryField(default=None, null=True, blank=True)
@@ -481,12 +666,17 @@ class FriendRequest(models.Model):
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
         if self.status == self.ACCEPTED:
-            update_request('friend_request_accepted', sender=self.receiver, receiver=self.sender,
+            room = create_room(sender_username=self.sender.username,
+                               receiver_username=self.receiver.username,
+                               sender_device_id=self.sender_device_id,
+                               sender_key_bundle=self.get_key_bundle(),
+                               receiver_key_bundle=self.get_receiver_key_bundle(),
+                               receiver_device_id=self.receiver_device_id
+                               )
+
+            update_request('friend_request_accepted', room=room, sender=self.receiver, receiver=self.sender,
                            title='Friend request accepted',
                            message=f'{self.receiver.username} has accepted your friend request', accept=True)
-
-            create_room(sender_username=self.sender.username, receiver_username=self.receiver.username, sender_device_id=self.sender_device_id,
-                        sender_key_bundle=self.get_key_bundle(), receiver_key_bundle=self.get_receiver_key_bundle(), receiver_device_id=self.receiver_device_id)
 
             self.delete()
         elif self.status == self.PENDING:
@@ -511,87 +701,6 @@ class FriendRequest(models.Model):
     def get_receiver_key_bundle(self):
         return pickle.loads(self.receiver_key_bundle) if self.receiver_key_bundle else None
 
-class PublicKey(models.Model):
-    SENDER = 0
-    RECEIVER = 1
-    KEY_TYPE_CHOICES = [
-        (SENDER, 'Sender'),
-        (RECEIVER, 'Receiver'),
-    ]
-
-    key_type = models.IntegerField(choices=KEY_TYPE_CHOICES)
-    key_bundle = models.BinaryField()
-
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
-    device_identifier = models.OneToOneField(UserDevice, on_delete=models.CASCADE, related_name='public_key')
-    room = models.ForeignKey(Room, on_delete=models.CASCADE, related_name='public_key')
-
-    def __str__(self):
-        return f'{self.user} - PublicKey'
-
-    @classmethod
-    def create_key(cls, bundle, user, device_identifier, room):
-        if bundle.get_type() == 'Sender':
-            choice = cls.SENDER
-        else:
-            choice = cls.RECEIVER
-        key_bundle = pickle.dumps(bundle)
-        public_key = cls.objects.create(
-            key_type=choice,
-            key_bundle=key_bundle,
-            user=user,
-            device_identifier=device_identifier,
-            room=room,
-        )
-        return public_key
-
-    @classmethod
-    def update_keys(cls, bundle, ratchet_key, user, device_identifier, room):
-        device_id = UserDevice.get_device_by_id(device_id=device_identifier)
-        try:
-            public_key = PublicKey.objects.get(user=user, room=room, device_identifier=device_id)
-            public_key.key_bundle = pickle.dumps(bundle)
-            RatchetPublicKey.objects.filter(public_keys=public_key).delete()
-            public_key.save()
-        except PublicKey.DoesNotExist:
-            cls.create_key(bundle, user, device_id, room)
-
-    @staticmethod
-    def get_public_key(user, room, device_id):
-        try:
-            device_id = UserDevice.get_device_by_id(device_id)
-            public_key = PublicKey.objects.get(user=user, room=room, device_identifier=device_id)
-            return public_key
-        except PublicKey.DoesNotExist:
-            return None
-    def get_bundle(self):
-        return pickle.loads(self.key_bundle)
-
-    def get_bundle_key(self):
-        key_bundle = pickle.loads(self.key_bundle)
-
-        if key_bundle.get_new():
-            key_bundle.set_new(False)
-            self.key_bundle = pickle.dumps(key_bundle)
-            self.save()
-            key_bundle.set_new(True)
-
-        return key_bundle
-
-    @staticmethod
-    def format_keys(keys):
-        key = []
-        for i in keys:
-            if isinstance(i, bytes):
-                key.append(base64.b64encode(i).decode('utf-8'))
-            else:
-                key.append(i)
-        return key
-
-    @staticmethod
-    def format_key(key):
-        return base64.b64encode(key).decode('utf-8')
-
 
 class RatchetPublicKey(models.Model):
     dhRatchet_key = models.BinaryField(default=None, null=True, blank=True)
@@ -600,6 +709,7 @@ class RatchetPublicKey(models.Model):
 
     def __str__(self):
         return f'{self.device_id}'
+
     @staticmethod
     def get_ratchet_key(device_id, public_keys):
         try:
@@ -643,7 +753,6 @@ class RatchetPublicKey(models.Model):
             self.dhRatchet_key = public_key_bytes
         except binascii.Error as e:
             print(f"Error decoding Base64: {e}")
-
 
     @staticmethod
     def load_ratchet_key(ratchet_key):

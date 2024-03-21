@@ -35,13 +35,57 @@ class FriendRequestAdmin(admin.ModelAdmin):
 
 
 class PublicKeyAdmin(admin.ModelAdmin):
-    list_display = ('user', 'key_type', 'device_identifier', 'room')
-    list_display_links = ('user', 'device_identifier', 'room')
+    list_display = ('version', 'user', 'key_type', 'device_identifier', 'room')
+    list_display_links = ('version',)
+    list_filter = ('version', 'user', 'key_type', 'device_identifier', 'room')
+
+    fieldsets = (
+        ('Main Information', {
+            'fields': ('version', 'user', 'key_type'),
+        }),
+        ('Device Information', {
+            'fields': ('device_identifier',),
+        }),
+        ('Room Information', {
+            'fields': ('room',),
+        }),
+    )
 
 
 class RatchetPublicKeyAdmin(admin.ModelAdmin):
     list_display = ('device_id', 'public_keys')
     list_display_links = ('device_id', 'public_keys')
+
+
+class ChildMessageAdmin(admin.ModelAdmin):
+    list_display = ('cipher_preview', 'bytes_cipher_preview', 'key_version', 'sender_device_id', 'receiver_device_id', 'base_message')
+    list_display_links = ('cipher_preview',)
+
+    def cipher_preview(self, obj):
+        if obj.cipher:
+            return obj.cipher[:20]  # Display first 30 characters of device_public_key
+        return '-'
+
+    def bytes_cipher_preview(self, obj):
+        if obj.bytes_cipher:
+            return obj.bytes_cipher[:20]  # Display first 30 characters of device_public_key
+        return '-'
+
+
+class SentMessageAdmin(admin.ModelAdmin):
+    list_display = ('device_id', 'base_message', 'public_key_preview')
+    list_display_links = ('device_id', 'base_message')
+
+    def public_key_preview(self, obj):
+        if obj.AES:
+            return obj.AES[:30]  # Display first 30 characters of device_public_key
+        return '-'
+
+
+class MessageAdmin(admin.ModelAdmin):
+    list_display = (
+    'message_id', 'message', 'timestamp', 'room', 'sender', 'receiver', 'reply_id', 'saved', 'image_url')
+    list_display_links = ('message_id', 'room', 'sender', 'receiver', 'reply_id')
 
 
 admin.site.unregister(User)
@@ -50,9 +94,9 @@ admin.site.register(User, CustomUserAdmin)
 admin.site.register(Client)
 admin.site.register(Room, RoomAdmin)
 
-admin.site.register(Message)
-admin.site.register(ChildMessage)
-admin.site.register(SentMessage)
+admin.site.register(Message, MessageAdmin)
+admin.site.register(ChildMessage, ChildMessageAdmin)
+admin.site.register(SentMessage, SentMessageAdmin)
 
 admin.site.register(FriendRequest, FriendRequestAdmin)
 admin.site.register(UserDevice, UserDeviceAdmin)

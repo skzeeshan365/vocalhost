@@ -204,7 +204,7 @@ def load_messages(request, receiver):
         if room:
             receiver = User.objects.get(username=receiver_user)
             public_keys = room.get_public_keys(receiver, device_id)
-            public_key = PublicKey.get_public_key(user=user, room=room, device_id=device_id)
+            public_key = PublicKey.get_latest_public_key(user=user, room=room, device_id=UserDevice.get_device_by_id(device_id))
             if generate_keys or not public_key:
                 generate_keys = True
                 if public_key:
@@ -221,7 +221,7 @@ def load_messages(request, receiver):
                 private_keys = None
 
             messages_db = Message.objects.filter(room=room)
-            messages = process_messages(messages_db, device_id)
+            messages = process_messages(messages_db, user, room, device_id)
 
             messages_db = Message.objects.filter(room=room, receiver=user, saved=False)
 
@@ -232,6 +232,9 @@ def load_messages(request, receiver):
             if messages_db.exists():
                 thread = threading.Thread(target=update_message_status, args=(receiver_user, user.username))
                 thread.start()
+
+
+            PublicKey.delete_unused_public_keys(user, room, device_id)
         else:
             messages = []
             public_keys = None
@@ -277,6 +280,28 @@ def get_user_public_keys(request):
         if room:
             receiver = User.objects.get(username=receiver_username)
             public_keys = room.get_public_keys(receiver, device_id)
+
+            return JsonResponse({'status': 'success', 'public_keys': public_keys})
+        else:
+            return JsonResponse({'status': 'error'})
+    else:
+        return JsonResponse({'status': 'error', 'message': 'Invalid request'})
+
+
+@login_required(login_url='/account/login/')
+def get_device_public_keys(request):
+    if request.method == 'POST':
+        user = request.user
+        data = json.loads(request.body)
+        device_id = data.get('self_device_id')
+        receiver_device_id = data.get('receiver_device_id')
+        receiver_username = data.get('receiver_username')
+
+        room = generate_room_id(user.username, receiver_username)
+        room = Room.objects.filter(room=room).first()
+        if room:
+            receiver = User.objects.get(username=receiver_username)
+            public_keys = room.get_public_key(receiver, receiver_device_id, device_id)
 
             return JsonResponse({'status': 'success', 'public_keys': public_keys})
         else:
@@ -461,7 +486,8 @@ def send_friend_request(request):
             private_keys = {
                 'ik_private_key': ik_jwk_key,
                 'ek_private_key': ek_jwk_key,
-                'dhratchet_private_key': dhratchet_jwk_key
+                'dhratchet_private_key': dhratchet_jwk_key,
+                'version': 1
             }
 
             return JsonResponse({'status': 'success', 'request_status': True, 'private_keys': private_keys, 'room': generate_room_id(request.user.username, username)})
@@ -570,7 +596,8 @@ def accept_friend_request(request):
             'ik_private_key': ik_jwk_key,
             'spk_private_key': spk_jwk_key,
             'opk_private_key': opk_jwk_key,
-            'dhratchet_private_key': ratchet_jwk_key
+            'dhratchet_private_key': ratchet_jwk_key,
+            'version': 1
         }
 
         return JsonResponse({'status': 'success', 'message': 'Friend request accepted', 'private_keys': private_keys, 'room': generate_room_id(request.user.username, username)})
@@ -780,4 +807,11 @@ def upload_image(request):
             cloudinary_url = result['secure_url']
 
             return JsonResponse({'success': True, 'image_url': cloudinary_url})
+    return JsonResponse({'success': False, 'error': 'Invalid request'})
+
+
+def generate_message_id(request):
+    if request.method == 'POST':
+        message_id = int(time.time() * 1000)
+        return JsonResponse({'status': 'success', 'message_id': message_id})
     return JsonResponse({'success': False, 'error': 'Invalid request'})

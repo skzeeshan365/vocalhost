@@ -615,9 +615,9 @@
                 console.log(response);
                 if (response.status === 'success') {
                     if (response.private_keys.type === 0) {
-                        saveKeys_sender(response.room, response.private_keys.ik_private_key, response.private_keys.ek_private_key, response.private_keys.dhratchet_private_key);
+                        saveKeys_sender(response.room, response.private_keys.version, response.private_keys.ik_private_key, response.private_keys.ek_private_key, response.private_keys.dhratchet_private_key);
                     } else if (response.private_keys.type === 1) {
-                        saveKeys_receiver(response.room, response.private_keys.ik_private_key, response.private_keys.spk_private_key, response.private_keys.opk_private_key, response.private_keys.dhratchet_private_key)
+                        saveKeys_receiver(response.room, response.private_keys.version, response.private_keys.ik_private_key, response.private_keys.spk_private_key, response.private_keys.opk_private_key, response.private_keys.dhratchet_private_key)
                     }
                 } else {
                     console.error('Error loading messages:', response.error);
