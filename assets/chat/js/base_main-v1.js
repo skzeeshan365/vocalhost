@@ -1,3 +1,5 @@
+"use strict";
+
 // Section: ContextMenu
 const saveTextElement = document.getElementById('save_text');
 const delete_message_context = document.getElementById('delete_message_context');
@@ -478,7 +480,7 @@ function load_chat(userName) {
     }
     let roomData = getKeysByRoom(getActiveRoom());
     let generate_keys = false;
-    if (roomData && roomData.type && roomData.private_keys) {
+    if (roomData && roomData.type && roomData) {
         generate_keys = false;
     } else {
         generate_keys = true;
@@ -496,14 +498,16 @@ function load_chat(userName) {
             if (response.status === 'success') {
                 if (response.generate_keys) {
                     if (response.keys.private_keys.type === 0) {
-                        saveKeys_sender(getActiveRoom(), response.keys.private_keys.ik_private_key, response.keys.private_keys.ek_private_key, response.keys.private_keys.dhratchet_private_key);
+                        saveKeys_sender(getActiveRoom(), response.keys.private_keys.version, response.keys.private_keys.ik_private_key, response.keys.private_keys.ek_private_key, response.keys.private_keys.dhratchet_private_key);
                     } else if (response.keys.private_keys.type === 1) {
-                        saveKeys_receiver(getActiveRoom(), response.keys.private_keys.ik_private_key, response.keys.private_keys.spk_private_key, response.keys.private_keys.opk_private_key, response.keys.private_keys.dhratchet_private_key)
+                        saveKeys_receiver(getActiveRoom(), response.keys.private_keys.version, response.keys.private_keys.ik_private_key, response.keys.private_keys.spk_private_key, response.keys.private_keys.opk_private_key, response.keys.private_keys.dhratchet_private_key)
                     }
                 }
+
                 var messages = JSON.parse(response.data);
                 (async () => {
-                    await initialize_keys(getActiveRoom(), response.keys.public_keys, messages);
+                    await load_chat_message(messages, response.keys.public_keys);
+                    await initialize_keys(getActiveRoom(), response.keys.public_keys);
                 })();
             } else {
                 console.error('Error loading messages:', response.message);
@@ -521,7 +525,7 @@ function load_chat(userName) {
     });
 }
 
-async function load_chat_message(messages) {
+async function load_chat_message(messages, public_keys) {
     const snapUiContainer = document.getElementById('snap-ui-container');
     snapUiContainer.addEventListener('mouseover', handleHover);
     snapUiContainer.addEventListener('mouseout', handleHoverEnd);
@@ -556,30 +560,73 @@ async function load_chat_message(messages) {
 
             const save = message.saved;
             let text_message;
+            let image_url;
             if (message.child_message) {
-                encryption = encryption_instance[message.child_message.device_id]
+                if (message.child_message.base_public_key) {
+                    encryption = await initialize_ratchet_encryption_temp(getActiveRoom(), message.child_message.base_public_key, message.child_message.public_key, message.child_message.device_id);
+                }
                 if (encryption) {
                     if (message.child_message.public_key) {
                         await encryption.setReceiverKey(message.child_message.public_key);
-                        if (message.child_message.cipher) {
+                        if (message.child_message.bytes_cipher) {
+                            if (message.child_message.cipher) {
+                                let decrypted_cipher = await encryption.recvImage(base64StringToUint8Array(message.child_message.bytes_cipher), message.child_message.cipher);
+                                if (decrypted_cipher) {
+                                    const imageBlob = new Blob([decrypted_cipher.image_bytes], {type: 'image/webp'});
+                                    text_message = decrypted_cipher.text_message;
+                                    image_url = URL.createObjectURL(imageBlob);
+                                } else {
+                                    text_message = message.message || null;
+                                    image_url = message.image_url || null;
+                                }
+                            } else {
+                                let decrypted_cipher = await encryption.recvImage(base64StringToUint8Array(message.child_message.bytes_cipher), null);
+                                if (decrypted_cipher) {
+                                    const imageBlob = new Blob([decrypted_cipher.image_bytes], {type: 'image/webp'});
+                                    image_url = URL.createObjectURL(imageBlob);
+                                    text_message = message.message || null;
+                                } else {
+                                    text_message = message.message || null;
+                                    image_url = message.image_url || null;
+                                }
+                            }
+                        } else if (message.child_message.cipher) {
                             text_message = await encryption.recv(message.child_message.cipher);
+                            image_url = message.image_url || null;
                         } else {
                             await encryption.recv(null);
                             text_message = message.message || null;
+                            image_url = message.image_url || null;
                         }
                     } else {
                         text_message = message.message || null;
+                        image_url = message.image_url || null;
                     }
                 } else {
                     text_message = message.message || null;
+                    image_url = message.image_url || null;
                 }
             } else if (message.sent_message) {
-                text_message = await decryptSentMessage(message.sent_message.cipher, message.sent_message.AES);
+                if (message.sent_message.cipher_bytes) {
+                    let decrypted_cipher = await decryptASYM_Image_Message(base64StringToUint8Array(message.sent_message.cipher_bytes), message.sent_message.cipher, message.sent_message.AES);
+                    if (decrypted_cipher) {
+                        const imageBlob = new Blob([decrypted_cipher.cipher_bytes], {type: 'image/webp'});
+                        image_url = URL.createObjectURL(imageBlob);
+                        text_message = decrypted_cipher.text_message;
+                    } else {
+                        text_message = message.message || null;
+                        image_url = message.image_url || null;
+                    }
+                } else {
+                    text_message = await decryptSentMessage(message.sent_message.cipher, message.sent_message.AES);
+                    image_url = message.image_url || null;
+                }
             } else {
                 text_message = message.message || null;
+                image_url = message.image_url || null;
             }
 
-            if (text_message || message.image_url) {
+            if (text_message || image_url) {
                 if (newMessage) {
                     if (message.child_message) {
                         addSnapNotice(null, "New message")
@@ -589,9 +636,9 @@ async function load_chat_message(messages) {
                     }
                 }
                 if (messageType === 'you') {
-                    addSnapMessage(message.message_id, text_message, null, save, message.image_url || null, message.reply_id || null, message.timestamp);
+                    addSnapMessage(message.message_id, text_message, null, save, image_url || null, message.reply_id || null, message.timestamp);
                 } else {
-                    addSnapMessage(message.message_id, text_message, getActivePerson(), save, message.image_url || null, message.reply_id || null, message.timestamp);
+                    addSnapMessage(message.message_id, text_message, getActivePerson(), save, image_url || null, message.reply_id || null, message.timestamp);
                 }
             }
         }
@@ -646,6 +693,32 @@ function get_user_public_keys(username, room) {
             if (response.status === 'success') {
                 (async () => {
                     await initialize_keys(room, response.public_keys);
+                })();
+            } else {
+                console.error('Error loading messages:', response.error);
+            }
+        },
+        error: function (error) {
+            console.error('Error loading messages:', error);
+        }
+    });
+}
+
+function get_device_public_keys(username, room, device_id) {
+    let self_device_id = getCookie('device_id')
+    $.ajax({
+        type: 'POST',
+        url: `/chat/get/device/public-keys/`,
+        dataType: 'json',
+        data: JSON.stringify({
+            receiver_username: username,
+            self_device_id: self_device_id,
+            receiver_device_id: device_id
+        }),
+        success: function (response) {
+            if (response.status === 'success') {
+                (async () => {
+                    await initialize_single_key(room, response.public_keys, device_id);
                 })();
             } else {
                 console.error('Error loading messages:', response.error);
@@ -883,12 +956,13 @@ function getMessageContentByID(message_id) {
     }
 }
 
-function insert_new_user(username, fullname, timestamp, img_src) {
+function insert_new_user(username, room, fullname, timestamp, img_src) {
     var userList = document.querySelector('.people');
 
     var newListElement = document.createElement('li');
     newListElement.className = 'person context-menu-trigger';
-    newListElement.setAttribute('data-chat', username);  // Set default chat username
+    newListElement.setAttribute('data-chat', username);
+    newListElement.setAttribute('data-room', room)
     newListElement.onclick = function () {
         load_chat(username);
     };
@@ -953,48 +1027,83 @@ function initialize_socket() {
                 const delimiterIndex2 = binaryData.indexOf('\n'.charCodeAt(0), delimiterIndex1 + 1);
                 const delimiterIndex3 = binaryData.indexOf('\n'.charCodeAt(0), delimiterIndex2 + 1);
                 const delimiterIndex4 = binaryData.indexOf('\n'.charCodeAt(0), delimiterIndex3 + 1);
+                const delimiterIndex5 = binaryData.indexOf('\n'.charCodeAt(0), delimiterIndex4 + 1);
+                const delimiterIndex6 = binaryData.indexOf('\n'.charCodeAt(0), delimiterIndex5 + 1);
 
                 // Extract text data
-                const message_id = new TextDecoder().decode(binaryData.subarray(0, delimiterIndex1));
-                const message = new TextDecoder().decode(binaryData.subarray(delimiterIndex1 + 1, delimiterIndex2));
-                const sender_username = new TextDecoder().decode(binaryData.subarray(delimiterIndex2 + 1, delimiterIndex3));
-                const public_key = new TextDecoder().decode(binaryData.subarray(delimiterIndex3 + 1, delimiterIndex4));
-                const parsed_public_key = (public_key === 'None') ? null : public_key;
+                const type = parseInt(new TextDecoder().decode(binaryData.subarray(0, delimiterIndex1)), 10);
+                if (type === 0) {
+                    const message_id = new TextDecoder().decode(binaryData.subarray(delimiterIndex1 + 1, delimiterIndex2));
+                    const message = new TextDecoder().decode(binaryData.subarray(delimiterIndex2 + 1, delimiterIndex3));
+                    const sender_username = new TextDecoder().decode(binaryData.subarray(delimiterIndex3 + 1, delimiterIndex4));
+                    const public_key = new TextDecoder().decode(binaryData.subarray(delimiterIndex4 + 1, delimiterIndex5));
+                    const parsed_public_key = (public_key === 'None') ? null : public_key;
+                    const device_id = new TextDecoder().decode(binaryData.subarray(delimiterIndex5 + 1, delimiterIndex6));
+                    console.log(public_key);
+                    if (sender_username === getActivePerson()) {
+                        const actualBinaryData = binaryData.subarray(delimiterIndex6 + 1);
 
-                if (sender_username === getActivePerson()) {
-                    const actualBinaryData = binaryData.subarray(delimiterIndex4 + 1);
-                    const imageBlob = new Blob([actualBinaryData], {type: 'image/webp'});
-                    const messageType = sender_username === userUsername ? 'you' : getActivePerson();
-                    if (message !== '') {
-                        if (parsed_public_key) {
-                            await encryption.setReceiverKey_JWK(parsed_public_key);
-                            let text_message = await encryption.recv(message, encryption.receiver_public_key);
+                        console.log(actualBinaryData);
+
+                        await encryption_instance[device_id].setReceiverKey_JWK(public_key);
+                        let decrypted_cipher = null;
+                        if (message !== '') {
+                            decrypted_cipher = await encryption_instance[device_id].recvImage(actualBinaryData, message);
+                        } else {
+                            decrypted_cipher = await encryption_instance[device_id].recvImage(actualBinaryData, null);
+                        }
+                        console.log(decrypted_cipher.image_bytes);
+
+                        const imageBlob = new Blob([decrypted_cipher.image_bytes], {type: 'image/webp'});
+                        const messageType = sender_username === userUsername ? 'you' : getActivePerson();
+                        if (message !== '') {
+                            if (parsed_public_key) {
+                                // await encryption.setReceiverKey_JWK(parsed_public_key);
+                                // let text_message = await encryption.recv(message, encryption.receiver_public_key);
+                                if (messageType === "you") {
+                                    updateImage(imageBlob, null, message_id, null, decrypted_cipher.text_message);
+                                } else {
+                                    updateImage(imageBlob, getActivePerson(), message_id, null, decrypted_cipher.text_message);
+                                }
+                            }
+                        } else {
                             if (messageType === "you") {
-                                updateImage(imageBlob, null, message_id, null, text_message);
+                                updateImage(imageBlob, null, message_id, null, null);
                             } else {
-                                updateImage(imageBlob, getActivePerson(), message_id, null, text_message);
+                                updateImage(imageBlob, getActivePerson(), message_id, null, null);
                             }
                         }
+
+                        // Scroll to the bottom
+                        var snapUiContainer = document.getElementById('snap-ui-container');
+                        snapUiContainer.scrollTop = snapUiContainer.scrollHeight;
+
+
+                        // Hide the loading icon after receiving a message
+                        const loadingIcon = document.getElementById('loading');
+                        loadingIcon.style.display = 'none';
+
+                        message_seen(message_id);
                     } else {
-                        if (messageType === "you") {
-                            updateImage(imageBlob, null, message_id, null, null);
-                        } else {
-                            updateImage(imageBlob, getActivePerson(), message_id, null, null);
-                        }
+                        update_message_status(STATUS_RECEIVED, sender_username);
                     }
+                } else if (type === 1) {
+                    const message_id = new TextDecoder().decode(binaryData.subarray(delimiterIndex1 + 1, delimiterIndex2));
+                    const cipher_text = new TextDecoder().decode(binaryData.subarray(delimiterIndex2 + 1, delimiterIndex3));
+                    const AES = new TextDecoder().decode(binaryData.subarray(delimiterIndex3 + 1, delimiterIndex4));
+                    const room = new TextDecoder().decode(binaryData.subarray(delimiterIndex4 + 1, delimiterIndex5));
 
-                    // Scroll to the bottom
-                    var snapUiContainer = document.getElementById('snap-ui-container');
-                    snapUiContainer.scrollTop = snapUiContainer.scrollHeight;
+                    if (room === getActiveRoom()) {
+                        const actualBinaryData = binaryData.subarray(delimiterIndex5 + 1);
 
-
-                    // Hide the loading icon after receiving a message
-                    const loadingIcon = document.getElementById('loading');
-                    loadingIcon.style.display = 'none';
-
-                    message_seen(message_id);
-                } else {
-                    update_message_status(STATUS_RECEIVED, sender_username);
+                        let decrypted_cipher = await decryptASYM_Image_Message(actualBinaryData, cipher_text, AES)
+                        if (decrypted_cipher) {
+                            const imageBlob = new Blob([decrypted_cipher.cipher_bytes], {type: 'image/webp'});
+                            updateImage(imageBlob, null, message_id, null, decrypted_cipher.text_message || null);
+                        }
+                        const loadingIcon = document.getElementById('loading');
+                        loadingIcon.style.display = 'none';
+                    }
                 }
             };
 
@@ -1022,7 +1131,7 @@ function initialize_socket() {
             } else if (data.type === 'device_online') {
                 if (data.room === getActiveRoom()) {
                     if (data.public_keys) {
-                        initialize_single_key(data.room, data.public_keys, data.device_id);
+                        get_device_public_keys(getActivePerson(), getActiveRoom(), data.device_id);
                         for (const device_id in encryption_instance) {
                             if (!data.active_device_ids.includes(device_id)) {
                                 delete encryption_instance[device_id];
@@ -1099,7 +1208,7 @@ function initialize_socket() {
                 }
                 var currentTime = new Date();
                 let timestamp = getFormattedTime(currentTime)
-                insert_new_user(data.username, fullname, timestamp, img)
+                insert_new_user(data.username, data.room, fullname, timestamp, img)
             } else if (data.type === 'remove_friend') {
                 if (data.username === getActivePerson()) {
                     close_all_chats();
@@ -1173,13 +1282,6 @@ const sendMessage = async function () {
 
             // Check if there is an image selected
             if (imageInput.files.length > 0) {
-                let encrypted_message;
-                if (message === '') {
-                    encrypted_message = null;
-                } else {
-                    encrypted_message = await encryption.send(encryption.receiver_public_key, message);
-                }
-
                 const file = imageInput.files[0];
                 const img = new Image();
                 img.src = URL.createObjectURL(file);
@@ -1194,21 +1296,27 @@ const sendMessage = async function () {
                     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
                     canvas.toBlob((webpBlob) => {
 
-                        // Create a new Blob containing text and binary data
-                        if (encrypted_message) {
-                            const combinedBlob = new Blob([JSON.stringify({
-                                message: encrypted_message.cipher,
-                                storeMessage: storeMessage,
-                                public_key: encrypted_message.ratchet_key
-                            }), webpBlob]);
-                            chatSocket.send(combinedBlob);
+                        // // Create a new Blob containing text and binary data
+                        // if (encrypted_message) {
+                        //     const combinedBlob = new Blob([JSON.stringify({
+                        //         message: encrypted_message.cipher,
+                        //         storeMessage: storeMessage,
+                        //         public_key: encrypted_message.ratchet_key
+                        //     }), webpBlob]);
+                        //     chatSocket.send(combinedBlob);
+                        // } else {
+                        //     const combinedBlob = new Blob([JSON.stringify({
+                        //         message: encrypted_message,
+                        //         storeMessage: storeMessage,
+                        //         public_keys: null
+                        //     }), webpBlob]);
+                        //     chatSocket.send(combinedBlob);
+                        // }
+
+                        if (message === '') {
+                            imageEncryption_send(webpBlob, null);
                         } else {
-                            const combinedBlob = new Blob([JSON.stringify({
-                                message: encrypted_message,
-                                storeMessage: storeMessage,
-                                public_keys: null
-                            }), webpBlob]);
-                            chatSocket.send(combinedBlob);
+                            imageEncryption_send(webpBlob, message);
                         }
 
                         var imageElement = document.getElementById('selectedImage');
@@ -1738,6 +1846,22 @@ function base64StringToArrayBuffer(base64) {
     return bytes.buffer;
 }
 
+function base64StringToUint8Array(base64) {
+    // Decode the base64 string to a binary string
+    let binaryString = window.atob(base64);
+    let length = binaryString.length;
+
+    // Create a Uint8Array to hold the binary data
+    let bytes = new Uint8Array(length);
+
+    // Fill the Uint8Array with the binary data
+    for (let i = 0; i < length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+    }
+
+    return bytes; // Return the Uint8Array directly
+}
+
 async function import_public_keys(keys) {
     let key = base64StringToArrayBuffer(keys[0]);
     let ikpublic_key = await crypto.subtle.importKey(
@@ -1749,7 +1873,7 @@ async function import_public_keys(keys) {
     );
 }
 
-async function initialize_keys(room, publicKeysInfo, messages) {
+async function initialize_keys(room, publicKeysInfo) {
     let roomData = getKeysByRoom(getActiveRoom());
     for (const device_id in publicKeysInfo) {
         if (publicKeysInfo.hasOwnProperty(device_id)) {
@@ -1757,9 +1881,9 @@ async function initialize_keys(room, publicKeysInfo, messages) {
 
             let encryptionInstance;
             if (roomData.type === 'sender') {
-                encryptionInstance = new Alice(room, device_id);
+                encryptionInstance = new Alice(room, device_id, keysInfo.version);
             } else if (roomData.type === 'receiver') {
-                encryptionInstance = new Bob(room, device_id);
+                encryptionInstance = new Bob(room, device_id, keysInfo.version);
             }
             await encryptionInstance.retrieveAndImportKeys();
             await encryptionInstance.x3dh(keysInfo.public_keys);
@@ -1767,9 +1891,6 @@ async function initialize_keys(room, publicKeysInfo, messages) {
             await encryptionInstance.setReceiverKey(keysInfo.ratchet_public_key);
             encryption_instance[device_id] = encryptionInstance;
         }
-    }
-    if (messages) {
-        await load_chat_message(messages);
     }
 }
 
@@ -1786,6 +1907,26 @@ async function initialize_single_key(room, keysInfo, device_id) {
     await encryptionInstance.initRatchets();
     await encryptionInstance.setReceiverKey(keysInfo.ratchet_public_key);
     encryption_instance[device_id] = encryptionInstance;
+}
+
+async function initialize_ratchet_encryption_temp(room, keysInfo, ratchet_key, device_id) {
+    let roomData = getKeysByRoom(getActiveRoom());
+    let encryptionInstance;
+
+    if (roomData) {
+        if (roomData.type === 'sender') {
+            encryptionInstance = new Alice(room, device_id);
+        } else if (roomData.type === 'receiver') {
+            encryptionInstance = new Bob(room, device_id);
+        }
+        await encryptionInstance.retrieveAndImportKeys();
+        await encryptionInstance.x3dh(keysInfo);
+        await encryptionInstance.initRatchets();
+        await encryptionInstance.setReceiverKey(ratchet_key);
+        return encryptionInstance;
+    } else {
+        return null;
+    }
 }
 
 async function encryption_send(message) {
@@ -1806,6 +1947,53 @@ async function encryption_send(message) {
     return JSON.stringify(responses);
 }
 
+function imageEncryption_send(image_bytes, message) {
+    const instances = Object.values(encryption_instance);
+    const asym_instances = Object.values(asymmetricInstances);
+
+    $.ajax({
+        type: 'POST',
+        url: `/chat/generate/message/id/`,
+        dataType: 'json',
+        success: function (response) {
+            if (response.status === 'success') {
+                sendMessagesConcurrently(instances, response.message_id, image_bytes, message);
+                encryptSentImageMessages(asym_instances, response.message_id, image_bytes, message);
+            } else {
+                console.error('Error loading messages:', response.error);
+            }
+        },
+        error: function (error) {
+            console.error('Error loading messages:', error);
+        }
+    });
+
+}
+
+async function sendMessagesConcurrently(instances, messageId, image_bytes, message) {
+    instances.forEach(async (instance, index) => {
+        instance.sendImage(image_bytes, message)
+            .then(encryptedMessage => {
+                const flag = index === 0 ? 1 : undefined;
+                const messageObject = {
+                    type: 0,
+                    message: encryptedMessage.cipher,
+                    storeMessage: storeMessage,
+                    public_key: encryptedMessage.ratchet_key,
+                    device_id: instance.device_id,
+                    message_id: messageId,
+                    flag: flag,
+                    key_version: encryptedMessage.key_version,
+                };
+                const combinedBlob = new Blob([JSON.stringify(messageObject), encryptedMessage.bytes_cipher]);
+                chatSocket.send(combinedBlob);
+            })
+            .catch(error => {
+                console.error('Error encrypting message:', error);
+            });
+    });
+}
+
 async function initialize_asymmetric_devices() {
     if (device_public_keys) {
         for (const [device_id, public_key] of Object.entries(device_public_keys)) {
@@ -1814,19 +2002,6 @@ async function initialize_asymmetric_devices() {
             await asymmetricInstance.setReceiverKey(public_key);
             asymmetricInstances[device_id] = asymmetricInstance;
         }
-    }
-}
-
-async function get_device_asym_key(device_id) {
-    if (device_public_keys) {
-        let public_key = device_public_keys[device_id]
-        if (public_key) {
-            return public_key
-        } else {
-            return null;
-        }
-    } else {
-        return null;
     }
 }
 
@@ -1840,6 +2015,28 @@ async function encryptSentMessage(message) {
         }
     }
     return encryptedMessages;
+}
+
+async function encryptSentImageMessages(instances, messageId, image_bytes, message) {
+    instances.forEach(async (instance, index) => {
+        instance.encryptImageBytes(image_bytes, message)
+            .then(encryptedMessage => {
+                if (encryptedMessage) {
+                    const messageObject = {
+                    type: 1,
+                    message: encryptedMessage.ciphertext,
+                    AES: encryptedMessage.AES,
+                    device_id: instance.device_id,
+                    message_id: messageId,
+                };
+                const combinedBlob = new Blob([JSON.stringify(messageObject), encryptedMessage.cipherbytes]);
+                chatSocket.send(combinedBlob);
+                }
+            })
+            .catch(error => {
+                console.error('Error encrypting message:', error);
+            });
+    });
 }
 
 async function decryptSentMessage(cipher, aes) {

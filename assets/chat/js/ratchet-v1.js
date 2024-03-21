@@ -1,3 +1,5 @@
+"use strict";
+
 async function importKey(key, usage) {
     return await crypto.subtle.importKey(
         'raw',
@@ -61,7 +63,6 @@ async function encryptMessage(key, iv, message) {
 }
 
 async function decryptMessage(key, iv, encryptedMessage) {
-    // Import the key as a spki buffer
     const derivedKey = await importKey(key, ['deriveKey'])
 
     const aesKey = await crypto.subtle.deriveKey(
@@ -77,18 +78,67 @@ async function decryptMessage(key, iv, encryptedMessage) {
         ['encrypt', 'decrypt']
     );
 
-
-    // Decrypt the message using AES-GCM
     const decrypted = await crypto.subtle.decrypt(
         {name: 'AES-GCM', iv},
         aesKey,
         encryptedMessage
     );
 
-    // Decode the decrypted message
     return new TextDecoder().decode(decrypted);
 }
 
+async function encryptImage(key, iv, imageBlob) {
+    const imageArrayBuffer = await imageBlob.arrayBuffer();
+
+    const derivedKey = await importKey(key, ['deriveKey']);
+
+    const aesKey = await crypto.subtle.deriveKey(
+        {
+            name: 'HKDF',
+            hash: 'SHA-256',
+            salt: new Uint8Array(0),
+            info: new TextEncoder().encode('AES key derivation'),
+        },
+        derivedKey,
+        {name: 'AES-GCM', length: 256},
+        true,
+        ['encrypt', 'decrypt']
+    );
+
+    const encryptedImage = await crypto.subtle.encrypt(
+        {name: 'AES-GCM', iv},
+        aesKey,
+        imageArrayBuffer
+    );
+
+    return new Uint8Array(encryptedImage);
+}
+
+async function decryptImage(key, iv, encryptedImage) {
+    const derivedKey = await importKey(key, ['deriveKey']);
+
+    const aesKey = await crypto.subtle.deriveKey(
+        {
+            name: 'HKDF',
+            hash: 'SHA-256',
+            salt: new Uint8Array(0), // You might want to use a proper salt
+            info: new TextEncoder().encode('AES key derivation'),
+        },
+        derivedKey,
+        {name: 'AES-GCM', length: 256},
+        true,
+        ['encrypt', 'decrypt']
+    );
+
+    const decryptedImage = await crypto.subtle.decrypt(
+        {name: 'AES-GCM', iv},
+        aesKey,
+        encryptedImage
+    );
+
+    return new Uint8Array(decryptedImage);
+
+}
 
 async function hkdf(input, length) {
     const hkdfKey = await importKey(input, ['deriveBits'])
@@ -141,7 +191,8 @@ class Bob {
         this.DHratchet = {};
         this.receiver_public_key = null;
         this.room = room;
-        this.device_id = device_id
+        this.device_id = device_id;
+        this.version = null;
     }
 
     async setReceiverKey(key) {
@@ -198,16 +249,29 @@ class Bob {
 
         this.sk = await hkdf(new Uint8Array([...dh1Bits, ...dh2Bits, ...dh3Bits, ...dh4Bits]), 32);
         console.log('[Bob]\tShared key:', b64(this.sk));
+        await this.loadDhRatchetKey();
+    }
+
+    async loadDhRatchetKey() {
+        let dhRatchetPrivateKey = JSON.parse(getDHRatchetKey(this.room, this.device_id, b64(this.sk)));
+        this.DHratchet.privateKey = await crypto.subtle.importKey(
+                'jwk',
+                dhRatchetPrivateKey,
+                {name: 'ECDH', namedCurve: 'P-256'},
+                false,
+                ['deriveKey']
+            );
     }
 
     async retrieveAndImportKeys() {
         let roomData = getKeysByRoom(this.room);
 
-        if (roomData && roomData.type && roomData.private_keys) {
+        this.version = roomData.version;
+
+        if (roomData && roomData.private_keys) {
             let ikPrivateKey = JSON.parse(roomData.private_keys.ikPrivateKey);
             let spkPrivateKey = JSON.parse(roomData.private_keys.spkPrivateKey);
             let opkPrivateKey = JSON.parse(roomData.private_keys.opkPrivateKey);
-            let dhratchet_privateKey = JSON.parse(getDHRatchetKey(this.room, this.device_id));
 
             this.IKb.privateKey = await crypto.subtle.importKey(
                 'jwk',
@@ -231,14 +295,6 @@ class Bob {
                 false,
                 ['deriveKey']
             );
-
-            this.DHratchet.privateKey = await crypto.subtle.importKey(
-                'jwk',
-                dhratchet_privateKey,
-                {name: 'ECDH', namedCurve: 'P-256'},
-                false,
-                ['deriveKey']
-            );
         }
     }
 
@@ -246,14 +302,14 @@ class Bob {
         let root = btoa(String.fromCharCode.apply(null, new Uint8Array(this.rootRatchet.state)));
         let recv = btoa(String.fromCharCode.apply(null, new Uint8Array(this.recvRatchet.state)));
         let send = btoa(String.fromCharCode.apply(null, new Uint8Array(this.sendRatchet.state)));
-        saveRatchetState(this.room, this.device_id, root, recv, send);
+        saveRatchetState(this.room, this.device_id, b64(this.sk), root, recv, send);
     }
 
     async initRatchets() {
         let currentSk = b64(this.sk);
-        let previousSk = getSk(this.room, this.device_id);
+        let previousSk = getSk(this.room, this.device_id, b64(this.sk));
         if (currentSk === previousSk) {
-            let states = getRatchetState(this.room, this.device_id);
+            let states = getRatchetState(this.room, this.device_id, b64(this.sk));
 
             if (states) {
                 this.rootRatchet = new SymmRatchet(states.rootRatchetState);
@@ -269,7 +325,7 @@ class Bob {
             this.sendRatchet = new SymmRatchet((await this.rootRatchet.next())[0]);
             this.recvRatchet = new SymmRatchet((await this.rootRatchet.next())[0]);
             saveSk(this.room, b64(this.sk), this.device_id);
-            deleteRatchetStates(this.room, this.device_id);
+            deleteRatchetStates(this.room, this.device_id, b64(this.sk));
         }
     }
 
@@ -280,7 +336,7 @@ class Bob {
             ['deriveKey']
         );
 
-        saveDHRatchetKey(await exportKey('jwk', this.DHratchet.privateKey), this.room, this.device_id);
+        saveDHRatchetKey(await exportKey('jwk', this.DHratchet.privateKey), this.room, this.device_id, b64(this.sk));
 
         const dhSend = await deriveKey(this.DHratchet.privateKey, alicePublic);
         const sharedSend = (await this.rootRatchet.next(dhSend))[0];
@@ -303,7 +359,24 @@ class Bob {
         const cipher = await encryptMessage(key, iv, msg);
         return {
             cipher: b64(cipher),
-            ratchet_key: btoa(JSON.stringify(await exportKey('jwk', this.DHratchet.publicKey)))
+            ratchet_key: btoa(JSON.stringify(await exportKey('jwk', this.DHratchet.publicKey))),
+            key_version: this.version
+        }
+    }
+
+    async sendImage(image, text) {
+        await this.send_dhRatchet(this.receiver_public_key);
+        const [key, iv] = await this.sendRatchet.next();
+        let cipher = null;
+        if (text) {
+            cipher = await encryptMessage(key, iv, text);
+        }
+        const bytes_cipher = await encryptImage(key, iv, image);
+        return {
+            cipher: b64(cipher),
+            bytes_cipher: bytes_cipher,
+            ratchet_key: btoa(JSON.stringify(await exportKey('jwk', this.DHratchet.publicKey))),
+            key_version: this.version
         }
     }
 
@@ -319,6 +392,28 @@ class Bob {
             }
         }
     }
+
+    async recvImage(bytes_cipher, text_cipher) {
+        await this.receive_dhRatchet(this.receiver_public_key);
+        if (bytes_cipher) {
+            const [key, iv] = await this.recvRatchet.next();
+            try {
+                let text_message = null;
+                if (text_cipher) {
+                    let text_cipher_bytes = new Uint8Array([...atob(text_cipher)].map(char => char.charCodeAt(0)));
+                    text_message = await decryptMessage(key, iv, text_cipher_bytes);
+                }
+
+                let image_bytes = await decryptImage(key, iv, bytes_cipher);
+                return {
+                    text_message: text_message,
+                    image_bytes: image_bytes
+                }
+            } catch (error) {
+                return `Failed to decrypt message: ${error}`;
+            }
+        }
+    }
 }
 
 class Alice {
@@ -328,7 +423,8 @@ class Alice {
         this.DHratchet = {};
         this.receiver_public_key = null;
         this.room = room;
-        this.device_id = device_id
+        this.device_id = device_id;
+        this.version = null;
     }
 
     async setReceiverKey(key) {
@@ -395,13 +491,14 @@ class Alice {
 
         this.sk = await hkdf(new Uint8Array([...dh1Bits, ...dh2Bits, ...dh3Bits, ...dh4Bits]), 32);
         console.log('[alice]\tShared key:', b64(this.sk));
+        await this.loadDhRatchetKey();
     }
 
     async initRatchets() {
         let currentSk = b64(this.sk);
-        let previousSk = getSk(this.room, this.device_id);
+        let previousSk = getSk(this.room, this.device_id, b64(this.sk));
         if (currentSk === previousSk) {
-            let states = getRatchetState(this.room, this.device_id);
+            let states = getRatchetState(this.room, this.device_id, b64(this.sk));
 
             if (states) {
                 this.rootRatchet = new SymmRatchet(states.rootRatchetState);
@@ -417,17 +514,29 @@ class Alice {
             this.sendRatchet = new SymmRatchet((await this.rootRatchet.next())[0]);
             this.recvRatchet = new SymmRatchet((await this.rootRatchet.next())[0]);
             saveSk(this.room, b64(this.sk), this.device_id);
-            deleteRatchetStates(this.room, this.device_id);
+            deleteRatchetStates(this.room, this.device_id, b64(this.sk));
         }
+    }
+
+    async loadDhRatchetKey() {
+        let dhRatchetPrivateKey = JSON.parse(getDHRatchetKey(this.room, this.device_id, b64(this.sk)));
+        this.DHratchet.privateKey = await crypto.subtle.importKey(
+                'jwk',
+                dhRatchetPrivateKey,
+                {name: 'ECDH', namedCurve: 'P-256'},
+                false,
+                ['deriveKey']
+            );
     }
 
     async retrieveAndImportKeys() {
         let roomData = getKeysByRoom(this.room);
 
-        if (roomData && roomData.type && roomData.private_keys) {
+        this.version = roomData.version;
+
+        if (roomData && roomData.private_keys) {
             let ikPrivateKeyData = JSON.parse(roomData.private_keys.ikPrivateKeyData);
             let ekPrivateKeyData = JSON.parse(roomData.private_keys.ekPrivateKeyData);
-            let dhRatchetPrivateKey = JSON.parse(getDHRatchetKey(this.room, this.device_id));
 
             this.IKa.privateKey = await crypto.subtle.importKey(
                 'jwk',
@@ -443,14 +552,6 @@ class Alice {
                 false,
                 ['deriveKey']
             );
-
-            this.DHratchet.privateKey = await crypto.subtle.importKey(
-                'jwk',
-                dhRatchetPrivateKey,
-                {name: 'ECDH', namedCurve: 'P-256'},
-                false,
-                ['deriveKey']
-            );
         }
     }
 
@@ -458,7 +559,7 @@ class Alice {
         let root = btoa(String.fromCharCode.apply(null, new Uint8Array(this.rootRatchet.state)));
         let recv = btoa(String.fromCharCode.apply(null, new Uint8Array(this.recvRatchet.state)));
         let send = btoa(String.fromCharCode.apply(null, new Uint8Array(this.sendRatchet.state)));
-        saveRatchetState(this.room, this.device_id, root, recv, send);
+        saveRatchetState(this.room, this.device_id, b64(this.sk), root, recv, send);
     }
 
     async send_dhRatchet(bobPublic) {
@@ -468,7 +569,7 @@ class Alice {
             ['deriveKey']
         );
 
-        saveDHRatchetKey(await exportKey('jwk', this.DHratchet.privateKey), this.room, this.device_id);
+        saveDHRatchetKey(await exportKey('jwk', this.DHratchet.privateKey), this.room, this.device_id, b64(this.sk));
 
         const dhSend = await deriveKey(this.DHratchet.privateKey, bobPublic);
         const sharedSend = (await this.rootRatchet.next(dhSend))[0];
@@ -491,7 +592,24 @@ class Alice {
         const cipher = await encryptMessage(key, iv, msg);
         return {
             cipher: b64(cipher),
-            ratchet_key: btoa(JSON.stringify(await exportKey('jwk', this.DHratchet.publicKey)))
+            ratchet_key: btoa(JSON.stringify(await exportKey('jwk', this.DHratchet.publicKey))),
+            key_version: this.version
+        }
+    }
+
+    async sendImage(image, text) {
+        await this.send_dhRatchet(this.receiver_public_key);
+        const [key, iv] = await this.sendRatchet.next();
+        let cipher = null;
+        if (text) {
+            cipher = await encryptMessage(key, iv, text);
+        }
+        const bytes_cipher = await encryptImage(key, iv, image);
+        return {
+            cipher: b64(cipher),
+            bytes_cipher: bytes_cipher.buffer,
+            ratchet_key: btoa(JSON.stringify(await exportKey('jwk', this.DHratchet.publicKey))),
+            key_version: this.version
         }
     }
 
@@ -502,6 +620,28 @@ class Alice {
             try {
                 const arrayBufferCipher = new Uint8Array([...atob(cipher)].map(char => char.charCodeAt(0)));
                 return await decryptMessage(key, iv, arrayBufferCipher)
+            } catch (error) {
+                return `Failed to decrypt message: ${error}`;
+            }
+        }
+    }
+
+    async recvImage(bytes_cipher, text_cipher) {
+        await this.receive_dhRatchet(this.receiver_public_key);
+        if (bytes_cipher) {
+            const [key, iv] = await this.recvRatchet.next();
+            try {
+                let text_message = null;
+                if (text_cipher) {
+                    let text_cipher_bytes = new Uint8Array([...atob(text_cipher)].map(char => char.charCodeAt(0)));
+                    text_message = await decryptMessage(key, iv, text_cipher_bytes);
+                }
+
+                let image_bytes = await decryptImage(key, iv, bytes_cipher);
+                return {
+                    text_message: text_message,
+                    image_bytes: image_bytes
+                }
             } catch (error) {
                 return `Failed to decrypt message: ${error}`;
             }
@@ -582,6 +722,61 @@ class asymmetric {
             console.error(e);
         }
     }
+
+    async encryptImageBytes(image_bytes, plaintext) {
+        try {
+            if (!this.public_key) {
+                throw new Error('Public key not set.');
+            }
+
+            const imageArrayBuffer = await image_bytes.arrayBuffer();
+
+            let iv = window.crypto.getRandomValues(new Uint8Array(12));
+
+            let aesKey = await window.crypto.subtle.generateKey(
+                {name: 'AES-GCM', length: 256},
+                true,
+                ['encrypt', 'decrypt']
+            );
+
+            let ciphertext;
+            if (!plaintext) {
+                plaintext = '';
+            }
+
+            let plaintextBuffer = new TextEncoder().encode(plaintext);
+            ciphertext = await window.crypto.subtle.encrypt(
+                {name: 'AES-GCM', iv: iv},
+                aesKey,
+                plaintextBuffer
+            );
+
+            let cipherbytes = await window.crypto.subtle.encrypt(
+                {name: 'AES-GCM', iv: iv},
+                aesKey,
+                imageArrayBuffer
+            );
+
+            let aesKeyBuffer = await window.crypto.subtle.exportKey('raw', aesKey);
+
+            let encryptedAesKey = await window.crypto.subtle.encrypt(
+                {name: 'RSA-OAEP'},
+                this.public_key,
+                aesKeyBuffer
+            );
+
+            let ivAndCipherText = new Uint8Array(iv.byteLength + ciphertext.byteLength);
+            ivAndCipherText.set(iv, 0);
+            ivAndCipherText.set(new Uint8Array(ciphertext), iv.byteLength);
+            return {
+                ciphertext: b64(ivAndCipherText),
+                cipherbytes: cipherbytes,
+                AES: b64(encryptedAesKey)
+            };
+        } catch (e) {
+            console.error(e);
+        }
+    }
 }
 
 async function decryptASYM_Message(cipher, aes_key) {
@@ -589,7 +784,7 @@ async function decryptASYM_Message(cipher, aes_key) {
         let private_key = null;
         let private_key_jwk = getSecondaryKey();
         if (private_key_jwk) {
-            private_key_data = JSON.parse(private_key_jwk);
+            let private_key_data = JSON.parse(private_key_jwk);
             private_key = await crypto.subtle.importKey(
                 'jwk',
                 private_key_data,
@@ -608,8 +803,60 @@ async function decryptASYM_Message(cipher, aes_key) {
 
         let iv = base64StringToArrayBuffer(cipher).slice(0, 12);
 
-        // Extract the ciphertext (excluding the IV)
         let ciphertext = base64StringToArrayBuffer(cipher).slice(12);
+
+        let aesKeyBuffer = await window.crypto.subtle.decrypt(
+            {name: 'RSA-OAEP'},
+            private_key,
+            base64StringToArrayBuffer(aes_key)
+        );
+
+        let decryptedAesKey = await window.crypto.subtle.importKey(
+            'raw',
+            aesKeyBuffer,
+            {name: 'AES-GCM'},
+            true,
+            ['encrypt', 'decrypt']
+        );
+
+        let decryptedPlaintext = await window.crypto.subtle.decrypt(
+            {name: 'AES-GCM', iv: iv},
+            decryptedAesKey,
+            ciphertext
+        );
+
+        return new TextDecoder().decode(decryptedPlaintext);
+    } catch (e) {
+        console.error(e);
+    }
+}
+
+async function decryptASYM_Image_Message(cipher_bytes, cipher_text, aes_key) {
+    try {
+        let private_key = null;
+        let private_key_jwk = getSecondaryKey();
+        if (private_key_jwk) {
+            let private_key_data = JSON.parse(private_key_jwk);
+            private_key = await crypto.subtle.importKey(
+                'jwk',
+                private_key_data,
+                {
+                    name: 'RSA-OAEP',
+                    hash: {name: 'SHA-256'}
+                },
+                false,
+                ['decrypt']
+            );
+        }
+
+        if (!private_key) {
+            throw new Error('Private key not loaded.');
+        }
+
+
+        let iv = base64StringToArrayBuffer(cipher_text).slice(0, 12);
+
+        let ciphertext = base64StringToArrayBuffer(cipher_text).slice(12);
 
         // Decrypt the AES key using RSA-OAEP with the private key
         let aesKeyBuffer = await window.crypto.subtle.decrypt(
@@ -626,29 +873,57 @@ async function decryptASYM_Message(cipher, aes_key) {
             ['encrypt', 'decrypt']
         );
 
-        // Decrypt the ciphertext using AES-GCM with the extracted IV and decrypted AES key
+        let decrypted_bytes = await window.crypto.subtle.decrypt(
+            {name: 'AES-GCM', iv: iv},
+            decryptedAesKey,
+            cipher_bytes,
+        );
         let decryptedPlaintext = await window.crypto.subtle.decrypt(
             {name: 'AES-GCM', iv: iv},
             decryptedAesKey,
-            ciphertext
+            ciphertext,
         );
 
-        // Return the decrypted plaintext
-        return new TextDecoder().decode(decryptedPlaintext);
+        decryptedPlaintext = new TextDecoder().decode(decryptedPlaintext);
+
+        if (decryptedPlaintext === '') {
+            decryptedPlaintext = null;
+        }
+
+        return {
+            text_message: decryptedPlaintext,
+            cipher_bytes: new Uint8Array(decrypted_bytes)
+        };
     } catch (e) {
-        console.error(e);
+        console.error(`Error: ${e}`);
     }
 }
 
 // Section: Save keys
-function saveKeys_sender(room, ik_private_key, ek_private_key, dhratchet_private_key) {
+function getLatestVersionInRoom(room) {
     let roomData = JSON.parse(localStorage.getItem('ratchet')) || {};
+    let latestVersion = null;
 
-    if (!roomData[room]) {
-        roomData[room] = {};
+    if (roomData[room]) {
+        // Get all versions for the specified room
+        let versions = Object.keys(roomData[room]).filter(key => !isNaN(key));
+
+        if (versions.length > 0) {
+            // Find the highest version number
+            latestVersion = Math.max(...versions);
+        }
     }
 
+    return latestVersion;
+}
+function saveKeys_sender(room, version_int, ik_private_key, ek_private_key, dhratchet_private_key) {
+    let roomData = JSON.parse(localStorage.getItem('ratchet')) || {};
+
+    roomData[room] = roomData[room] || {};
+
     roomData[room].type = 'sender';
+
+    roomData[room].version = version_int;
 
     roomData[room].private_keys = {
         ikPrivateKeyData: ik_private_key,
@@ -659,15 +934,15 @@ function saveKeys_sender(room, ik_private_key, ek_private_key, dhratchet_private
     localStorage.setItem('ratchet', JSON.stringify(roomData));
 }
 
-function saveKeys_receiver(room, ik_private_key, spk_private_key, opk_private_key, dhratchet_key) {
+function saveKeys_receiver(room, version_int, ik_private_key, spk_private_key, opk_private_key, dhratchet_key) {
 
     let roomData = JSON.parse(localStorage.getItem('ratchet')) || {};
 
-    if (!roomData[room]) {
-        roomData[room] = {};
-    }
+    roomData[room] = roomData[room] || {};
 
     roomData[room].type = 'receiver';
+
+    roomData[room].version = version_int;
 
     roomData[room].private_keys = {
         ikPrivateKey: ik_private_key,
@@ -689,7 +964,7 @@ function getKeysByRoom(room) {
     }
 }
 
-function saveRatchetState(room, device_id, rootRatchetState, recvRatchetState, sendRatchetState) {
+function saveRatchetState(room, device_id, sk, rootRatchetState, recvRatchetState, sendRatchetState) {
     let ratchetData = JSON.parse(localStorage.getItem('ratchet')) || {};
 
     if (!ratchetData[room]) {
@@ -700,14 +975,18 @@ function saveRatchetState(room, device_id, rootRatchetState, recvRatchetState, s
         ratchetData[room][device_id] = {};
     }
 
-    ratchetData[room][device_id].rootRatchetState = rootRatchetState;
-    ratchetData[room][device_id].recvRatchetState = recvRatchetState;
-    ratchetData[room][device_id].sendRatchetState = sendRatchetState;
+    if (!ratchetData[room][device_id][sk]) {
+        ratchetData[room][device_id][sk] = {};
+    }
+
+    ratchetData[room][device_id][sk].rootRatchetState = rootRatchetState;
+    ratchetData[room][device_id][sk].recvRatchetState = recvRatchetState;
+    ratchetData[room][device_id][sk].sendRatchetState = sendRatchetState;
 
     localStorage.setItem('ratchet', JSON.stringify(ratchetData));
 }
 
-function getRatchetState(room, device_id) {
+function getRatchetState(room, device_id, sk) {
     const ratchetData = JSON.parse(localStorage.getItem('ratchet')) || {};
 
     if (!ratchetData[room]) {
@@ -718,9 +997,13 @@ function getRatchetState(room, device_id) {
         ratchetData[room][device_id] = {};
     }
 
-    let root = ratchetData[room][device_id].rootRatchetState;
-    let recv = ratchetData[room][device_id].recvRatchetState;
-    let send = ratchetData[room][device_id].sendRatchetState;
+    if (!ratchetData[room][device_id][sk]) {
+        ratchetData[room][device_id][sk] = {};
+    }
+
+    let root = ratchetData[room][device_id][sk].rootRatchetState;
+    let recv = ratchetData[room][device_id][sk].recvRatchetState;
+    let send = ratchetData[room][device_id][sk].sendRatchetState;
 
     if (root && recv && send) {
         const rootRatchetState = new Uint8Array(Array.from(atob(root), (c) => c.charCodeAt(0)));
@@ -737,7 +1020,7 @@ function getRatchetState(room, device_id) {
     }
 }
 
-function deleteRatchetStates(room, device_id) {
+function deleteRatchetStates(room, device_id, sk) {
     let ratchetData = JSON.parse(localStorage.getItem('ratchet')) || {};
 
     if (!ratchetData[room]) {
@@ -748,16 +1031,20 @@ function deleteRatchetStates(room, device_id) {
         ratchetData[room][device_id] = {};
     }
 
+    if (!ratchetData[room][device_id][sk]) {
+        ratchetData[room][device_id][sk] = {};
+    }
+
     if (ratchetData[room]) {
-        delete ratchetData[room][device_id].rootRatchetState;
-        delete ratchetData[room][device_id].recvRatchetState;
-        delete ratchetData[room][device_id].sendRatchetState;
+        delete ratchetData[room][device_id][sk].rootRatchetState;
+        delete ratchetData[room][device_id][sk].recvRatchetState;
+        delete ratchetData[room][device_id][sk].sendRatchetState;
 
         localStorage.setItem('ratchet', JSON.stringify(ratchetData));
     }
 }
 
-function saveDHRatchetKey(dhratchet_private_key, room, device_id) {
+function saveDHRatchetKey(dhratchet_private_key, room, device_id, sk) {
     let ratchetData = JSON.parse(localStorage.getItem('ratchet')) || {};
 
     if (!ratchetData[room]) {
@@ -768,12 +1055,16 @@ function saveDHRatchetKey(dhratchet_private_key, room, device_id) {
         ratchetData[room][device_id] = {};
     }
 
-    ratchetData[room][device_id].dhratchet_key = JSON.stringify(dhratchet_private_key);
+    if (!ratchetData[room][device_id][sk]) {
+        ratchetData[room][device_id][sk] = {};
+    }
+
+    ratchetData[room][device_id][sk].dhratchet_key = JSON.stringify(dhratchet_private_key);
 
     localStorage.setItem('ratchet', JSON.stringify(ratchetData));
 }
 
-function getDHRatchetKey(room, device_id) {
+function getDHRatchetKey(room, device_id, sk) {
     let ratchetData = JSON.parse(localStorage.getItem('ratchet')) || {};
 
     if (!ratchetData[room]) {
@@ -784,8 +1075,12 @@ function getDHRatchetKey(room, device_id) {
         ratchetData[room][device_id] = {};
     }
 
-    if (ratchetData[room][device_id].dhratchet_key) {
-        return ratchetData[room][device_id].dhratchet_key;
+    if (!ratchetData[room][device_id][sk]) {
+        ratchetData[room][device_id][sk] = {};
+    }
+
+    if (ratchetData[room][device_id][sk].dhratchet_key) {
+        return ratchetData[room][device_id][sk].dhratchet_key;
     } else if (ratchetData[room].private_keys.dhratchet_key) {
         return ratchetData[room].private_keys.dhratchet_key;
     } else {
@@ -804,12 +1099,16 @@ function saveSk(room, sk, device_id) {
         ratchetData[room][device_id] = {};
     }
 
-    ratchetData[room][device_id].sk = JSON.stringify(sk);
+    if (!ratchetData[room][device_id][sk]) {
+        ratchetData[room][device_id][sk] = {};
+    }
+
+    ratchetData[room][device_id][sk].sk = JSON.stringify(sk);
 
     localStorage.setItem('ratchet', JSON.stringify(ratchetData));
 }
 
-function getSk(room, device_id) {
+function getSk(room, device_id, sk) {
     let ratchetData = JSON.parse(localStorage.getItem('ratchet')) || {};
 
     if (!ratchetData[room]) {
@@ -820,8 +1119,12 @@ function getSk(room, device_id) {
         ratchetData[room][device_id] = {};
     }
 
-    if (ratchetData[room][device_id].sk) {
-        return JSON.parse(ratchetData[room][device_id].sk);
+    if (!ratchetData[room][device_id][sk]) {
+        ratchetData[room][device_id][sk] = {};
+    }
+
+    if (ratchetData[room][device_id][sk].sk) {
+        return JSON.parse(ratchetData[room][device_id][sk].sk);
     } else {
         return null;
     }
