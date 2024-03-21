@@ -24,7 +24,7 @@ from ReiserX_Tunnel import settings
 from chat.models import Message, Room, get_connected_users, new_signal_message, FriendRequest, SenderKeyBundle, \
     ReceiverKeyBundle, PublicKey, UserDevice, ChildMessage
 from chat.utils import format_key, generate_sender_keys, generate_receiver_keys, generate_room_id, \
-    process_messages, clear_temp_messages, generate_key_pair
+    process_messages, clear_temp_messages, generate_key_pair, get_browser_name, get_ip
 from main.Utils import send_pusher_update
 from main.forms import ImageUploadForm
 
@@ -132,11 +132,11 @@ def chat_box(request):
         user_device = UserDevice.get_user_by_device(device_id_cookie)
 
     if user_device and user_device.username == user.username:
-        pass
+        user_device.save()
     else:
         new_device_id = str(uuid.uuid4())
         private_key, public_key = generate_key_pair()
-        UserDevice.objects.create(user=user, identifier=new_device_id, device_public_key=public_key)
+        UserDevice.objects.create(user=user, identifier=new_device_id, device_public_key=public_key, device_type=UserDevice.WEB, name=get_browser_name(request), ip_address=get_ip(request))
         context = {'protocol': protocol,
                    'abcf': settings.FIREBASE_API_KEY,
                    'users': room_messages_info,
@@ -693,7 +693,8 @@ def chat_profile(request, username):
                                                          'form': form,
                                                          'user': user.pk,
                                                          'auto_save': user.userprofile.auto_save,
-                                                         'pusher': settings.PUSHER_KEY})
+                                                         'pusher': settings.PUSHER_KEY,
+                                                         'user_devices': user.user_device.all()})
         else:
             user = User.objects.get(username=username)
             if user:

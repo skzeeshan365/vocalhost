@@ -245,3 +245,29 @@ def generate_key_pair():
     return private_key_jwk_key, public_key_bytes
 
 
+def get_browser_name(request):
+    user_agent = request.META.get('HTTP_USER_AGENT', '')
+    if 'Chrome' in user_agent:
+        return 'Chrome'
+    elif 'Firefox' in user_agent:
+        return 'Firefox'
+    elif 'Safari' in user_agent:
+        return 'Safari'
+    elif 'Edge' in user_agent:
+        return 'Edge'
+    elif 'Opera' in user_agent:
+        return 'Opera'
+    else:
+        return 'Unknown'
+
+
+def get_ip(request):
+    user_ip = request.META.get('HTTP_X_FORWARDED_FOR')
+    if user_ip:
+        user_ip = user_ip.split(',')[0].strip()
+    else:
+        user_ip = request.META.get('REMOTE_ADDR')
+
+    if user_ip:
+        return user_ip
+    return None

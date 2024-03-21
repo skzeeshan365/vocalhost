@@ -117,6 +117,53 @@
             max-width: 300px;
             box-sizing: border-box;
         }
+        
+        .device-list {
+    margin-top: 20px;
+}
+
+.device-item {
+    display: flex;
+    align-items: center;
+    margin-bottom: 10px;
+    padding: 8px;
+    border-left: 1px solid #ffffff;
+    border-right: 1px solid #ffffff;
+}
+
+.device-icon {
+    margin-right: 10px;
+    color: white; /* Set icon color to white */
+}
+
+.device-info {
+    color: white; /* Set text color to white */
+}
+
+.device-info h3 {
+    margin: 0;
+    font-size: 16px;
+}
+
+.device-info p {
+    margin: 5px 0;
+    font-size: 14px;
+}
+.delete-button {
+    margin-left: auto;
+}
+.delete-button button {
+    background-color: #494949; /* Red background color */
+    color: white; /* White text color */
+    border: none; /* Remove default button border */
+    padding: 5px 10px; /* Add padding to the button */
+    cursor: pointer; /* Show pointer cursor on hover */
+    transition: background-color 0.3s ease; /* Smooth transition for background color change */
+}
+
+.delete-button button:hover {
+    background-color: #282828; /* Darker red background color on hover */
+}
     </style>
 </head>
 <body>
@@ -240,6 +287,35 @@
                 <a onclick="generate_secondary_key()" class="wishlist-border pt-2">
                     <span class="wishlist">Reset master key</span>
                 </a>
+
+                {% if user_devices %}
+    <div class="device-list">
+        {% for device in user_devices %}
+            <div class="device-item">
+                <div class="device-icon">
+                    {% if device.device_type == 'android' %}
+                        <i class="fab fa-android"></i>
+                    {% elif device.device_type == 'ios' %}
+                        <i class="fab fa-apple"></i>
+                    {% elif device.device_type == 'web' %}
+                        <i class="fas fa-desktop"></i>
+                    {% endif %}
+                </div>
+                <div class="device-info">
+                    <h3>{{ device.user.username }}'s {{ device.get_device_type_display }}</h3>
+                    <p style="margin-bottom: -5px;">IP: {{ device.ip_address }}</p>
+                    <p style="margin-top: -4px; margin-bottom: -4px;">Last seen: {{ device.last_login }}</p>
+                </div>
+                <div class="delete-button">
+                    <button onclick="deleteDevice('{{ device.id }}')">Logout</button>
+                </div>
+            </div>
+        {% endfor %}
+    </div>
+{% else %}
+    <p>No devices found.</p>
+{% endif %}
+
             {% endif %}
         </div>
         <div id="save_message_loader" style="margin-top: 20px; display: none;"

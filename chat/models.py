@@ -15,17 +15,36 @@ from django.contrib.auth.models import User
 from django.db import models
 from django.db.models import Max, Exists, OuterRef, Subquery
 from django.dispatch import Signal
+from django.utils.timesince import timesince
+from django.utils.timezone import now
 
 from main.Utils import send_message_to_device, send_pusher_update, get_image_public_id, cloudinary_image_delete
 
 
 class UserDevice(models.Model):
+    ANDROID = 'android'
+    IOS = 'ios'
+    WEB = 'web'
+    DEVICE_TYPE_CHOICES = [
+        (ANDROID, 'android'),
+        (IOS, 'ios'),
+        (WEB, 'web'),
+    ]
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='user_device')
     identifier = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
     device_public_key = models.BinaryField(default=None, null=True, blank=True)
+    device_type = models.CharField(max_length=10, choices=DEVICE_TYPE_CHOICES)
+    name = models.CharField(max_length=20, null=True, blank=True)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    login_time = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return f"{self.user.username} - {self.identifier}"
+
+    def last_login(self):
+        if not self.login_time:
+            return 'Never'
+        return timesince(self.login_time, now()) + ' ago'
 
     @staticmethod
     def get_device_by_id(device_id):
