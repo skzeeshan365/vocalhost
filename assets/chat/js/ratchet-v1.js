@@ -1059,6 +1059,8 @@ function saveDHRatchetKey(dhratchet_private_key, room, device_id, sk) {
         ratchetData[room][device_id][sk] = {};
     }
 
+    ratchetData[room].private_keys.dhratchet_key = JSON.stringify(dhratchet_private_key);
+
     ratchetData[room][device_id][sk].dhratchet_key = JSON.stringify(dhratchet_private_key);
 
     localStorage.setItem('ratchet', JSON.stringify(ratchetData));
