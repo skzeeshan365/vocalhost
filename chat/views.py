@@ -9,6 +9,7 @@ from cloudinary import uploader
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
+from django.contrib.auth import logout
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.core.serializers.json import DjangoJSONEncoder
@@ -24,7 +25,7 @@ from ReiserX_Tunnel import settings
 from chat.models import Message, Room, get_connected_users, new_signal_message, FriendRequest, SenderKeyBundle, \
     ReceiverKeyBundle, PublicKey, UserDevice, ChildMessage
 from chat.utils import format_key, generate_sender_keys, generate_receiver_keys, generate_room_id, \
-    process_messages, clear_temp_messages, generate_key_pair, get_browser_name, get_ip
+    process_messages, clear_temp_messages, generate_key_pair, get_browser_name, get_ip, get_current_time
 from main.Utils import send_pusher_update
 from main.forms import ImageUploadForm
 
@@ -81,7 +82,7 @@ def chat_box(request):
                 new_message = False
 
             if last_message.receiver == other_user and messages_with_cipher_other.exists():
-                    status = 2
+                status = 2
             elif messages_with_cipher is None and messages_with_cipher_other is None:
                 status = -1
         room_messages_info.append({
@@ -112,31 +113,23 @@ def chat_box(request):
 
     device_id_cookie = request.COOKIES.get('device_id')
 
-    # private_key, public_key = generate_key_pair()
-    # UserDevice.objects.filter(identifier=device_id_cookie, user=user).update(identifier=device_id_cookie)
-
     device_keys = UserDevice.get_user_device_public_keys(request.user)
 
-    context = {'protocol': protocol,
-                           'abcf': settings.FIREBASE_API_KEY,
-                           'users': room_messages_info,
-                           'storeMessage': user.userprofile.auto_save,
-                           'pusher': settings.PUSHER_KEY,
-                           'token_status': token,
-                           'received_requests': received_friend_request,
-               'device_keys': mark_safe(device_keys)}
-    response = render(request, "chat/chat.html",
-                      context)
     user_device = None
     if device_id_cookie:
         user_device = UserDevice.get_user_by_device(device_id_cookie)
 
     if user_device and user_device.username == user.username:
-        user_device.save()
-    else:
-        new_device_id = str(uuid.uuid4())
-        private_key, public_key = generate_key_pair()
-        UserDevice.objects.create(user=user, identifier=new_device_id, device_public_key=public_key, device_type=UserDevice.WEB, name=get_browser_name(request), ip_address=get_ip(request))
+        device = UserDevice.get_device_by_id(device_id_cookie)
+
+        if device.device_public_key is None:
+            private_key, public_key = generate_key_pair()
+            device.device_public_key = public_key
+        else:
+            private_key = None
+        device.ip_address = get_ip(request)
+        device.save()
+
         context = {'protocol': protocol,
                    'abcf': settings.FIREBASE_API_KEY,
                    'users': room_messages_info,
@@ -144,11 +137,33 @@ def chat_box(request):
                    'pusher': settings.PUSHER_KEY,
                    'token_status': token,
                    'received_requests': received_friend_request,
-                   'device_keys': mark_safe(device_keys),
-                   'private_key': mark_safe(private_key)}
+                   'device_keys': mark_safe(device_keys)}
+        if private_key:
+            context['private_key'] = mark_safe(private_key)
         response = render(request, "chat/chat.html",
                           context)
-        response.set_cookie('device_id', new_device_id, max_age=365 * 24 * 60 * 60)
+    else:
+        device = UserDevice.create_user_device(user, request)
+        if device:
+            private_key, public_key = generate_key_pair()
+            device.device_public_key = public_key
+            device.save()
+            context = {'protocol': protocol,
+                       'abcf': settings.FIREBASE_API_KEY,
+                       'users': room_messages_info,
+                       'storeMessage': user.userprofile.auto_save,
+                       'pusher': settings.PUSHER_KEY,
+                       'token_status': token,
+                       'received_requests': received_friend_request,
+                       'device_keys': mark_safe(device_keys),
+                       'private_key': mark_safe(private_key)}
+            response = render(request, "chat/chat.html",
+                              context)
+            response.set_cookie('device_id', str(device.identifier), max_age=365 * 24 * 60 * 60)
+            return response
+        else:
+            return redirect('chat_profile', user.username)
+
     return response
 
 
@@ -162,7 +177,8 @@ def generate_secondary_key_pair(request):
             private_key, public_key = generate_key_pair()
             device.device_public_key = public_key
             device.save()
-            return JsonResponse({'status': 'success', 'private_key': mark_safe(private_key), 'public_key': PublicKey.format_key(public_key)})
+            return JsonResponse({'status': 'success', 'private_key': mark_safe(private_key),
+                                 'public_key': PublicKey.format_key(public_key)})
         else:
             return JsonResponse({'status': 'error', 'message': 'Unauthorized'})
     else:
@@ -186,6 +202,7 @@ def update_message_status(receiver_user, username):
         }
         send_pusher_update(message_data=message, receiver_username=receiver_user)
 
+
 @login_required(login_url='/account/login/')
 def load_messages(request, receiver):
     if request.method == 'POST':
@@ -204,7 +221,8 @@ def load_messages(request, receiver):
         if room:
             receiver = User.objects.get(username=receiver_user)
             public_keys = room.get_public_keys(receiver, device_id)
-            public_key = PublicKey.get_latest_public_key(user=user, room=room, device_id=UserDevice.get_device_by_id(device_id))
+            public_key = PublicKey.get_latest_public_key(user=user, room=room,
+                                                         device_id=UserDevice.get_device_by_id(device_id))
             if generate_keys or not public_key:
                 generate_keys = True
                 if public_key:
@@ -233,15 +251,14 @@ def load_messages(request, receiver):
                 thread = threading.Thread(target=update_message_status, args=(receiver_user, user.username))
                 thread.start()
 
-
-            PublicKey.delete_unused_public_keys(user, room, device_id)
         else:
             messages = []
             public_keys = None
             private_keys = None
         messages = json.dumps(messages, cls=DjangoJSONEncoder)
-        return JsonResponse({'status': 'success', 'data': messages, 'generate_keys': generate_keys, 'keys': {'public_keys': public_keys,
-                                                                             'private_keys': private_keys}})
+        return JsonResponse(
+            {'status': 'success', 'data': messages, 'generate_keys': generate_keys, 'keys': {'public_keys': public_keys,
+                                                                                             'private_keys': private_keys}})
     else:
         return JsonResponse({'status': 'error', 'message': 'Invalid request'})
 
@@ -407,7 +424,8 @@ def send_friend_request(request):
             existing_request = FriendRequest.objects.filter(sender=request.user, receiver=friend_user)
             if existing_request.exists():
                 existing_request.delete()
-                return JsonResponse({'status': 'success', 'request_status': False, 'room': generate_room_id(request.user.username, username)})
+                return JsonResponse({'status': 'success', 'request_status': False,
+                                     'room': generate_room_id(request.user.username, username)})
             else:
                 return JsonResponse({'status': 'error', 'message': 'Request does not exist'})
         else:
@@ -449,7 +467,7 @@ def send_friend_request(request):
             key_bundle = SenderKeyBundle(
                 ik_public_key=ik_public_key_bytes,
                 ek_public_key=ek_public_key_bytes,
-                DHratchet= dhratchet_public_key_bytes,
+                DHratchet=dhratchet_public_key_bytes,
                 isNew=True,
             )
             friend_request.set_key_bundle(key_bundle=key_bundle)
@@ -490,7 +508,8 @@ def send_friend_request(request):
                 'version': 1
             }
 
-            return JsonResponse({'status': 'success', 'request_status': True, 'private_keys': private_keys, 'room': generate_room_id(request.user.username, username)})
+            return JsonResponse({'status': 'success', 'request_status': True, 'private_keys': private_keys,
+                                 'room': generate_room_id(request.user.username, username)})
 
     return JsonResponse({'status': 'error', 'message': 'Invalid request method'}, status=405)
 
@@ -600,7 +619,8 @@ def accept_friend_request(request):
             'version': 1
         }
 
-        return JsonResponse({'status': 'success', 'message': 'Friend request accepted', 'private_keys': private_keys, 'room': generate_room_id(request.user.username, username)})
+        return JsonResponse({'status': 'success', 'message': 'Friend request accepted', 'private_keys': private_keys,
+                             'room': generate_room_id(request.user.username, username)})
 
     return JsonResponse({'status': 'error', 'message': 'Invalid request method'}, status=405)
 
@@ -776,6 +796,24 @@ def update_profile_info(request):
 
     else:
         return JsonResponse({'error': 'Invalid request'})
+
+
+@login_required
+def logout_device(request):
+    if request.method == 'POST':
+        data = json.loads(request.body)
+        device_id = data.get('device_id')
+        device = UserDevice.get_device_by_id(device_id)
+
+        if request.user.is_authenticated and device.user is not None:
+            if device.user == request.user:
+                device.delete()
+                if request.COOKIES.get('device_id') == device_id:
+                    logout(request)
+                return JsonResponse({'status': 'success', 'message': 'Logout successful'})
+        return JsonResponse({'status': 'error', 'message': 'Unauthorized'})
+    else:
+        return JsonResponse({'status': 'error', 'message': 'Invalid request'})
 
 
 def upload_image(request):

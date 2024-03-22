@@ -26,7 +26,7 @@ class UserDeviceAdmin(admin.ModelAdmin):
 
 
 class RoomAdmin(admin.ModelAdmin):
-    list_display = ('room', 'sender_username', 'receiver_username', 'sender_channel', 'receiver_channel')
+    list_display = ('room', 'sender_username', 'receiver_username', 'sender_message_status', 'receiver_message_status')
 
 
 class FriendRequestAdmin(admin.ModelAdmin):

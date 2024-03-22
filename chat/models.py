@@ -7,7 +7,6 @@ import threading
 import uuid
 
 from channels.db import database_sync_to_async
-from cloudinary.api import delete_resources
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
@@ -18,7 +17,8 @@ from django.dispatch import Signal
 from django.utils.timesince import timesince
 from django.utils.timezone import now
 
-from main.Utils import send_message_to_device, send_pusher_update, get_image_public_id, cloudinary_image_delete
+from main.Utils import send_message_to_device, send_pusher_update, cloudinary_image_delete
+from main.models import UserProfile
 
 
 class UserDevice(models.Model):
@@ -40,6 +40,9 @@ class UserDevice(models.Model):
 
     def __str__(self):
         return f"{self.user.username} - {self.identifier}"
+
+    def get_id_str(self):
+        return str(self.identifier)
 
     def last_login(self):
         if not self.login_time:
@@ -88,13 +91,46 @@ class UserDevice(models.Model):
                 if device.device_public_key:
                     public_key = PublicKey.format_key(device.device_public_key)
 
-                    # Add the device ID and public key to the dictionary
                     public_keys_dict[device_id] = public_key
                 else:
                     continue
 
             return public_keys_dict
         return None
+
+    @staticmethod
+    def has_reached_device_limit(user):
+        return UserDevice.objects.filter(user=user).count() >= user.userprofile.max_devices
+
+    @staticmethod
+    def create_user_device(user, request):
+        if UserDevice.has_reached_device_limit(user):
+            return None
+        user_agent = request.META.get('HTTP_USER_AGENT', '')
+        if 'Chrome' in user_agent:
+            name = 'Chrome'
+        elif 'Firefox' in user_agent:
+            name = 'Firefox'
+        elif 'Safari' in user_agent:
+            name = 'Safari'
+        elif 'Edge' in user_agent:
+            name = 'Edge'
+        elif 'Opera' in user_agent:
+            name = 'Opera'
+        else:
+            name = 'Unknown'
+
+        user_ip = request.META.get('HTTP_X_FORWARDED_FOR')
+        if user_ip:
+            user_ip = user_ip.split(',')[0].strip()
+        else:
+            user_ip = request.META.get('REMOTE_ADDR')
+
+        new_device_id = str(uuid.uuid4())
+        device = UserDevice.objects.create(user=user, identifier=new_device_id,
+                                  device_type=UserDevice.WEB, name=name,
+                                  ip_address=user_ip)
+        return device
 
 
 class SenderKeyBundle:
@@ -178,8 +214,8 @@ def create_room(sender_username, receiver_username, sender_device_id, sender_key
 
 class Room(models.Model):
     room = models.CharField(max_length=128, unique=True)
-    sender_channel = models.CharField(max_length=255, blank=True, null=True)
-    receiver_channel = models.CharField(max_length=255, blank=True, null=True)
+    sender_message_status = models.SmallIntegerField(default=-1)
+    receiver_message_status = models.CharField(max_length=255, blank=True, null=True)
     sender_username = models.CharField(max_length=128, default=None)
     receiver_username = models.CharField(max_length=128, default=None)
 
@@ -321,6 +357,10 @@ class PublicKey(models.Model):
     def __str__(self):
         return f'{self.user} - PublicKey - v{self.version}'
 
+    def save(self, *args, **kwargs):
+        self.delete_unused_public_keys(self.user, self.room, self.device_identifier.identifier)
+        super().save(*args, **kwargs)
+
     @classmethod
     def create_key(cls, bundle, user, device_identifier, room):
         device_identifier = UserDevice.get_device_by_id(device_identifier)
@@ -341,6 +381,12 @@ class PublicKey(models.Model):
             room=room,
             version=version
         )
+        message = {
+            'type': 'update_device_status',
+            'device_id': str(device_identifier.identifier),
+            'room': room.room,
+        }
+        new_signal_message.send(sender=user.username, receiver_username=None, message=message)
         return public_key
 
     @classmethod

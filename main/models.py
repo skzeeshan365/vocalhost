@@ -15,6 +15,8 @@ class UserProfile(models.Model):
     image = models.ImageField(default=None, upload_to='profile_pics/')
     auto_save = models.BooleanField(default=False)
 
+    max_devices = models.IntegerField(validators=[MaxValueValidator(10)], default=1)
+
     def save(self, *args, **kwargs):
         if not self.api:
             # Generate a unique API key if it doesn't exist

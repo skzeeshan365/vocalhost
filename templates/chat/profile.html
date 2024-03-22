@@ -117,53 +117,59 @@
             max-width: 300px;
             box-sizing: border-box;
         }
-        
+
         .device-list {
-    margin-top: 20px;
-}
+            margin-top: 5px;
+        }
 
-.device-item {
-    display: flex;
-    align-items: center;
-    margin-bottom: 10px;
-    padding: 8px;
-    border-left: 1px solid #ffffff;
-    border-right: 1px solid #ffffff;
-}
+        .device-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+            padding: 8px;
+            border-left: 1px solid #989898;
+            border-right: 1px solid #989898;
+        }
 
-.device-icon {
-    margin-right: 10px;
-    color: white; /* Set icon color to white */
-}
+        .device-icon {
+            margin-right: 10px;
+            color: white; /* Set icon color to white */
+        }
 
-.device-info {
-    color: white; /* Set text color to white */
-}
+        .device-info {
+            color: white; /* Set text color to white */
+        }
 
-.device-info h3 {
-    margin: 0;
-    font-size: 16px;
-}
+        .device-info h3 {
+            margin: 0;
+            font-size: 16px;
+        }
 
-.device-info p {
-    margin: 5px 0;
-    font-size: 14px;
-}
-.delete-button {
-    margin-left: auto;
-}
-.delete-button button {
-    background-color: #494949; /* Red background color */
-    color: white; /* White text color */
-    border: none; /* Remove default button border */
-    padding: 5px 10px; /* Add padding to the button */
-    cursor: pointer; /* Show pointer cursor on hover */
-    transition: background-color 0.3s ease; /* Smooth transition for background color change */
-}
+        .device-info p {
+            margin: 5px 0;
+            font-size: 14px;
+        }
 
-.delete-button button:hover {
-    background-color: #282828; /* Darker red background color on hover */
-}
+        .delete-button {
+            margin-left: auto;
+        }
+
+        .delete-button button {
+            background-color: #151515; /* Red background color */
+            color: #d9d9d9; /* White text color */
+            border: none; /* Remove default button border */
+            padding: 5px 10px; /* Add padding to the button */
+            cursor: pointer; /* Show pointer cursor on hover */
+            transition: background-color 0.3s ease; /* Smooth transition for background color change */
+        }
+
+        .delete-button button:hover {
+            background-color: #282828; /* Darker red background color on hover */
+        }
+        
+        .device_current {
+            background: #262626;
+        }
     </style>
 </head>
 <body>
@@ -287,35 +293,41 @@
                 <a onclick="generate_secondary_key()" class="wishlist-border pt-2">
                     <span class="wishlist">Reset master key</span>
                 </a>
-
+                <a class="wishlist-border pt-2" style="margin-bottom: unset;">
+                    <span class="wishlist">My devices</span>
                 {% if user_devices %}
-    <div class="device-list">
-        {% for device in user_devices %}
-            <div class="device-item">
-                <div class="device-icon">
-                    {% if device.device_type == 'android' %}
-                        <i class="fab fa-android"></i>
-                    {% elif device.device_type == 'ios' %}
-                        <i class="fab fa-apple"></i>
-                    {% elif device.device_type == 'web' %}
-                        <i class="fas fa-desktop"></i>
-                    {% endif %}
-                </div>
-                <div class="device-info">
-                    <h3>{{ device.user.username }}'s {{ device.get_device_type_display }}</h3>
-                    <p style="margin-bottom: -5px;">IP: {{ device.ip_address }}</p>
-                    <p style="margin-top: -4px; margin-bottom: -4px;">Last seen: {{ device.last_login }}</p>
-                </div>
-                <div class="delete-button">
-                    <button onclick="deleteDevice('{{ device.id }}')">Logout</button>
-                </div>
-            </div>
-        {% endfor %}
-    </div>
-{% else %}
-    <p>No devices found.</p>
-{% endif %}
-
+                    <div class="device-list">
+                        {% for device in user_devices %}
+                            <div class="device-item {% if device.get_id_str == request.COOKIES.device_id %}
+                            device_current{% endif %}" id="device-{{ device.identifier }}">
+                                <div class="device-icon">
+                                    {% if device.device_type == 'android' %}
+                                        <i class="fab fa-android"></i>
+                                    {% elif device.device_type == 'ios' %}
+                                        <i class="fab fa-apple"></i>
+                                    {% elif device.device_type == 'web' %}
+                                        <i class="fas fa-desktop"></i>
+                                    {% endif %}
+                                </div>
+                                <div class="device-info">
+                                    <h3 style="display: flex; align-items: center;">{{ device.name }}{% if device.get_id_str == request.COOKIES.device_id %}<small style="color: #b4b4b4; margin-left: 5px;"> current</small>{% endif %}</h3>
+                                    <p style="margin-bottom: -5px;">IP: {{ device.ip_address }}</p>
+                                    <p style="margin-top: -4px; margin-bottom: -4px;">Last
+                                        seen: {{ device.last_login }}</p>
+                                </div>
+                                <div class="delete-button">
+                                    <button onclick="logout_device('{{ device.identifier }}')">
+                                        Logout
+                                    </button>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <p>No devices found.</p>
+                {% endif %}
+                <small style="color: #ff0000;">Maximum device limit reached</small>
+                </a>
             {% endif %}
         </div>
         <div id="save_message_loader" style="margin-top: 20px; display: none;"
@@ -720,6 +732,33 @@
             success: function (response) {
                 if (response.status === 'success') {
                     saveSecondaryKey(response.private_key);
+                } else {
+                    console.error('Error loading messages:', response.error);
+                }
+                saveMessageLoader.style.display = 'none';
+            },
+            error: function (error) {
+                console.error('Error loading messages:', error);
+                saveMessageLoader.style.display = 'none';
+            }
+        });
+    }
+
+    function logout_device(device_id) {
+        saveMessageLoader.style.display = 'block';
+        $.ajax({
+            type: 'POST',
+            url: '{% url "logout_device" %}',
+            dataType: 'json',
+            data: JSON.stringify({
+                device_id: device_id
+            }),
+            success: function (response) {
+                if (response.status === 'success') {
+                    let deviceElement = document.getElementById('device-' + device_id);
+                    if (deviceElement) {
+                        deviceElement.remove();
+                    }
                 } else {
                     console.error('Error loading messages:', response.error);
                 }

@@ -126,14 +126,17 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     async def listen_for_signal_messages(self):
         async def forward_signal_messages(sender, receiver_username, message, **kwargs):
-            if receiver_username == self.sender_username:
-                await self.send(text_data=json.dumps(message, cls=DjangoJSONEncoder))
-
+            if receiver_username:
+                if receiver_username == self.sender_username:
+                    await self.send(text_data=json.dumps(message, cls=DjangoJSONEncoder))
+            elif sender == self.receiver_username:
+                await self.channel_layer.group_send(
+                    f'{self.room.room}_{self.sender_username}',
+                    message
+                )
         new_signal_message.connect(forward_signal_messages)
 
     async def disconnect(self, close_code):
-        if self.room:
-            await self.set_room_user_status_db(self.sender_username)
         await self.channel_layer.group_send(
             'chat',
             {
@@ -427,6 +430,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         instances = []
 
         for device_id, data in sent_messages.items():
+            print(device_id)
             cipher = data.get('cipher')
             aes = data.get('Aes')
 
@@ -586,8 +590,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
         }))
 
     async def initialize_receiver(self, receiver_username):
-        if self.room and receiver_username:
-            await self.set_room_user_status_db(self.sender_username, None)
         if receiver_username:
             self.room = await get_room_db(self.sender_username, receiver_username)
             self.receiver_username = receiver_username
@@ -595,7 +597,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
             self.receiver = await self.get_user(receiver_username)
 
             if self.room is not None:
-                await self.set_room_user_status_db(self.sender_username, self.channel_name)
                 await self.channel_layer.group_add(
                     'chat',
                     self.channel_name
@@ -665,10 +666,12 @@ class ChatConsumer(AsyncWebsocketConsumer):
         if status:
             if device_id and self.room and self.device_id and self.get_room_device_status_realtime(
                     self.receiver_username, device_id):
+                public_keys = await self.get_device_public_keys(self.room, self.receiver, device_id, self.device_id)
                 await self.send(text_data=json.dumps({
                     'type': 'device_online',
                     'device_id': device_id,
                     'room': self.room.room,
+                    'public_keys': public_keys,
                     'active_device_ids': self.get_room_devices_realtime(self.receiver_username)
                 }))
         else:
@@ -877,11 +880,11 @@ class ChatConsumer(AsyncWebsocketConsumer):
             return []
 
     @database_sync_to_async
-    def get_room_user_status_db(self, username):
+    def get_room_user_message_status(self, username):
         if self.room.sender_username == username:
-            return self.room.sender_channel
+            return self.room.sender_message_status
         elif self.room.receiver_username == username:
-            return self.room.receiver_channel
+            return self.room.receiver_message_status
 
     @database_sync_to_async
     def set_user_status(self, username, status):
@@ -892,18 +895,14 @@ class ChatConsumer(AsyncWebsocketConsumer):
         user_profile.save()
 
     @database_sync_to_async
-    def set_room_user_status_db(self, username=None, channel=None):
-        # if channel is None:
-        #     thread = threading.Thread(target=self.delete_messages_data,
-        #                               args=(self.receiver_username, self.sender_username, self.room, self.sender))
-        #     thread.start()
+    def set_room_user_message_status(self, username=None, status=-1):
         try:
             room = Room.objects.get(room=self.room.room)
             if self.room.sender_username == username:
-                room.sender_channel = channel
+                room.sender_message_status = status
                 room.save()
             elif self.room.receiver_username == username:
-                room.receiver_channel = channel
+                room.receiver_message_status = status
                 room.save()
             self.room = room
         except Room.DoesNotExist:

@@ -27,4 +27,5 @@ urlpatterns = [
     path('request/send/', views.send_friend_request, name='send_friend_request'),
     path('request/accept/', views.accept_friend_request, name='accept_friend_request'),
 
+    path('device/logout/', views.logout_device, name='logout_device'),
 ]

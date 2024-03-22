@@ -4,6 +4,7 @@ import hashlib
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec, rsa
+from django.utils import timezone
 from jwcrypto import jwk
 
 from chat.models import SenderKeyBundle, ReceiverKeyBundle, PublicKey, ChildMessage, UserDevice, SentMessage
@@ -271,3 +272,7 @@ def get_ip(request):
     if user_ip:
         return user_ip
     return None
+
+
+def get_current_time():
+    return timezone.now()

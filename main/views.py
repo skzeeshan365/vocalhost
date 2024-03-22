@@ -11,6 +11,7 @@ from django.dispatch import receiver
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render, redirect, get_object_or_404, resolve_url
 
+from chat.models import UserDevice
 from main import forms
 from main.consumers import MyWebSocketConsumer
 # Create your views here.
@@ -156,20 +157,22 @@ def login_view(request):
             username_or_email = form.cleaned_data['username_or_email']
             password = form.cleaned_data['password']
 
-            # Authenticate using either username or email
             user = authenticate(request, username=username_or_email, password=password)
             if user is None:
                 user = authenticate(request, email=username_or_email, password=password)
 
             if user is not None:
                 login(request, user)
-                # Redirect to the previous page or profile if 'next' is not present
                 next_page = request.POST.get('next', 'profile')
 
-                # Ensure 'next_page' is a relative URL
                 next_page = resolve_url(next_page)
                 response = redirect(next_page)
-                return response
+                device_id = UserDevice.create_user_device(user, request)
+                if device_id:
+                    response.set_cookie('device_id', str(device_id.identifier), max_age=365 * 24 * 60 * 60)
+                    return response
+                else:
+                    return redirect('chat_profile', user.username)
             else:
                 form.add_error(None, 'Invalid username/email or password.')
     else:
