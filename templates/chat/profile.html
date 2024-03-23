@@ -51,6 +51,9 @@
     <!-- Favicon -->
 
     <style>
+        body {
+            overflow: auto;
+        }
         #imageInput {
             display: none;
         }
@@ -183,6 +186,8 @@
 <div class="container content justify-content-center mt-5" id="content">
     <div class="container">
         <div class="card">
+        <div id="save_message_loader" style="margin-top: 20px; display: none; position: absolute; top: -5px; right: 20px;"
+             class="reverse-spinner"></div>
             <div class="top-container">
                 {% if request.user.username == username %}
                     {% if profile_pic %}
@@ -281,15 +286,6 @@
                     <span class="wishlist">Remove friend</span>
                 </a>
             {% else %}
-                <a class="wishlist-border pt-2">
-                    <span class="wishlist">Save message</span>
-                    <div class="custom-control custom-checkbox d-flex justify-content-between align-items-center">
-                        <input type="checkbox" class="custom-control-input" id="storeCheckbox"
-                               {% if auto_save %}checked{% endif %}>
-                        <label style="color:#fff0ff;" class="custom-control-label" for="storeCheckbox">Auto save my
-                            messages</label>
-                    </div>
-                </a>
                 <a onclick="generate_secondary_key()" class="wishlist-border pt-2">
                     <span class="wishlist">Reset master key</span>
                 </a>
@@ -326,12 +322,12 @@
                 {% else %}
                     <p>No devices found.</p>
                 {% endif %}
+                {% if device_limit %}
                 <small style="color: #ff0000;">Maximum device limit reached</small>
+                    {% endif %}
                 </a>
             {% endif %}
         </div>
-        <div id="save_message_loader" style="margin-top: 20px; display: none;"
-             class="reverse-spinner"></div>
     </div>
 </div>
 
@@ -700,7 +696,6 @@
                 device_id: device_id
             }),
             success: function (response) {
-                console.log(response);
                 if (response.status === 'success') {
                     if (response.private_keys.type === 0) {
                         saveKeys_sender(response.room, response.private_keys.version, response.private_keys.ik_private_key, response.private_keys.ek_private_key, response.private_keys.dhratchet_private_key);

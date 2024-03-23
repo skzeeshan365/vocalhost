@@ -1,8 +1,6 @@
-import hashlib
 import json
 import threading
 import time
-import uuid
 from datetime import datetime, timezone, timedelta
 
 from cloudinary import uploader
@@ -24,10 +22,11 @@ from jwcrypto import jwk
 from ReiserX_Tunnel import settings
 from chat.models import Message, Room, get_connected_users, new_signal_message, FriendRequest, SenderKeyBundle, \
     ReceiverKeyBundle, PublicKey, UserDevice, ChildMessage
-from chat.utils import format_key, generate_sender_keys, generate_receiver_keys, generate_room_id, \
-    process_messages, clear_temp_messages, generate_key_pair, get_browser_name, get_ip, get_current_time
+from chat.utils import format_key, generate_sender_keys, generate_receiver_keys, \
+    process_messages, clear_temp_messages, generate_key_pair, get_ip
 from main.Utils import send_pusher_update
 from main.forms import ImageUploadForm
+from main.models import UserProfile
 
 
 @login_required(login_url='/account/login/')
@@ -44,7 +43,7 @@ def chat_box(request):
     room_messages_info = []
 
     for other_user in users:
-        room = Room.getRoom(user.username, other_user.username)
+        room = Room.getRoom(user, other_user)
         if room is None:
             continue
 
@@ -207,19 +206,16 @@ def update_message_status(receiver_user, username):
 def load_messages(request, receiver):
     if request.method == 'POST':
         user = request.user
-        receiver_user = receiver
+        receiver_username = receiver
 
         data = json.loads(request.body)
         generate_keys = data.get('generate_keys')
         device_id = data.get('device_id')
 
-        combined_usernames_set = frozenset([user.username, receiver_user])
-        sorted_usernames = sorted(combined_usernames_set)
-
-        room = hashlib.sha256(str(sorted_usernames).encode()).hexdigest()
-        room = Room.objects.filter(room=room).first()
+        receiver = UserProfile.get_user_by_username(receiver_username)
+        room = Room.getRoom(user, receiver)
         if room:
-            receiver = User.objects.get(username=receiver_user)
+            receiver = User.objects.get(username=receiver_username)
             public_keys = room.get_public_keys(receiver, device_id)
             public_key = PublicKey.get_latest_public_key(user=user, room=room,
                                                          device_id=UserDevice.get_device_by_id(device_id))
@@ -231,7 +227,7 @@ def load_messages(request, receiver):
                     else:
                         private_keys = generate_receiver_keys(room, user, device_id)
                 else:
-                    if room.get_user_type(user.username) == 'Sender':
+                    if room.get_user_type(user) == 'Sender':
                         private_keys = generate_sender_keys(room, user, device_id)
                     else:
                         private_keys = generate_receiver_keys(room, user, device_id)
@@ -248,7 +244,7 @@ def load_messages(request, receiver):
                     message['public_key'] = format_key(message['public_key'])
 
             if messages_db.exists():
-                thread = threading.Thread(target=update_message_status, args=(receiver_user, user.username))
+                thread = threading.Thread(target=update_message_status, args=(receiver_username, user.username))
                 thread.start()
 
         else:
@@ -271,13 +267,16 @@ def process_temp_messages(request):
         device_id = data.get('device_id')
         receiver_username = data.get('receiver_username')
 
-        room = generate_room_id(user.username, receiver_username)
-        room = Room.objects.filter(room=room).first()
-        if room:
-            messages_db = Message.objects.filter(room=room)
+        receiver = UserProfile.get_user_by_username(receiver_username)
+        if receiver:
+            room = Room.getRoom(user, receiver)
+            if room:
+                messages_db = Message.objects.filter(room=room)
 
-            clear_temp_messages(messages_db, device_id)
-            return JsonResponse({'status': 'success'})
+                clear_temp_messages(messages_db, device_id)
+                return JsonResponse({'status': 'success'})
+            else:
+                return JsonResponse({'status': 'error'})
         else:
             return JsonResponse({'status': 'error'})
     else:
@@ -292,13 +291,16 @@ def get_user_public_keys(request):
         device_id = data.get('device_id')
         receiver_username = data.get('receiver_username')
 
-        room = generate_room_id(user.username, receiver_username)
-        room = Room.objects.filter(room=room).first()
-        if room:
-            receiver = User.objects.get(username=receiver_username)
-            public_keys = room.get_public_keys(receiver, device_id)
+        receiver = UserProfile.get_user_by_username(receiver_username)
+        if receiver:
+            room = Room.getRoom(user, receiver)
+            if room:
+                receiver = User.objects.get(username=receiver_username)
+                public_keys = room.get_public_keys(receiver, device_id)
 
-            return JsonResponse({'status': 'success', 'public_keys': public_keys})
+                return JsonResponse({'status': 'success', 'public_keys': public_keys})
+            else:
+                return JsonResponse({'status': 'error'})
         else:
             return JsonResponse({'status': 'error'})
     else:
@@ -314,13 +316,16 @@ def get_device_public_keys(request):
         receiver_device_id = data.get('receiver_device_id')
         receiver_username = data.get('receiver_username')
 
-        room = generate_room_id(user.username, receiver_username)
-        room = Room.objects.filter(room=room).first()
-        if room:
-            receiver = User.objects.get(username=receiver_username)
-            public_keys = room.get_public_key(receiver, receiver_device_id, device_id)
+        receiver = UserProfile.get_user_by_username(receiver_username)
+        if receiver:
+            room = Room.getRoom(user, receiver)
+            if room:
+                receiver = User.objects.get(username=receiver_username)
+                public_keys = room.get_public_key(receiver, receiver_device_id, device_id)
 
-            return JsonResponse({'status': 'success', 'public_keys': public_keys})
+                return JsonResponse({'status': 'success', 'public_keys': public_keys})
+            else:
+                return JsonResponse({'status': 'error'})
         else:
             return JsonResponse({'status': 'error'})
     else:
@@ -330,13 +335,9 @@ def get_device_public_keys(request):
 @login_required(login_url='/account/login/')
 def delete_messages(request, receiver):
     user = request.user
-    receiver_user = receiver
-    combined_usernames_set = frozenset([user.username, receiver_user])
-    sorted_usernames = sorted(combined_usernames_set)
-
-    room = hashlib.sha256(str(sorted_usernames).encode()).hexdigest()
-    room = Room.objects.filter(room=room).first()
-
+    receiver_username = receiver
+    receiver = UserProfile.get_user_by_username(receiver_username)
+    room = Room.getRoom(user, receiver)
     if room:
         room.delete_all_messages()
     return redirect('chat', chat_box_name=receiver)
@@ -380,7 +381,7 @@ def add_chat(request):
     users_with_no_requests = []
 
     for other_user in users:
-        room = Room.getRoom(user.username, other_user.username)
+        room = Room.getRoom(user, other_user)
         if room:
             continue
 
@@ -425,7 +426,7 @@ def send_friend_request(request):
             if existing_request.exists():
                 existing_request.delete()
                 return JsonResponse({'status': 'success', 'request_status': False,
-                                     'room': generate_room_id(request.user.username, username)})
+                                     'room': Room.generate_room_id(request.user, friend_user)})
             else:
                 return JsonResponse({'status': 'error', 'message': 'Request does not exist'})
         else:
@@ -509,7 +510,7 @@ def send_friend_request(request):
             }
 
             return JsonResponse({'status': 'success', 'request_status': True, 'private_keys': private_keys,
-                                 'room': generate_room_id(request.user.username, username)})
+                                 'room': Room.generate_room_id(request.user, friend_user)})
 
     return JsonResponse({'status': 'error', 'message': 'Invalid request method'}, status=405)
 
@@ -520,7 +521,6 @@ def accept_friend_request(request):
         username = request.POST.get('username')
         device_id = request.POST.get('device_id')
 
-        # Check if the user with the specified username exists
         try:
             friend_user = User.objects.get(username=username)
         except User.DoesNotExist:
@@ -556,11 +556,8 @@ def accept_friend_request(request):
             format=serialization.PublicFormat.SubjectPublicKeyInfo
         )
 
-        try:
-            device_id = UserDevice.objects.get(identifier=device_id)
-            friend_request.receiver_device_id = device_id
-        except UserDevice.DoesNotExist:
-            pass
+        device_id = UserDevice.get_device_by_id(device_id)
+        friend_request.receiver_device_id = device_id
 
         friend_request.status = FriendRequest.ACCEPTED
 
@@ -620,7 +617,7 @@ def accept_friend_request(request):
         }
 
         return JsonResponse({'status': 'success', 'message': 'Friend request accepted', 'private_keys': private_keys,
-                             'room': generate_room_id(request.user.username, username)})
+                             'room': Room.generate_room_id(request.user, friend_user)})
 
     return JsonResponse({'status': 'error', 'message': 'Invalid request method'}, status=405)
 
@@ -632,10 +629,11 @@ def generate_ratchet_keys(request):
         device_id = data.get('device_id')
         receiver_username = data.get('receiver_username')
 
-        room = Room.getRoom(request.user.username, receiver_username)
+        receiver = UserProfile.get_user_by_username(receiver_username)
+        room = Room.getRoom(request.user, receiver)
         user = request.user
         if room:
-            if room.get_user_type(user.username) == 'Sender':
+            if room.get_user_type(user) == 'Sender':
                 private_keys = generate_sender_keys(room, user, device_id)
             else:
                 private_keys = generate_receiver_keys(room, user, device_id)
@@ -651,14 +649,12 @@ def clear_chat(request):
         data = json.loads(request.body)
         username = data.get('username')
         if user is not None and username is not None:
-            try:
-                room = Room.getRoom(user.username, username)
-                if room:
-                    room.clear_chat()
-                    return JsonResponse({'success': True})
-                else:
-                    return JsonResponse({'error': 'Failed to clear chat'})
-            except Room.DoesNotExist:
+            receiver = UserProfile.get_user_by_username(username)
+            room = Room.getRoom(user.username, receiver)
+            if room:
+                room.clear_chat()
+                return JsonResponse({'success': True})
+            else:
                 return JsonResponse({'error': 'Failed to clear chat'})
         return JsonResponse({'error': 'Failed to clear chat'})
     else:
@@ -671,23 +667,21 @@ def remove_chat(request):
         data = json.loads(request.body)
         username = data.get('username')
         if user is not None and username is not None:
-            try:
-                room = Room.getRoom(user.username, username)
-                if room:
-                    room.delete()
-                    message_data = {
-                        'type': 'remove_friend',
-                        'username': user.username,
-                    }
-                    if get_connected_users().get(username):
-                        new_signal_message.send(sender=user.username, receiver_username=username,
-                                                message=message_data)
-                    else:
-                        send_pusher_update(message_data=message_data, receiver_username=username)
-                    return JsonResponse({'success': True})
+            receiver = UserProfile.get_user_by_username(username)
+            room = Room.getRoom(user.username, receiver)
+            if room:
+                room.delete()
+                message_data = {
+                    'type': 'remove_friend',
+                    'username': user.username,
+                }
+                if get_connected_users().get(username):
+                    new_signal_message.send(sender=user.username, receiver_username=username,
+                                            message=message_data)
                 else:
-                    return JsonResponse({'error': 'Failed to remove chat'})
-            except Room.DoesNotExist:
+                    send_pusher_update(message_data=message_data, receiver_username=username)
+                return JsonResponse({'success': True})
+            else:
                 return JsonResponse({'error': 'Failed to remove chat'})
         return JsonResponse({'error': 'Failed to remove chat'})
     else:
@@ -714,11 +708,12 @@ def chat_profile(request, username):
                                                          'user': user.pk,
                                                          'auto_save': user.userprofile.auto_save,
                                                          'pusher': settings.PUSHER_KEY,
-                                                         'user_devices': user.user_device.all()})
+                                                         'user_devices': sorted(user.user_device.all(), key=lambda device: device.login_time, reverse=True),
+                                                         'device_limit': UserDevice.has_reached_device_limit(user)})
         else:
             user = User.objects.get(username=username)
             if user:
-                room = Room.getRoom(request.user.username, username)
+                room = Room.getRoom(request.user, user)
                 count = Message.objects.filter(room=room, saved=True).count()
                 messages = Message.objects.filter(room=room, saved=True).order_by('-timestamp')[:4]
                 form = ImageUploadForm()

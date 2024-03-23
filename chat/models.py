@@ -102,6 +102,9 @@ class UserDevice(models.Model):
     def has_reached_device_limit(user):
         return UserDevice.objects.filter(user=user).count() >= user.userprofile.max_devices
 
+    def has_reached_device_limit_self(self):
+        return UserDevice.objects.filter(user=self.user).count() >= self.user.userprofile.max_devices
+
     @staticmethod
     def create_user_device(user, request):
         if UserDevice.has_reached_device_limit(user):
@@ -128,8 +131,8 @@ class UserDevice(models.Model):
 
         new_device_id = str(uuid.uuid4())
         device = UserDevice.objects.create(user=user, identifier=new_device_id,
-                                  device_type=UserDevice.WEB, name=name,
-                                  ip_address=user_ip)
+                                           device_type=UserDevice.WEB, name=name,
+                                           ip_address=user_ip)
         return device
 
 
@@ -188,42 +191,43 @@ class ReceiverKeyBundle:
         return pickle.loads(data)
 
 
-def create_room(sender_username, receiver_username, sender_device_id, sender_key_bundle, receiver_key_bundle,
-                receiver_device_id):
-    combined_usernames_set = frozenset([sender_username, receiver_username])
-    sorted_usernames = sorted(combined_usernames_set)
-
-    try:
-        sender = User.objects.get(username=sender_username)
-        receiver = User.objects.get(username=receiver_username)
-
-        room_identifier = hashlib.sha256(str(sorted_usernames).encode()).hexdigest()
-        room = Room(
-            room=room_identifier,
-            sender_username=sender_username,
-            receiver_username=receiver_username
-        )
-        room.save()
-
-        PublicKey.create_key(bundle=sender_key_bundle, user=sender, room=room, device_identifier=sender_device_id)
-        PublicKey.create_key(bundle=receiver_key_bundle, user=receiver, room=room, device_identifier=receiver_device_id)
-        return room.room
-    except User.DoesNotExist:
-        return None
-
-
 class Room(models.Model):
     room = models.CharField(max_length=128, unique=True)
     sender_message_status = models.SmallIntegerField(default=-1)
-    receiver_message_status = models.CharField(max_length=255, blank=True, null=True)
-    sender_username = models.CharField(max_length=128, default=None)
-    receiver_username = models.CharField(max_length=128, default=None)
+    receiver_message_status = models.SmallIntegerField(default=-1)
+    sender = models.ForeignKey(User, on_delete=models.CASCADE, related_name='sender_room')
+    receiver = models.ForeignKey(User, on_delete=models.CASCADE, related_name='receiver_room')
 
     def __str__(self):
         return f'{self.room[:30]}'
 
-    def get_user_type(self, username):
-        if username == self.sender_username:
+    @staticmethod
+    def generate_room_id(sender, receiver):
+        if sender is not None and receiver is not None:
+            sorted_usernames = sorted([sender.userprofile.UUID, receiver.userprofile.UUID])
+            return hashlib.sha256(str(sorted_usernames).encode()).hexdigest()
+        else:
+            return None
+
+    @staticmethod
+    def create_room(sender, receiver, sender_device_id, sender_key_bundle, receiver_key_bundle,
+                    receiver_device_id):
+
+        room_identifier = Room.generate_room_id(sender, receiver)
+        room = Room(
+            room=room_identifier,
+            sender=sender,
+            receiver=receiver
+        )
+        room.save()
+
+        PublicKey.create_key(bundle=sender_key_bundle, user=sender, room=room, device_identifier=sender_device_id.identifier)
+        PublicKey.create_key(bundle=receiver_key_bundle, user=receiver, room=room,
+                             device_identifier=receiver_device_id.identifier)
+        return room.room
+
+    def get_user_type(self, user):
+        if user == self.sender:
             return 'Sender'
         else:
             return 'Receiver'
@@ -242,24 +246,11 @@ class Room(models.Model):
         last_message = Message.objects.filter(room=self).order_by('-timestamp').first()
         return last_message if last_message else None
 
-    def get_ratchet_keys(self, user):
-        public_keys = {}
-        device_identifiers = UserDevice.objects.filter(user=user).values_list('identifier', flat=True)
-
-        for device_identifier in device_identifiers:
-            try:
-                device_id = UserDevice.objects.get(identifier=device_identifier)
-                public_key = PublicKey.get_latest_public_key(user=user, room=self, device_id=device_id)
-                public_keys[str(device_identifier)] = PublicKey.format_key(public_key.get_ratchet_key())
-            except PublicKey.DoesNotExist:
-                public_keys[str(device_identifier)] = None
-        return public_keys
-
     @staticmethod
     def get_ratchet_key(device_id, public_key):
         device_id = UserDevice.get_device_by_id(device_id=device_id)
         if device_id:
-            ratchet_key = RatchetPublicKey.get_ratchet_public_key(device_id=device_id, public_keys=public_key)
+            ratchet_key = public_key.ratchet_key
             if ratchet_key:
                 return PublicKey.format_key(ratchet_key)
             else:
@@ -290,7 +281,7 @@ class Room(models.Model):
                 device_id = UserDevice.objects.get(identifier=device_identifier)
                 if str(device_identifier) in active_devices or ChildMessage.get_child_messages_exists(device_id.id,
                                                                                                       UserDevice.get_device_by_id(
-                                                                                                              user_device_id)):
+                                                                                                          user_device_id)):
                     public_key = PublicKey.get_latest_public_key(user=user, room=self, device_id=device_id)
                     if public_key:
                         key_bundle = public_key.get_bundle_key()
@@ -320,19 +311,28 @@ class Room(models.Model):
 
     def get_active_devices(self, username):
         user = connected_users.get(username)
-        if user and user.get('room') == self.room:
-            devices_in_room = [device_id for device_id in user['devices'].keys()]
+        if user and self.room:
+            devices_in_room = [device_id for device_id, device_info in user['devices'].items() if
+                               device_info.get('room') == self.room]
             return devices_in_room
         else:
             return []
 
     @staticmethod
-    def getRoom(sender_username, receiver_username):
+    def getRoom(sender, receiver):
         try:
-            combined_usernames_set = frozenset([sender_username, receiver_username])
-            sorted_usernames = sorted(combined_usernames_set)
+            room = Room.generate_room_id(sender, receiver)
+            print(room)
+            room = Room.objects.get(room=room)
+            return room if room else None
+        except Room.DoesNotExist:
+            return None
 
-            room = hashlib.sha256(str(sorted_usernames).encode()).hexdigest()
+    @staticmethod
+    @database_sync_to_async
+    def get_room_async(sender, receiver):
+        try:
+            room = Room.generate_room_id(sender, receiver)
             return Room.objects.get(room=room)
         except Room.DoesNotExist:
             return None
@@ -348,6 +348,7 @@ class PublicKey(models.Model):
 
     key_type = models.IntegerField(choices=KEY_TYPE_CHOICES)
     key_bundle = models.BinaryField()
+    ratchet_key = models.BinaryField(null=True, blank=True, default=None)
     version = models.PositiveIntegerField(default=1)
 
     user = models.ForeignKey(User, on_delete=models.CASCADE)
@@ -365,14 +366,19 @@ class PublicKey(models.Model):
     def create_key(cls, bundle, user, device_identifier, room):
         device_identifier = UserDevice.get_device_by_id(device_identifier)
         max_version = \
-        cls.objects.filter(user=user, device_identifier=device_identifier, room=room).aggregate(Max('version'))[
-            'version__max']
+            cls.objects.filter(user=user, device_identifier=device_identifier, room=room).aggregate(Max('version'))[
+                'version__max']
         version = max_version + 1 if max_version is not None else 1
         if bundle.get_type() == 'Sender':
             choice = cls.SENDER
         else:
             choice = cls.RECEIVER
         key_bundle = pickle.dumps(bundle)
+        key = {
+            'public_keys': PublicKey.format_keys(bundle.get_keys()),
+            'ratchet_public_key': PublicKey.format_key(bundle.DHratchet),
+            'version': version
+        }
         public_key = cls.objects.create(
             key_type=choice,
             key_bundle=key_bundle,
@@ -382,9 +388,10 @@ class PublicKey(models.Model):
             version=version
         )
         message = {
-            'type': 'update_device_status',
+            'type': 'device_public_key_change',
             'device_id': str(device_identifier.identifier),
             'room': room.room,
+            'public_keys': key
         }
         new_signal_message.send(sender=user.username, receiver_username=None, message=message)
         return public_key
@@ -395,7 +402,6 @@ class PublicKey(models.Model):
         try:
             public_key = PublicKey.get_latest_public_key(user, room, device_id)
             public_key.key_bundle = pickle.dumps(bundle)
-            RatchetPublicKey.objects.filter(public_keys=public_key).delete()
             public_key.save()
         except PublicKey.DoesNotExist:
             cls.create_key(bundle, user, device_id, room)
@@ -467,6 +473,36 @@ class PublicKey(models.Model):
             )
 
             public_keys_to_delete.delete()
+
+    @staticmethod
+    def load_ratchet_key(ratchet_key):
+        try:
+            decoded_key_bytes = base64.urlsafe_b64decode(ratchet_key)
+            decoded_key_str = decoded_key_bytes.decode('utf-8')
+
+            # Deserialize JWK string
+            jwk = json.loads(decoded_key_str)
+
+            x_bytes = base64.urlsafe_b64decode(jwk['x'] + '==')
+            y_bytes = base64.urlsafe_b64decode(jwk['y'] + '==')
+
+            # Use the elliptic curve public key method
+            public_key = ec.EllipticCurvePublicNumbers(
+                x=int.from_bytes(x_bytes, 'big'),
+                y=int.from_bytes(y_bytes, 'big'),
+                curve=ec.SECP256R1()  # Adjust the curve as needed
+            ).public_key(default_backend())
+
+            # Get the public key in bytes (DER format)
+            public_key_bytes = public_key.public_bytes(
+                encoding=serialization.Encoding.DER,
+                format=serialization.PublicFormat.SubjectPublicKeyInfo
+            )
+
+            return public_key_bytes
+        except binascii.Error as e:
+            print(f"Error decoding Base64: {e}")
+            return None
 
 
 new_signal_message = Signal()
@@ -676,7 +712,7 @@ class SentMessage(models.Model):
             return None
 
 
-def update_request(type, room, sender, receiver, title, message, accept=False):
+def update_request(type, room, sender, receiver, title, message, accept=False, device_id=None):
     if accept:
         if get_connected_users().get(receiver.username):
             message_data = {
@@ -693,14 +729,14 @@ def update_request(type, room, sender, receiver, title, message, accept=False):
                 'username': sender.username,
             }
             send_pusher_update(message_data=message_data, receiver_username=receiver.username)
-            send_message_to_device(receiver, title=title, message=message)
+            # send_message_to_device(receiver, title=title, message=message)
     else:
         message_data = {
             'type': type,
             'username': sender.username,
         }
         send_pusher_update(message_data=message_data, receiver_username=receiver.username)
-        send_message_to_device(receiver, title=title, message=message)
+        # send_message_to_device(receiver, title=title, message=message, device_id=device_id)
 
 
 class FriendRequest(models.Model):
@@ -731,8 +767,8 @@ class FriendRequest(models.Model):
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
         if self.status == self.ACCEPTED:
-            room = create_room(sender_username=self.sender.username,
-                               receiver_username=self.receiver.username,
+            room = Room.create_room(sender=self.sender,
+                               receiver=self.receiver,
                                sender_device_id=self.sender_device_id,
                                sender_key_bundle=self.get_key_bundle(),
                                receiver_key_bundle=self.get_receiver_key_bundle(),
@@ -747,6 +783,7 @@ class FriendRequest(models.Model):
         elif self.status == self.PENDING:
             thread = threading.Thread(target=update_request, args=(
                 'friend_request_added',
+                None,
                 self.sender,
                 self.receiver,
                 'New friend request',
@@ -767,84 +804,26 @@ class FriendRequest(models.Model):
         return pickle.loads(self.receiver_key_bundle) if self.receiver_key_bundle else None
 
 
-class RatchetPublicKey(models.Model):
-    dhRatchet_key = models.BinaryField(default=None, null=True, blank=True)
-    device_id = models.ForeignKey(UserDevice, on_delete=models.CASCADE, related_name='device_id')
-    public_keys = models.ForeignKey(PublicKey, on_delete=models.CASCADE, related_name='public_keys')
-
-    def __str__(self):
-        return f'{self.device_id}'
-
-    @staticmethod
-    def get_ratchet_key(device_id, public_keys):
-        try:
-            ratchet_key = RatchetPublicKey.objects.get(device_id=device_id, public_keys=public_keys)
-            return ratchet_key
-        except RatchetPublicKey.DoesNotExist:
-            return None
-
-    @staticmethod
-    def get_ratchet_public_key(device_id, public_keys):
-        try:
-            ratchet_key = RatchetPublicKey.objects.get(device_id=device_id, public_keys=public_keys)
-            return ratchet_key.dhRatchet_key
-        except RatchetPublicKey.DoesNotExist:
-            return None
-
-    def set_ratchet_key(self, ratchet_key):
-        try:
-            decoded_key_bytes = base64.urlsafe_b64decode(ratchet_key)
-            decoded_key_str = decoded_key_bytes.decode('utf-8')
-
-            # Deserialize JWK string
-            jwk = json.loads(decoded_key_str)
-
-            x_bytes = base64.urlsafe_b64decode(jwk['x'] + '==')
-            y_bytes = base64.urlsafe_b64decode(jwk['y'] + '==')
-
-            # Use the elliptic curve public key method
-            public_key = ec.EllipticCurvePublicNumbers(
-                x=int.from_bytes(x_bytes, 'big'),
-                y=int.from_bytes(y_bytes, 'big'),
-                curve=ec.SECP256R1()  # Adjust the curve as needed
-            ).public_key(default_backend())
-
-            # Get the public key in bytes (DER format)
-            public_key_bytes = public_key.public_bytes(
-                encoding=serialization.Encoding.DER,
-                format=serialization.PublicFormat.SubjectPublicKeyInfo
-            )
-
-            self.dhRatchet_key = public_key_bytes
-        except binascii.Error as e:
-            print(f"Error decoding Base64: {e}")
-
-    @staticmethod
-    def load_ratchet_key(ratchet_key):
-        try:
-            decoded_key_bytes = base64.urlsafe_b64decode(ratchet_key)
-            decoded_key_str = decoded_key_bytes.decode('utf-8')
-
-            # Deserialize JWK string
-            jwk = json.loads(decoded_key_str)
-
-            x_bytes = base64.urlsafe_b64decode(jwk['x'] + '==')
-            y_bytes = base64.urlsafe_b64decode(jwk['y'] + '==')
-
-            # Use the elliptic curve public key method
-            public_key = ec.EllipticCurvePublicNumbers(
-                x=int.from_bytes(x_bytes, 'big'),
-                y=int.from_bytes(y_bytes, 'big'),
-                curve=ec.SECP256R1()  # Adjust the curve as needed
-            ).public_key(default_backend())
-
-            # Get the public key in bytes (DER format)
-            public_key_bytes = public_key.public_bytes(
-                encoding=serialization.Encoding.DER,
-                format=serialization.PublicFormat.SubjectPublicKeyInfo
-            )
-
-            return public_key_bytes
-        except binascii.Error as e:
-            print(f"Error decoding Base64: {e}")
-            return None
+# class RatchetPublicKey(models.Model):
+#     dhRatchet_key = models.BinaryField(default=None, null=True, blank=True)
+#     device_id = models.ForeignKey(UserDevice, on_delete=models.CASCADE, related_name='device_id')
+#     public_keys = models.ForeignKey(PublicKey, on_delete=models.CASCADE, related_name='public_keys')
+#
+#     def __str__(self):
+#         return f'{self.device_id}'
+#
+#     @staticmethod
+#     def get_ratchet_key(device_id, public_keys):
+#         try:
+#             ratchet_key = RatchetPublicKey.objects.get(device_id=device_id, public_keys=public_keys)
+#             return ratchet_key
+#         except RatchetPublicKey.DoesNotExist:
+#             return None
+#
+#     @staticmethod
+#     def get_ratchet_public_key(device_id, public_keys):
+#         try:
+#             ratchet_key = RatchetPublicKey.objects.get(device_id=device_id, public_keys=public_keys)
+#             return ratchet_key.dhRatchet_key
+#         except RatchetPublicKey.DoesNotExist:
+#             return None

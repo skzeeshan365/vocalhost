@@ -1,5 +1,4 @@
 import base64
-import hashlib
 
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
@@ -167,12 +166,6 @@ def generate_receiver_keys(room, user, device_id):
         'version': public_key_object.version
     }
     return private_keys
-
-
-def generate_room_id(sender_username, receiver_username):
-    combined_usernames_set = frozenset([sender_username, receiver_username])
-    sorted_usernames = sorted(combined_usernames_set)
-    return hashlib.sha256(str(sorted_usernames).encode()).hexdigest()
 
 
 def process_messages(messages, user, room, device_id):

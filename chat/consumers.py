@@ -1,5 +1,4 @@
-import hashlib
-import hashlib
+import json
 import json
 import threading
 import time
@@ -12,32 +11,14 @@ from cloudinary.api import delete_resources
 from django.contrib.auth.models import User
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import transaction
-from django.db.models import Exists, OuterRef, Max
 
 from ReiserX_Tunnel import settings
 from ReiserX_Tunnel.AuthBackend import CustomAuthBackend
-from chat.models import Room, Message, new_signal_message, connected_users, PublicKey, UserDevice, \
-    RatchetPublicKey, ChildMessage, SentMessage
+from chat.models import Room, Message, new_signal_message, connected_users, PublicKey, UserDevice, ChildMessage, \
+    SentMessage
 from main import Utils
 from main.Utils import cloudinary_image_delete, cloudinary_image_upload, get_image_public_id, send_message_to_device
 from main.models import UserProfile
-
-
-@database_sync_to_async
-def get_room_db(sender_username, receiver_username):
-    # Ensure that the users are sorted before creating the room identifier
-    combined_usernames_set = frozenset([sender_username, receiver_username])
-    sorted_usernames = sorted(combined_usernames_set)
-
-    room_identifier = hashlib.sha256(str(sorted_usernames).encode()).hexdigest()
-
-    try:
-        room = Room.objects.get(
-            room=room_identifier,
-        )
-        return room
-    except Room.DoesNotExist:
-        return None
 
 
 class ChatConsumer(AsyncWebsocketConsumer):
@@ -130,10 +111,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 if receiver_username == self.sender_username:
                     await self.send(text_data=json.dumps(message, cls=DjangoJSONEncoder))
             elif sender == self.receiver_username:
-                await self.channel_layer.group_send(
-                    f'{self.room.room}_{self.sender_username}',
-                    message
-                )
+                await self.send(text_data=json.dumps(message))
         new_signal_message.connect(forward_signal_messages)
 
     async def disconnect(self, close_code):
@@ -157,7 +135,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
         if self.sender_username in connected_users:
             if self.device_id in connected_users[self.sender_username]['devices']:
                 del connected_users[self.sender_username]['devices'][self.device_id]
-                connected_users[self.sender_username]['room'] = None
         raise StopConsumer
 
     async def receive(self, text_data=None, bytes_data=None):
@@ -430,7 +407,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
         instances = []
 
         for device_id, data in sent_messages.items():
-            print(device_id)
             cipher = data.get('cipher')
             aes = data.get('Aes')
 
@@ -591,10 +567,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     async def initialize_receiver(self, receiver_username):
         if receiver_username:
-            self.room = await get_room_db(self.sender_username, receiver_username)
-            self.receiver_username = receiver_username
-
             self.receiver = await self.get_user(receiver_username)
+            self.room = await Room.get_room_async(self.sender, self.receiver)
+            self.receiver_username = receiver_username
 
             if self.room is not None:
                 await self.channel_layer.group_add(
@@ -634,16 +609,14 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     )
                 if self.sender_username in connected_users:
                     connected_users[self.sender_username]['room'] = self.room.room
-                else:
-                    # If the user doesn't exist, create a new entry
-                    connected_users[self.sender_username] = {
-                        'room': self.room.room,
-                        'devices': {
-                            self.device_id: {
-                                'channel_name': self.channel_name
-                            }
-                        }
-                    }
+                if not connected_users[self.sender_username]['devices']:
+                    connected_users[self.sender_username]['devices'] = {}
+                if not connected_users[self.sender_username]['devices'][self.device_id]:
+                    connected_users[self.sender_username]['devices'][self.device_id] = {}
+                connected_users[self.sender_username]['devices'][self.device_id] = {
+                            'channel_name': self.channel_name,
+                            'room': self.room.room
+                }
             else:
                 await self.close()
         else:
@@ -663,10 +636,12 @@ class ChatConsumer(AsyncWebsocketConsumer):
     async def update_device_status(self, event):
         device_id = event.get('device_id', None)
         status = event.get('status', False)
+        public_keys = event.get('public_keys')
         if status:
             if device_id and self.room and self.device_id and self.get_room_device_status_realtime(
                     self.receiver_username, device_id):
-                public_keys = await self.get_device_public_keys(self.room, self.receiver, device_id, self.device_id)
+                if not public_keys:
+                    public_keys = await self.get_device_public_keys(self.room, self.receiver, device_id, self.device_id)
                 await self.send(text_data=json.dumps({
                     'type': 'device_online',
                     'device_id': device_id,
@@ -780,7 +755,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         if cipher or bytes_cipher:
             device_id = UserDevice.get_device_by_id(device_id)
             sender_device_id = UserDevice.get_device_by_id(self.device_id)
-            public_key = RatchetPublicKey.load_ratchet_key(public_key)
+            public_key = PublicKey.load_ratchet_key(public_key)
             ChildMessage.create_child_message(public_key=public_key, key_version=key_version,
                                               sender_device_id=sender_device_id, receiver_device_id=device_id,
                                               message=base_message, cipher=cipher, bytes_cipher=bytes_cipher)
@@ -866,15 +841,17 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     def get_room_device_status_realtime(self, username, device_id):
         user = connected_users.get(username)
-        if user and self.room and user.get('room') == self.room.room and user['devices'].get(device_id):
-            return True
-        else:
-            return False
+        if user and self.room:
+            device_info = user['devices'].get(device_id)
+            if device_info and device_info.get('room') == self.room.room:
+                return True
+        return False
 
     def get_room_devices_realtime(self, username):
         user = connected_users.get(username)
-        if user and self.room and user.get('room') == self.room.room:
-            devices_in_room = [device_id for device_id in user['devices'].keys()]
+        if user and self.room:
+            devices_in_room = [device_id for device_id, device_info in user['devices'].items() if
+                               device_info.get('room') == self.room.room]
             return devices_in_room
         else:
             return []
@@ -911,18 +888,11 @@ class ChatConsumer(AsyncWebsocketConsumer):
     @database_sync_to_async
     def update_public_key_db(self, user=None, ratchet_public_key=None, device_id=None):
         if self.room and ratchet_public_key:
-            device_id = UserDevice.objects.get(identifier=device_id)
             public_key = PublicKey.get_latest_public_key(user=user, room=self.room,
                                                          device_id=UserDevice.get_device_by_id(self.device_id))
             if public_key:
-                ratchet_key = RatchetPublicKey.get_ratchet_key(device_id=device_id, public_keys=public_key)
-                if ratchet_key:
-                    ratchet_key.set_ratchet_key(ratchet_public_key)
-                    ratchet_key.save()
-                else:
-                    ratchet_public_key = RatchetPublicKey.load_ratchet_key(ratchet_public_key)
-                    RatchetPublicKey.objects.create(device_id=device_id, public_keys=public_key,
-                                                    dhRatchet_key=ratchet_public_key)
+                public_key.ratchet_key = PublicKey.load_ratchet_key(ratchet_public_key)
+                public_key.save()
 
     @staticmethod
     def get_channel_name(username):

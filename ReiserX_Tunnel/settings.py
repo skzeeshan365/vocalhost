@@ -123,6 +123,9 @@ STATICFILES_DIRS = [
 ]
 STATIC_ROOT = os.path.join(BASE_DIR, 'assets')
 
+if DEBUG:
+    STATICFILES_STORAGE = 'django.contrib.staticfiles.storage.StaticFilesStorage'
+
 DEFAULT_FROM_EMAIL = "support@reiserx.com"
 SENDGRID_API_KEY = os.getenv('SENDGRID_API_KEY')
 

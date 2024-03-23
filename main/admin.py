@@ -4,7 +4,7 @@ from django.contrib.auth.admin import UserAdmin
 from django.contrib.auth.models import User
 
 from main.models import Client, UserProfile
-from chat.models import Room, Message, FriendRequest, UserDevice, PublicKey, RatchetPublicKey, ChildMessage, SentMessage
+from chat.models import Room, Message, FriendRequest, UserDevice, PublicKey, ChildMessage, SentMessage
 
 
 class UserProfileInline(admin.StackedInline):
@@ -26,7 +26,7 @@ class UserDeviceAdmin(admin.ModelAdmin):
 
 
 class RoomAdmin(admin.ModelAdmin):
-    list_display = ('room', 'sender_username', 'receiver_username', 'sender_message_status', 'receiver_message_status')
+    list_display = ('room', 'sender', 'receiver', 'sender_message_status', 'receiver_message_status')
 
 
 class FriendRequestAdmin(admin.ModelAdmin):
@@ -35,7 +35,7 @@ class FriendRequestAdmin(admin.ModelAdmin):
 
 
 class PublicKeyAdmin(admin.ModelAdmin):
-    list_display = ('version', 'user', 'key_type', 'device_identifier', 'room')
+    list_display = ('version', 'user', 'key_type', 'device_identifier', 'room', 'ratchet_key_overview')
     list_display_links = ('version',)
     list_filter = ('version', 'user', 'key_type', 'device_identifier', 'room')
 
@@ -51,10 +51,10 @@ class PublicKeyAdmin(admin.ModelAdmin):
         }),
     )
 
-
-class RatchetPublicKeyAdmin(admin.ModelAdmin):
-    list_display = ('device_id', 'public_keys')
-    list_display_links = ('device_id', 'public_keys')
+    def ratchet_key_overview(self, obj):
+        if obj.ratchet_key:
+            return obj.ratchet_key[:20]  # Display first 30 characters of device_public_key
+        return '-'
 
 
 class ChildMessageAdmin(admin.ModelAdmin):
@@ -101,4 +101,3 @@ admin.site.register(SentMessage, SentMessageAdmin)
 admin.site.register(FriendRequest, FriendRequestAdmin)
 admin.site.register(UserDevice, UserDeviceAdmin)
 admin.site.register(PublicKey, PublicKeyAdmin)
-admin.site.register(RatchetPublicKey, RatchetPublicKeyAdmin)

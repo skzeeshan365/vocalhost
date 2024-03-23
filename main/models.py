@@ -15,7 +15,8 @@ class UserProfile(models.Model):
     image = models.ImageField(default=None, upload_to='profile_pics/')
     auto_save = models.BooleanField(default=False)
 
-    max_devices = models.IntegerField(validators=[MaxValueValidator(10)], default=1)
+    max_devices = models.IntegerField(validators=[MaxValueValidator(10)], default=4)
+    UUID = models.UUIDField(default=uuid.uuid4, editable=False)
 
     def save(self, *args, **kwargs):
         if not self.api:
@@ -60,6 +61,13 @@ class UserProfile(models.Model):
     # Connect the user profile creation to the User model's post_save signal
     from django.db.models.signals import post_save
     post_save.connect(create_user_profile, sender=User)
+
+    @staticmethod
+    def get_user_by_username(username):
+        try:
+            return User.objects.get(username=username)
+        except User.DoesNotExist:
+            return None
 
 
 class Client(models.Model):

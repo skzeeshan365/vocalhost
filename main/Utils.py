@@ -25,12 +25,6 @@ def send_email(subject, message, to_email):
         pass
 
 
-def get_sender_receiver(sender_username, receiver_username):
-    combined_usernames_set = frozenset([sender_username, receiver_username])
-    sorted_usernames = sorted(combined_usernames_set)
-    return sorted_usernames[0], sorted_usernames[1]
-
-
 def send_message_to_device(user, title, message, device_id):
     try:
         device = FCMDevice.objects.get(user=user, device_id=device_id)
