@@ -900,22 +900,6 @@ async function decryptASYM_Image_Message(cipher_bytes, cipher_text, aes_key) {
 }
 
 // Section: Save keys
-function getLatestVersionInRoom(room) {
-    let roomData = JSON.parse(localStorage.getItem('ratchet')) || {};
-    let latestVersion = null;
-
-    if (roomData[room]) {
-        // Get all versions for the specified room
-        let versions = Object.keys(roomData[room]).filter(key => !isNaN(key));
-
-        if (versions.length > 0) {
-            // Find the highest version number
-            latestVersion = Math.max(...versions);
-        }
-    }
-
-    return latestVersion;
-}
 function saveKeys_sender(room, version_int, ik_private_key, ek_private_key, dhratchet_private_key) {
     let roomData = JSON.parse(localStorage.getItem('ratchet')) || {};
 
@@ -1082,7 +1066,8 @@ function getDHRatchetKey(room, device_id, sk) {
     }
 
     if (ratchetData[room][device_id][sk].dhratchet_key) {
-        return ratchetData[room][device_id][sk].dhratchet_key;
+        // return ratchetData[room][device_id][sk].dhratchet_key;
+        return ratchetData[room].private_keys.dhratchet_key;
     } else if (ratchetData[room].private_keys.dhratchet_key) {
         return ratchetData[room].private_keys.dhratchet_key;
     } else {

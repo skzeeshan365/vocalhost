@@ -908,6 +908,13 @@ document.addEventListener('DOMContentLoaded', function () {
             }
         }, 500);
     });
+
+    let text = document.getElementById('feature_message');
+    if (text) {
+        text.textContent = display_feature_message();
+    }
+
+    generate_room_private_keys();
 });
 
 
@@ -1137,7 +1144,7 @@ function initialize_socket() {
                         }
                     } else {
                         if (encryption_instance[data.device_id]) {
-                            delete encryption_instance[data.device_id]
+                            delete encryption_instance[data.device_id];
                             if (Object.keys(encryption_instance).length === 0) {
                                 get_user_public_keys(getActivePerson(), getActiveRoom());
                             }
@@ -1877,21 +1884,23 @@ async function import_public_keys(keys) {
 
 async function initialize_keys(room, publicKeysInfo) {
     let roomData = getKeysByRoom(getActiveRoom());
-    for (const device_id in publicKeysInfo) {
-        if (publicKeysInfo.hasOwnProperty(device_id)) {
-            const keysInfo = publicKeysInfo[device_id];
+    if (roomData) {
+        for (const device_id in publicKeysInfo) {
+            if (publicKeysInfo.hasOwnProperty(device_id)) {
+                const keysInfo = publicKeysInfo[device_id];
 
-            let encryptionInstance;
-            if (roomData.type === 'sender') {
-                encryptionInstance = new Alice(room, device_id, keysInfo.version);
-            } else if (roomData.type === 'receiver') {
-                encryptionInstance = new Bob(room, device_id, keysInfo.version);
+                let encryptionInstance;
+                if (roomData.type === 'sender') {
+                    encryptionInstance = new Alice(room, device_id, keysInfo.version);
+                } else if (roomData.type === 'receiver') {
+                    encryptionInstance = new Bob(room, device_id, keysInfo.version);
+                }
+                await encryptionInstance.retrieveAndImportKeys();
+                await encryptionInstance.x3dh(keysInfo.public_keys);
+                await encryptionInstance.initRatchets();
+                await encryptionInstance.setReceiverKey(keysInfo.ratchet_public_key);
+                encryption_instance[device_id] = encryptionInstance;
             }
-            await encryptionInstance.retrieveAndImportKeys();
-            await encryptionInstance.x3dh(keysInfo.public_keys);
-            await encryptionInstance.initRatchets();
-            await encryptionInstance.setReceiverKey(keysInfo.ratchet_public_key);
-            encryption_instance[device_id] = encryptionInstance;
         }
     }
 }
@@ -1899,16 +1908,18 @@ async function initialize_keys(room, publicKeysInfo) {
 async function initialize_single_key(room, keysInfo, device_id) {
     let roomData = getKeysByRoom(getActiveRoom());
     let encryptionInstance;
-    if (roomData.type === 'sender') {
-        encryptionInstance = new Alice(room, device_id);
-    } else if (roomData.type === 'receiver') {
-        encryptionInstance = new Bob(room, device_id);
+    if (roomData) {
+        if (roomData.type === 'sender') {
+            encryptionInstance = new Alice(room, device_id);
+        } else if (roomData.type === 'receiver') {
+            encryptionInstance = new Bob(room, device_id);
+        }
+        await encryptionInstance.retrieveAndImportKeys();
+        await encryptionInstance.x3dh(keysInfo.public_keys);
+        await encryptionInstance.initRatchets();
+        await encryptionInstance.setReceiverKey(keysInfo.ratchet_public_key);
+        encryption_instance[device_id] = encryptionInstance;
     }
-    await encryptionInstance.retrieveAndImportKeys();
-    await encryptionInstance.x3dh(keysInfo.public_keys);
-    await encryptionInstance.initRatchets();
-    await encryptionInstance.setReceiverKey(keysInfo.ratchet_public_key);
-    encryption_instance[device_id] = encryptionInstance;
 }
 
 async function initialize_ratchet_encryption_temp(room, keysInfo, ratchet_key, device_id) {
@@ -2043,4 +2054,57 @@ async function encryptSentImageMessages(instances, messageId, image_bytes, messa
 
 async function decryptSentMessage(cipher, aes) {
     return await decryptASYM_Message(cipher, aes);
+}
+
+function display_feature_message() {
+    var randomMessages = [
+    "Your messages are super secure with end-to-end encryption, keeping your chats private.",
+    "Chat seamlessly on any device. Each operates independently, so you can log in and start chatting from anywhere.",
+    "No need to worry about connecting devices. Each one operates independently!",
+    "New devices joining the chat won't access past messages, ensuring privacy and security.",
+    "Exciting updates coming soon to enhance your chatting experience even more!"
+];
+
+    var randomIndex = Math.floor(Math.random() * randomMessages.length);
+
+    // Return the randomly selected message
+    return randomMessages[randomIndex];
+}
+
+function generate_room_private_keys() {
+    var userListItems = document.querySelectorAll('.people .person');
+    let device_id = getCookie('device_id');
+
+    // Iterate over each list item
+    userListItems.forEach(function(userListItem) {
+        let username = userListItem.getAttribute('data-chat');
+        var room = userListItem.getAttribute('data-room');
+        let roomData = getKeysByRoom(room);
+        if (!roomData || !roomData.private_keys || !roomData.version) {
+            $.ajax({
+            type: 'POST',
+            url: '/chat/get/private-keys/ratchet/',
+            dataType: 'json',
+            data: JSON.stringify({
+                receiver_username: username,
+                device_id: device_id
+            }),
+            success: function (response) {
+                if (response.status === 'success') {
+                    if (response.private_keys.type === 0) {
+                        saveKeys_sender(response.room, response.private_keys.version, response.private_keys.ik_private_key, response.private_keys.ek_private_key, response.private_keys.dhratchet_private_key);
+                    } else if (response.private_keys.type === 1) {
+                        saveKeys_receiver(response.room, response.private_keys.version, response.private_keys.ik_private_key, response.private_keys.spk_private_key, response.private_keys.opk_private_key, response.private_keys.dhratchet_private_key)
+                    }
+                } else {
+                    console.error('Error:', response.error);
+                }
+            },
+            error: function (error) {
+                console.error('Error:', error);
+            }
+        });
+        }
+
+    });
 }
