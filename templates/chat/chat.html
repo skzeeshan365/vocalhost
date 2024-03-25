@@ -71,7 +71,7 @@
         <div id="left_bar" class="col-lg-3 col-md-3 col-sm-3 left_bar">
             <!-- Icon in the top right corner -->
             <a href="{% url 'chat_profile' request.user.username %}" id="user_content"
-               style="elevation: 8deg; position: absolute; top: 4px; left: 2%; cursor: pointer; border-radius: 20px; background-color: #444444; overflow: hidden; height: 40px; padding: 5px 10px 5px 5px;display: flex; align-items: center;">
+               style="elevation: 8deg; position: absolute; top: 4px; left: 2%; cursor: pointer; border-radius: 50%; background-color: #444444; display: flex; align-items: center;">
 
                 {% if  request.user.userprofile.image %}
                     <img class="author-thumb" src="{{ request.user.userprofile.image.url }}"
@@ -79,11 +79,6 @@
                 {% else %}
                     <img class="author-thumb" src="{% static 'img/user.png' %}" alt="Profile picture">
                 {% endif %}
-
-                <p id="user_name"
-                   style="color:#fff0ff; margin-left: 8px; margin-bottom: unset; margin-top: unset; margin-right: unset;">
-                    <span id="user_status" style="font-size: 16px; color: #fff0ff;">{{ request.user.username }}</span>
-                </p>
             </a>
 
             <!-- Icon in the top right corner -->
@@ -188,8 +183,8 @@
             </div>
             <div class="container_image" id="container_image">
                 <img src="{% static 'img/img.png' %}" alt="Image" style="width: 75%; margin-top: 5%;">
+                <div id="feature_message" class="top" style="display: flex; align-items: center; justify-content: center; position: absolute; top: 10px; width: 100%;"></div>
                 <div class="bottom-left">Your messages are end-to-end encrypted,<br>ensuring no one, not even ReiserX, can read them.</div>
-                <div id="feature_message" class="top-right"></div>
             </div>
             <div id="header_content"
                  style="cursor: pointer; margin-top: 5px; padding: 5px 10px 15px 8px;border-radius: 20px; background-color: #1f1f1f; display: none; height: 40px">
@@ -311,12 +306,7 @@
 <script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
 <script src="https://js.pusher.com/8.2.0/pusher.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/3.1.9-1/crypto-js.js"></script>
-
-<script>
-
-  </script>
-
-
+<script src="https://cdn.jsdelivr.net/npm/msgpack-lite@0.1.26/dist/msgpack.min.js"></script>
 
 <!-- VARIABLE DEFINITION -->
 <script>
@@ -330,7 +320,11 @@
     const icon_received_fill = '{% static 'img/status_received.svg' %}'
     const token_status = {{ token_status|yesno:"true,false" }};
     const default_user_icon = "{% static 'img/user.png' %}";
+    {% if private_key %}
     const key = '{{ private_key }}';
+        {% else %}
+        const key = null;
+    {% endif %}
     {% if device_keys %}
     let device_public_keys = {{ device_keys }}
     {% endif %}

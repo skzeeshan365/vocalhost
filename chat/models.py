@@ -136,6 +136,30 @@ class UserDevice(models.Model):
         return device
 
 
+class UserSecure(models.Model):
+    AES = models.BinaryField(default=None, null=True, blank=True)
+    User = models.ForeignKey(User, on_delete=models.CASCADE)
+    Device = models.OneToOneField(UserDevice, on_delete=models.CASCADE)
+
+    @classmethod
+    def create_or_update(cls, user, device, aes_key):
+        # Check if a UserSecure object already exists for the given user and device
+        user_secure, created = cls.objects.get_or_create(User=user, Device=device)
+
+        # Update the AES key
+        user_secure.AES = aes_key
+        user_secure.save()
+
+        return user_secure
+
+    def update_aes_key(self, aes_key):
+        # Update the AES key
+        self.AES = aes_key
+        self.save()
+
+        return self
+
+
 class SenderKeyBundle:
     def __init__(self, ik_public_key, ek_public_key, DHratchet, isNew):
         self.ik_public_key = ik_public_key
@@ -322,7 +346,6 @@ class Room(models.Model):
     def getRoom(sender, receiver):
         try:
             room = Room.generate_room_id(sender, receiver)
-            print(room)
             room = Room.objects.get(room=room)
             return room if room else None
         except Room.DoesNotExist:
@@ -504,6 +527,21 @@ class PublicKey(models.Model):
             print(f"Error decoding Base64: {e}")
             return None
 
+    @staticmethod
+    def load_ratchet_key_raw(raw_key_bytes):
+        try:
+            public_key = ec.EllipticCurvePublicKey.from_encoded_point(ec.SECP256R1(), raw_key_bytes)
+
+            public_key_bytes = public_key.public_bytes(
+                encoding=serialization.Encoding.DER,
+                format=serialization.PublicFormat.SubjectPublicKeyInfo
+            )
+
+            return public_key_bytes
+        except Exception as e:
+            print(f"Error loading raw public key from base64: {e}")
+            return None
+
 
 new_signal_message = Signal()
 connected_users = {}
@@ -599,7 +637,7 @@ class Message(models.Model):
 
 
 class ChildMessage(models.Model):
-    cipher = models.TextField(null=True, blank=True)
+    cipher = models.BinaryField(null=True, blank=True)
     bytes_cipher = models.BinaryField(default=None, null=True, blank=True)
 
     public_key = models.BinaryField(default=None, null=True, blank=True)
@@ -692,10 +730,10 @@ class ChildMessage(models.Model):
 
 
 class SentMessage(models.Model):
-    cipher = models.TextField(null=True, blank=True)
+    cipher = models.BinaryField(null=True, blank=True)
     bytes_cipher = models.BinaryField(default=None, null=True, blank=True)
 
-    AES = models.TextField(null=True, blank=True)
+    AES = models.BinaryField(null=True, blank=True)
     device_id = models.ForeignKey(UserDevice, on_delete=models.CASCADE,
                                   related_name='sent_receiver_device_id',
                                   default=None, null=True, blank=True)

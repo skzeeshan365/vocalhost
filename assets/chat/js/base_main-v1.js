@@ -741,7 +741,7 @@ function get_user_private_keys_secondary() {
         }),
         success: function (response) {
             if (response.status === 'success') {
-                saveSecondaryKey(response.private_key);
+                saveSecondaryKey(response.private_key.key, response.private_key.token);
                 device_public_keys[device_id] = response.public_key;
                 (async () => {
                     await initialize_asymmetric_devices();
@@ -846,7 +846,9 @@ function resizeTextarea() {
 
 document.addEventListener('DOMContentLoaded', function () {
     initialize_socket();
-    saveSecondaryKey(key);
+    if (key && key !== '') {
+        saveSecondaryKey(key.key, key.token);
+    }
     if (!getSecondaryKey()) {
         get_user_private_keys_secondary();
     } else {

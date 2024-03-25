@@ -1,9 +1,11 @@
+import base64
 import json
 import json
 import threading
 import time
 from urllib.parse import parse_qs
 
+import msgpack
 from channels.db import database_sync_to_async
 from channels.exceptions import StopConsumer
 from channels.generic.websocket import AsyncWebsocketConsumer
@@ -135,10 +137,11 @@ class ChatConsumer(AsyncWebsocketConsumer):
         if self.sender_username in connected_users:
             if self.device_id in connected_users[self.sender_username]['devices']:
                 del connected_users[self.sender_username]['devices'][self.device_id]
+            if not connected_users[self.sender_username]['devices']:
+                connected_users[self.sender_username]['room'] = None
         raise StopConsumer
 
     async def receive(self, text_data=None, bytes_data=None):
-        channel_name = self.get_channel_name(self.receiver_username)
         channel_active = self.get_room_user_status_realtime(self.receiver_username)
 
         if text_data is not None:
@@ -157,6 +160,16 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 # Generate message_id
                 message_id = int(time.time() * 1000)
 
+                await self.send(
+                    text_data=json.dumps(
+                        {
+                            "type": 'message_sent',
+                            'message_id': message_id,
+                            'data_type': 'text'
+                        }
+                    )
+                )
+
                 data = json.loads(message)
                 for device_id, properties in data.items():
                     cipher = properties.get('cipher')
@@ -168,16 +181,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 sent_messages = text_data_json.get('sent_message')
                 if sent_messages:
                     await self.process_sent_messages(sent_messages, message_id, reply_id)
-
-                await self.send(
-                    text_data=json.dumps(
-                        {
-                            "type": 'message_sent',
-                            'message_id': message_id,
-                            'data_type': 'text'
-                        }
-                    )
-                )
 
 
             elif type == 'save_message':
@@ -259,107 +262,139 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     )
 
         if bytes_data:
-            json_end = bytes_data.index(b'}') + 1
-            json_data = bytes_data[:json_end].decode('utf-8')
-            data = json.loads(json_data)
-            type = data.get('type')
+            data = msgpack.unpackb(bytes_data)
+            await self.process_bytes_data(data)
+
+    async def process_bytes_data(self, data):
+        message_type = data.get('type')
+
+        if message_type == 0:
+            message = data.get('message')
+
+            reply_id = data.get('reply_id')
+
+            message_id = int(time.time() * 1000)
+
+            await self.send(
+                text_data=json.dumps(
+                    {
+                        "type": 'message_sent',
+                        'message_id': message_id,
+                        'data_type': 'text'
+                    }
+                )
+            )
+
+            for device_id, properties in message.items():
+                cipher = properties.get('cipher').data
+                public_key = properties.get('ratchet_key').data
+                key_version = properties.get('key_version')
+                await self.process_messages(device_id, public_key, key_version, cipher,
+                                            message_id, reply_id)
+
+            sent_messages = data.get('sent_message')
+            if sent_messages:
+                await self.process_sent_messages(sent_messages, message_id, reply_id)
+        elif message_type == 1:
             device_id = data.get('device_id')
-            image_data = bytes_data[json_end:]
+            channel_name = self.get_device_channel_name(self.receiver_username, device_id)
+            channel_active = self.get_room_device_status_realtime(self.receiver_username, device_id)
 
-            if type == 0:
-                channel_name = self.get_device_channel_name(self.receiver_username, device_id)
-                channel_active = self.get_room_device_status_realtime(self.receiver_username, device_id)
+            if data.get('message'):
+                text_message = data.get("message").data
+            else:
+                text_message = ''
+            public_key = data.get('public_key').data
+            key_version = data.get('key_version')
+            flag = data.get('flag')
 
-                text_message = data.get("message")
-                if text_message is None:
-                    text_message = ''
-                public_key = data.get('public_key')
-                key_version = data.get('key_version')
-                flag = data.get('flag')
+            message_id = data.get('message_id')
+            image_data = data.get('image_bytes').data
 
-                message_id = data.get('message_id')
-
-                # Extract binary image data
-                if channel_active:
-                    await self.channel_layer.send(
-                        channel_name,
+            # Extract binary image data
+            if channel_active:
+                await self.channel_layer.send(
+                    channel_name,
+                    {
+                        "type": "image_bytes_data",
+                        "message": text_message,
+                        "image_data": image_data,
+                        'message_id': message_id,
+                        "sender_username": self.sender_username,
+                        'public_key': public_key,
+                        'device_id': self.device_id,
+                    }
+                )
+            elif channel_name:
+                await self.channel_layer.send(
+                    channel_name,
+                    {
+                        'type': 'new_message_background',
+                        'timestamp': message_id,
+                        'sender_username': self.sender_username
+                    }
+                )
+                if text_message == '':
+                    text_message = None
+                await self.save_message_db_temp(device_id=device_id, cipher=text_message, bytes_cipher=image_data,
+                                                message_id=message_id,
+                                                public_key=public_key, key_version=key_version)
+            else:
+                if text_message == '':
+                    text_message = None
+                await self.save_message_db_temp(device_id=device_id, cipher=text_message, bytes_cipher=image_data,
+                                                message_id=message_id,
+                                                public_key=public_key, key_version=key_version)
+            if flag == 1:
+                await self.send(
+                    text_data=json.dumps(
                         {
-                            "type": "image_bytes_data",
-                            "message": text_message,
-                            "image_data": image_data,
+                            "type": 'message_sent',
                             'message_id': message_id,
-                            "sender_username": self.sender_username,
-                            'public_key': public_key,
-                            'device_id': self.device_id,
+                            'data_type': 'bytes'
                         }
                     )
-                elif channel_name:
+                )
+            await self.update_public_key_db(self.sender, public_key, device_id)
+        elif message_type == 2:
+            if data.get('message'):
+                cipher_text = data.get('message').data
+            else:
+                cipher_text = ''
+            AES = data.get('AES').data
+            message_id = data.get('message_id')
+            device_id = data.get('device_id')
+            image_data = data.get('image_bytes').data
+
+            if device_id != self.device_id:
+                channel_name = self.get_device_channel_name(self.sender_username, device_id)
+                if channel_name:
                     await self.channel_layer.send(
                         channel_name,
                         {
-                            'type': 'new_message_background',
-                            'timestamp': message_id,
-                            'sender_username': self.sender_username
+                            'type': 'chat_sent_bytes',
+                            'cipher': cipher_text,
+                            'bytes_cipher': image_data,
+                            'AES': AES,
+                            'room': self.room.room,
+                            'message_id': message_id,
                         }
                     )
-                    if text_message == '':
-                        text_message = None
-                    await self.save_message_db_temp(device_id=device_id, cipher=text_message, bytes_cipher=image_data,
-                                                    message_id=message_id,
-                                                    public_key=public_key, key_version=key_version)
-                else:
-                    if text_message == '':
-                        text_message = None
-                    await self.save_message_db_temp(device_id=device_id, cipher=text_message, bytes_cipher=image_data,
-                                                    message_id=message_id,
-                                                    public_key=public_key, key_version=key_version)
-                if flag == 1:
-                    await self.send(
-                        text_data=json.dumps(
-                            {
-                                "type": 'message_sent',
-                                'message_id': message_id,
-                                'data_type': 'bytes'
-                            }
-                        )
-                    )
-                await self.update_public_key_db(self.sender, public_key, device_id)
-            elif type == 1:
-                cipher_text = data.get('message')
-                if cipher_text is None:
-                    cipher_text = ''
-                AES = data.get('AES')
-                message_id = data.get('message_id')
 
-                if device_id != self.device_id:
-                    channel_name = self.get_device_channel_name(self.sender_username, device_id)
-                    if channel_name:
-                        await self.channel_layer.send(
-                            channel_name,
-                            {
-                                'type': 'chat_sent_bytes',
-                                'cipher': cipher_text,
-                                'bytes_cipher': image_data,
-                                'AES': AES,
-                                'room': self.room.room,
-                                'message_id': message_id,
-                            }
-                        )
-
-                base_message = await Message.get_message_by_id_async(message_id)
-                device = await UserDevice.get_device_by_id_async(device_id)
-                if not base_message and not self.get_room_user_status_realtime(self.receiver_username):
-                    base_message = await Message.create_message_from_id(
-                        message=None,
-                        room=self.room,
-                        sender=self.sender,
-                        receiver=self.receiver,
-                        message_id=message_id,
-                    )
-                if base_message:
-                    instance = SentMessage(cipher=cipher_text, bytes_cipher=image_data, AES=AES, device_id=device,
-                                           base_message=base_message)
-                    await self.save_sent_message_instance(instance)
+            base_message = await Message.get_message_by_id_async(message_id)
+            device = await UserDevice.get_device_by_id_async(device_id)
+            if not base_message and not self.get_room_user_status_realtime(self.receiver_username):
+                base_message = await Message.create_message_from_id(
+                    message=None,
+                    room=self.room,
+                    sender=self.sender,
+                    receiver=self.receiver,
+                    message_id=message_id,
+                )
+            if base_message:
+                instance = SentMessage(cipher=cipher_text, bytes_cipher=image_data, AES=AES, device_id=device,
+                                       base_message=base_message)
+                await self.save_sent_message_instance(instance)
 
     async def process_messages(self, device_id, public_key, key_version, message, message_id,
                                reply_id):
@@ -407,8 +442,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
         instances = []
 
         for device_id, data in sent_messages.items():
-            cipher = data.get('cipher')
-            aes = data.get('Aes')
+            cipher = data.get('cipher').data
+            aes = data.get('Aes').data
 
             if base_message:
                 device = await UserDevice.get_device_by_id_async(device_id)
@@ -442,18 +477,19 @@ class ChatConsumer(AsyncWebsocketConsumer):
         public_key = event.get('public_key')
         device_id = event.get('device_id', None)
 
-        await self.send(
-            text_data=json.dumps(
-                {
-                    "message": message,
-                    'message_id': message_id,
-                    'reply_id': reply_id,
-                    "sender_username": sender_username,
-                    'public_key': public_key,
-                    'device_id': device_id
-                }
-            )
-        )
+        data = {
+            'type': 0,
+            "message": message,
+            'message_id': message_id,
+            'reply_id': reply_id,
+            "sender_username": sender_username,
+            'public_key': public_key,
+            'device_id': device_id
+        }
+
+        packed_data = msgpack.packb(data)
+
+        await self.send(bytes_data=packed_data)
 
     async def chat_sent_message(self, event):
         message_id = event.get('message_id')
@@ -461,19 +497,18 @@ class ChatConsumer(AsyncWebsocketConsumer):
         cipher = event.get('cipher')
         AES = event.get('AES')
         room = event.get('room')
+        data = {
+            'type': 2,
+            'cipher': cipher,
+            'AES': AES,
+            'room': room,
+            'message_id': message_id,
+            'reply_id': reply_id,
+        }
 
-        await self.send(
-            text_data=json.dumps(
-                {
-                    'type': 'chat_sent_message',
-                    'cipher': cipher,
-                    'AES': AES,
-                    'room': room,
-                    'message_id': message_id,
-                    'reply_id': reply_id,
-                }
-            )
-        )
+        packed_data = msgpack.packb(data)
+
+        await self.send(bytes_data=packed_data)
 
     async def message_seen(self, event):
         message_id = event.get("message_id")
@@ -496,10 +531,19 @@ class ChatConsumer(AsyncWebsocketConsumer):
         public_key = event.get("public_key")
         device_id = event.get("device_id")
 
-        combined_data = f"{0}\n{message_id}\n{message}\n{sender_username}\n{public_key}\n{device_id}\n".encode(
-            'utf-8') + b'' + image_data
+        data = {
+            'type': 1,
+            'message_id': message_id,
+            'message': message,
+            'sender_username': sender_username,
+            'public_key': public_key,
+            'device_id': device_id,
+            'image_bytes': image_data
+        }
 
-        await self.send(bytes_data=combined_data)
+        packed_data = msgpack.packb(data)
+
+        await self.send(bytes_data=packed_data)
 
     async def chat_sent_bytes(self, event):
         message_id = event.get('message_id')
@@ -508,8 +552,18 @@ class ChatConsumer(AsyncWebsocketConsumer):
         AES = event.get('AES')
         room = event.get('room')
 
-        combined_data = f"{1}\n{message_id}\n{cipher}\n{AES}\n{room}\n".encode('utf-8') + b'' + bytes_cipher
-        await self.send(bytes_data=combined_data)
+        data = {
+            'type': 3,
+            'message_id': message_id,
+            'cipher': cipher,
+            'AES': AES,
+            'room': room,
+            'image_bytes': bytes_cipher
+        }
+
+        packed_data = msgpack.packb(data)
+
+        await self.send(bytes_data=packed_data)
 
     async def save_message(self, event):
         message_id = event['message_id']
@@ -755,7 +809,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         if cipher or bytes_cipher:
             device_id = UserDevice.get_device_by_id(device_id)
             sender_device_id = UserDevice.get_device_by_id(self.device_id)
-            public_key = PublicKey.load_ratchet_key(public_key)
+            public_key = PublicKey.load_ratchet_key_raw(public_key)
             ChildMessage.create_child_message(public_key=public_key, key_version=key_version,
                                               sender_device_id=sender_device_id, receiver_device_id=device_id,
                                               message=base_message, cipher=cipher, bytes_cipher=bytes_cipher)
@@ -891,7 +945,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             public_key = PublicKey.get_latest_public_key(user=user, room=self.room,
                                                          device_id=UserDevice.get_device_by_id(self.device_id))
             if public_key:
-                public_key.ratchet_key = PublicKey.load_ratchet_key(ratchet_public_key)
+                public_key.ratchet_key = PublicKey.load_ratchet_key_raw(ratchet_public_key)
                 public_key.save()
 
     @staticmethod

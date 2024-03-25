@@ -4,7 +4,7 @@ from django.contrib.auth.admin import UserAdmin
 from django.contrib.auth.models import User
 
 from main.models import Client, UserProfile
-from chat.models import Room, Message, FriendRequest, UserDevice, PublicKey, ChildMessage, SentMessage
+from chat.models import Room, Message, FriendRequest, UserDevice, PublicKey, ChildMessage, SentMessage, UserSecure
 
 
 class UserProfileInline(admin.StackedInline):
@@ -22,6 +22,15 @@ class UserDeviceAdmin(admin.ModelAdmin):
     def device_public_key_preview(self, obj):
         if obj.device_public_key:
             return obj.device_public_key[:30]  # Display first 30 characters of device_public_key
+        return '-'
+
+
+class UserSecureAdmin(admin.ModelAdmin):
+    list_display = ('User', 'Device', 'AES_preview')
+
+    def AES_preview(self, obj):
+        if obj.AES:
+            return obj.AES[:30]  # Display first 30 characters of device_public_key
         return '-'
 
 
@@ -100,4 +109,6 @@ admin.site.register(SentMessage, SentMessageAdmin)
 
 admin.site.register(FriendRequest, FriendRequestAdmin)
 admin.site.register(UserDevice, UserDeviceAdmin)
+admin.site.register(UserSecure, UserSecureAdmin)
+
 admin.site.register(PublicKey, PublicKeyAdmin)

@@ -18,6 +18,7 @@ urlpatterns = [
     path('get/device/public-keys/', views.get_device_public_keys, name='get_device_public_keys'),
     path('get/private-keys/secondary/', views.generate_secondary_key_pair, name='get_user_private_key_secondary'),
     path('get/private-keys/ratchet/', views.generate_ratchet_keys, name='get_user_private_key_ratchet'),
+    path('get/private-keys/token/', views.get_private_key_token, name='get_private_key_token'),
 
     path("push/register_device/", views.register_device, name='register_device'),
     path('add/chat/', views.add_chat, name='add_chat'),

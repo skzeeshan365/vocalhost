@@ -3,6 +3,7 @@ import threading
 import time
 from datetime import datetime, timezone, timedelta
 
+import msgpack
 from cloudinary import uploader
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
@@ -17,13 +18,12 @@ from django.shortcuts import render, redirect
 from django.template.loader import render_to_string
 from django.utils.safestring import mark_safe
 from fcm_django.models import FCMDevice
-from jwcrypto import jwk
 
 from ReiserX_Tunnel import settings
+from chat.crypto import generate_key_pair, generate_sender_keys, generate_receiver_keys, format_key, encrypt_with_rsa
 from chat.models import Message, Room, get_connected_users, new_signal_message, FriendRequest, SenderKeyBundle, \
-    ReceiverKeyBundle, PublicKey, UserDevice, ChildMessage
-from chat.utils import format_key, generate_sender_keys, generate_receiver_keys, \
-    process_messages, clear_temp_messages, generate_key_pair, get_ip
+    ReceiverKeyBundle, PublicKey, UserDevice, ChildMessage, UserSecure
+from chat.utils import process_messages, clear_temp_messages, get_ip
 from main.Utils import send_pusher_update
 from main.forms import ImageUploadForm
 from main.models import UserProfile
@@ -121,11 +121,6 @@ def chat_box(request):
     if user_device and user_device.username == user.username:
         device = UserDevice.get_device_by_id(device_id_cookie)
 
-        if device.device_public_key is None:
-            private_key, public_key = generate_key_pair()
-            device.device_public_key = public_key
-        else:
-            private_key = None
         device.ip_address = get_ip(request)
         device.save()
 
@@ -137,16 +132,12 @@ def chat_box(request):
                    'token_status': token,
                    'received_requests': received_friend_request,
                    'device_keys': mark_safe(device_keys)}
-        if private_key:
-            context['private_key'] = mark_safe(private_key)
+
         response = render(request, "chat/chat.html",
                           context)
     else:
         device = UserDevice.create_user_device(user, request)
         if device:
-            private_key, public_key = generate_key_pair()
-            device.device_public_key = public_key
-            device.save()
             context = {'protocol': protocol,
                        'abcf': settings.FIREBASE_API_KEY,
                        'users': room_messages_info,
@@ -154,8 +145,8 @@ def chat_box(request):
                        'pusher': settings.PUSHER_KEY,
                        'token_status': token,
                        'received_requests': received_friend_request,
-                       'device_keys': mark_safe(device_keys),
-                       'private_key': mark_safe(private_key)}
+                       'device_keys': mark_safe(device_keys)
+                       }
             response = render(request, "chat/chat.html",
                               context)
             response.set_cookie('device_id', str(device.identifier), max_age=365 * 24 * 60 * 60)
@@ -173,15 +164,43 @@ def generate_secondary_key_pair(request):
         device = UserDevice.get_device_by_id(device_id)
 
         if device and UserDevice.get_user_by_device(device_id).username == request.user.username:
-            private_key, public_key = generate_key_pair()
+            private_key, public_key, token = generate_key_pair(request.user, device)
             device.device_public_key = public_key
             device.save()
-            return JsonResponse({'status': 'success', 'private_key': mark_safe(private_key),
-                                 'public_key': PublicKey.format_key(public_key)})
+            return JsonResponse({'status': 'success', 'private_key': {
+                'key': PublicKey.format_key(private_key),
+                'token': PublicKey.format_key(token)
+            },
+            'public_key': PublicKey.format_key(public_key)})
         else:
             return JsonResponse({'status': 'error', 'message': 'Unauthorized'})
     else:
         return JsonResponse({'status': 'error', 'message': 'Invalid request'})
+
+
+@login_required
+def get_private_key_token(request):
+    if request.method == 'POST':
+        device_id = request.COOKIES.get('device_id')
+        user = request.user
+        device = UserDevice.get_device_by_id(device_id)
+        if device and user:
+            try:
+                secret = UserSecure.objects.get(User=user, Device=device)
+                public_key = secret.Device.device_public_key
+                data = {
+                    'token': secret.AES,
+                    'public_key': public_key
+                }
+                serialized_data = msgpack.packb(data)
+                response = HttpResponse(serialized_data, content_type="application/octet-stream")
+                return response
+            except UserSecure.DoesNotExist:
+                return HttpResponse(status=404)
+        else:
+            return HttpResponse(status=400)
+    else:
+        return HttpResponse(status=400)
 
 
 def update_message_status(receiver_user, username):
@@ -415,10 +434,11 @@ def send_friend_request(request):
         send_request = request.POST.get('send_request')
         device_id = request.POST.get('device_id')
         send_request = json.loads(send_request)
-        try:
-            friend_user = User.objects.get(username=username)
-        except User.DoesNotExist:
-            return JsonResponse({'status': 'error', 'message': 'User not found'}, status=404)
+
+        device_id = UserDevice.get_device_by_id(device_id)
+        friend_user = UserProfile.get_user_by_username(username)
+        if not friend_user and not device_id:
+            return JsonResponse({'status': 'error', 'message': 'Unauthorized'}, status=401)
 
         if send_request:
             # Check if a friend request already exists
@@ -455,11 +475,6 @@ def send_friend_request(request):
                 format=serialization.PublicFormat.SubjectPublicKeyInfo
             )
 
-            try:
-                device_id = UserDevice.objects.get(identifier=device_id)
-            except UserDevice.DoesNotExist:
-                pass
-
             friend_request = FriendRequest(sender=request.user,
                                            receiver=friend_user,
                                            status=FriendRequest.PENDING,
@@ -474,38 +489,32 @@ def send_friend_request(request):
             friend_request.set_key_bundle(key_bundle=key_bundle)
             friend_request.save()
 
-            # Serialize keys to PEM format
-            ik_private_key_pem = ik_private_key.private_bytes(
-                encoding=serialization.Encoding.PEM,
+            ik_private_key = ik_private_key.private_bytes(
+                encoding=serialization.Encoding.DER,
                 format=serialization.PrivateFormat.PKCS8,
                 encryption_algorithm=serialization.NoEncryption()
             )
 
-            ek_private_key_pem = ek_private_key.private_bytes(
-                encoding=serialization.Encoding.PEM,
+            ek_private_key = ek_private_key.private_bytes(
+                encoding=serialization.Encoding.DER,
                 format=serialization.PrivateFormat.PKCS8,
                 encryption_algorithm=serialization.NoEncryption()
             )
 
-            dhratchet_private_key_pem = dhratchet_private_key.private_bytes(
-                encoding=serialization.Encoding.PEM,
+            dhratchet_private_key = dhratchet_private_key.private_bytes(
+                encoding=serialization.Encoding.DER,
                 format=serialization.PrivateFormat.PKCS8,
                 encryption_algorithm=serialization.NoEncryption()
             )
 
-            ik_key = jwk.JWK.from_pem(ik_private_key_pem)
-            ik_jwk_key = ik_key.export()
-
-            ek_key = jwk.JWK.from_pem(ek_private_key_pem)
-            ek_jwk_key = ek_key.export()
-
-            dhratchet_key = jwk.JWK.from_pem(dhratchet_private_key_pem)
-            dhratchet_jwk_key = dhratchet_key.export()
+            ik_private_key = encrypt_with_rsa(ik_private_key, device_id.device_public_key)
+            ek_private_key = encrypt_with_rsa(ek_private_key, device_id.device_public_key)
+            dhratchet_private_key = encrypt_with_rsa(dhratchet_private_key, device_id.device_public_key)
 
             private_keys = {
-                'ik_private_key': ik_jwk_key,
-                'ek_private_key': ek_jwk_key,
-                'dhratchet_private_key': dhratchet_jwk_key,
+                'ik_private_key': format_key(ik_private_key),
+                'ek_private_key': format_key(ek_private_key),
+                'dhratchet_private_key': format_key(dhratchet_private_key),
                 'version': 1
             }
 
@@ -521,10 +530,10 @@ def accept_friend_request(request):
         username = request.POST.get('username')
         device_id = request.POST.get('device_id')
 
-        try:
-            friend_user = User.objects.get(username=username)
-        except User.DoesNotExist:
-            return JsonResponse({'status': 'error', 'message': 'User not found'}, status=404)
+        friend_user = UserProfile.get_user_by_username(username)
+        device_id = UserDevice.get_device_by_id(device_id)
+        if not friend_user and not device_id:
+            return JsonResponse({'status': 'error', 'message': 'Unauthorized'}, status=401)
 
         # Check if a friend request exists
         friend_request = FriendRequest.objects.filter(sender=friend_user, receiver=request.user,
@@ -556,7 +565,6 @@ def accept_friend_request(request):
             format=serialization.PublicFormat.SubjectPublicKeyInfo
         )
 
-        device_id = UserDevice.get_device_by_id(device_id)
         friend_request.receiver_device_id = device_id
 
         friend_request.status = FriendRequest.ACCEPTED
@@ -572,47 +580,40 @@ def accept_friend_request(request):
         friend_request.save()
 
         # Serialize keys to PEM format
-        ik_private_key_pem = ik_private_key.private_bytes(
-            encoding=serialization.Encoding.PEM,
+        ik_private_key = ik_private_key.private_bytes(
+            encoding=serialization.Encoding.DER,
             format=serialization.PrivateFormat.PKCS8,
             encryption_algorithm=serialization.NoEncryption()
         )
 
-        spk_private_key_pem = spk_private_key.private_bytes(
-            encoding=serialization.Encoding.PEM,
+        spk_private_key = spk_private_key.private_bytes(
+            encoding=serialization.Encoding.DER,
             format=serialization.PrivateFormat.PKCS8,
             encryption_algorithm=serialization.NoEncryption()
         )
 
-        opk_private_key_pem = opk_private_key.private_bytes(
-            encoding=serialization.Encoding.PEM,
+        opk_private_key = opk_private_key.private_bytes(
+            encoding=serialization.Encoding.DER,
             format=serialization.PrivateFormat.PKCS8,
             encryption_algorithm=serialization.NoEncryption()
         )
 
-        dhratchet_private_key_pem = dhratchet_private_key.private_bytes(
-            encoding=serialization.Encoding.PEM,
+        dhratchet_private_key = dhratchet_private_key.private_bytes(
+            encoding=serialization.Encoding.DER,
             format=serialization.PrivateFormat.PKCS8,
             encryption_algorithm=serialization.NoEncryption()
         )
 
-        ik_key = jwk.JWK.from_pem(ik_private_key_pem)
-        ik_jwk_key = ik_key.export()
-
-        spk_key = jwk.JWK.from_pem(spk_private_key_pem)
-        spk_jwk_key = spk_key.export()
-
-        opk_key = jwk.JWK.from_pem(opk_private_key_pem)
-        opk_jwk_key = opk_key.export()
-
-        ratchet_key = jwk.JWK.from_pem(dhratchet_private_key_pem)
-        ratchet_jwk_key = ratchet_key.export()
+        ik_private_key = encrypt_with_rsa(ik_private_key, device_id.device_public_key)
+        spk_private_key = encrypt_with_rsa(spk_private_key, device_id.device_public_key)
+        opk_private_key = encrypt_with_rsa(opk_private_key, device_id.device_public_key)
+        dhratchet_private_key = encrypt_with_rsa(dhratchet_private_key, device_id.device_public_key)
 
         private_keys = {
-            'ik_private_key': ik_jwk_key,
-            'spk_private_key': spk_jwk_key,
-            'opk_private_key': opk_jwk_key,
-            'dhratchet_private_key': ratchet_jwk_key,
+            'ik_private_key': format_key(ik_private_key),
+            'spk_private_key': format_key(spk_private_key),
+            'opk_private_key': format_key(opk_private_key),
+            'dhratchet_private_key': format_key(dhratchet_private_key),
             'version': 1
         }
 
@@ -692,8 +693,8 @@ def chat_profile(request, username):
     try:
         if request.user.username == username:
             user = request.user
-            count = Message.objects.filter(sender=user).count()
-            messages = Message.objects.filter(sender=user).order_by('-timestamp')[:4]
+            count = Message.objects.filter(sender=user, saved=True).count()
+            messages = Message.objects.filter(sender=user, saved=True).order_by('-timestamp')[:4]
             form = ImageUploadForm()
             if user.userprofile.image:
                 image = user.userprofile.image.url
@@ -708,7 +709,9 @@ def chat_profile(request, username):
                                                          'user': user.pk,
                                                          'auto_save': user.userprofile.auto_save,
                                                          'pusher': settings.PUSHER_KEY,
-                                                         'user_devices': sorted(user.user_device.all(), key=lambda device: device.login_time, reverse=True),
+                                                         'user_devices': sorted(user.user_device.all(),
+                                                                                key=lambda device: device.login_time,
+                                                                                reverse=True),
                                                          'device_limit': UserDevice.has_reached_device_limit(user)})
         else:
             user = User.objects.get(username=username)
