@@ -10,16 +10,6 @@ async function importKey(key, usage) {
     )
 }
 
-async function importKey_ECDH(format, key, usage) {
-    return await crypto.subtle.importKey(
-        format,
-        key,
-        {name: 'ECDH', namedCurve: 'P-256'},
-        true,
-        usage
-    );
-}
-
 async function exportKey(format, publicKey) {
     return await crypto.subtle.exportKey(format, publicKey);
 }
@@ -184,7 +174,7 @@ class SymmRatchet {
 }
 
 class Bob {
-    constructor(room, device_id) {
+    constructor(room, device_id, asymm) {
         this.IKb = {};
         this.SPKb = {};
         this.OPKb = {};
@@ -193,6 +183,7 @@ class Bob {
         this.room = room;
         this.device_id = device_id;
         this.version = null;
+        this.asymm = asymm;
     }
 
     async setReceiverKey(key) {
@@ -212,6 +203,16 @@ class Bob {
         this.receiver_public_key = await crypto.subtle.importKey(
             'jwk',
             receivedJWK,
+            {name: 'ECDH', namedCurve: 'P-256'},
+            true,
+            []
+        );
+    }
+
+    async setReceiverKey_RAW(key) {
+        this.receiver_public_key = await crypto.subtle.importKey(
+            'raw',
+            key,
             {name: 'ECDH', namedCurve: 'P-256'},
             true,
             []
@@ -253,14 +254,14 @@ class Bob {
     }
 
     async loadDhRatchetKey() {
-        let dhRatchetPrivateKey = JSON.parse(getDHRatchetKey(this.room, this.device_id, b64(this.sk)));
+        let dhRatchetPrivateKey = await this.asymm.decryptKeys(getDHRatchetKey(this.room));
         this.DHratchet.privateKey = await crypto.subtle.importKey(
-                'jwk',
-                dhRatchetPrivateKey,
-                {name: 'ECDH', namedCurve: 'P-256'},
-                false,
-                ['deriveKey']
-            );
+            'pkcs8',
+            dhRatchetPrivateKey,
+            {name: 'ECDH', namedCurve: 'P-256'},
+            false,
+            ['deriveKey']
+        );
     }
 
     async retrieveAndImportKeys() {
@@ -269,19 +270,19 @@ class Bob {
         this.version = roomData.version;
 
         if (roomData && roomData.private_keys) {
-            let ikPrivateKey = JSON.parse(roomData.private_keys.ikPrivateKey);
-            let spkPrivateKey = JSON.parse(roomData.private_keys.spkPrivateKey);
-            let opkPrivateKey = JSON.parse(roomData.private_keys.opkPrivateKey);
+            let ikPrivateKey = await this.asymm.decryptKeys(roomData.private_keys.ikPrivateKey);
+            let spkPrivateKey = await this.asymm.decryptKeys(roomData.private_keys.spkPrivateKey);
+            let opkPrivateKey = await this.asymm.decryptKeys(roomData.private_keys.opkPrivateKey);
 
             this.IKb.privateKey = await crypto.subtle.importKey(
-                'jwk',
+                'pkcs8',
                 ikPrivateKey,
                 {name: 'ECDH', namedCurve: 'P-256'},
                 false,
                 ['deriveKey']
             );
             this.SPKb.privateKey = await crypto.subtle.importKey(
-                'jwk',
+                'pkcs8',
                 spkPrivateKey,
                 {name: 'ECDH', namedCurve: 'P-256'},
                 false,
@@ -289,7 +290,7 @@ class Bob {
             );
 
             this.OPKb.privateKey = await crypto.subtle.importKey(
-                'jwk',
+                'pkcs8',
                 opkPrivateKey,
                 {name: 'ECDH', namedCurve: 'P-256'},
                 false,
@@ -299,9 +300,9 @@ class Bob {
     }
 
     async saveToLocalStorage() {
-        let root = btoa(String.fromCharCode.apply(null, new Uint8Array(this.rootRatchet.state)));
-        let recv = btoa(String.fromCharCode.apply(null, new Uint8Array(this.recvRatchet.state)));
-        let send = btoa(String.fromCharCode.apply(null, new Uint8Array(this.sendRatchet.state)));
+        let root = b64(await this.asymm.encryptKeys(new Uint8Array(this.rootRatchet.state)));
+        let recv = b64(await this.asymm.encryptKeys(new Uint8Array(this.recvRatchet.state)));
+        let send = b64(await this.asymm.encryptKeys(new Uint8Array(this.sendRatchet.state)));
         saveRatchetState(this.room, this.device_id, b64(this.sk), root, recv, send);
     }
 
@@ -312,9 +313,9 @@ class Bob {
             let states = getRatchetState(this.room, this.device_id, b64(this.sk));
 
             if (states) {
-                this.rootRatchet = new SymmRatchet(states.rootRatchetState);
-                this.recvRatchet = new SymmRatchet(states.recvRatchetState);
-                this.sendRatchet = new SymmRatchet(states.sendRatchetState);
+                this.rootRatchet = new SymmRatchet(await this.asymm.decryptKeys(states.rootRatchetState));
+                this.recvRatchet = new SymmRatchet(await this.asymm.decryptKeys(states.recvRatchetState));
+                this.sendRatchet = new SymmRatchet(await this.asymm.decryptKeys(states.sendRatchetState));
             } else {
                 this.rootRatchet = new SymmRatchet(this.sk);
                 this.sendRatchet = new SymmRatchet((await this.rootRatchet.next())[0]);
@@ -336,7 +337,7 @@ class Bob {
             ['deriveKey']
         );
 
-        saveDHRatchetKey(await exportKey('jwk', this.DHratchet.privateKey), this.room, this.device_id, b64(this.sk));
+        saveDHRatchetKey(b64(await this.asymm.encryptKeys(await exportKey('pkcs8', this.DHratchet.privateKey))), this.room);
 
         const dhSend = await deriveKey(this.DHratchet.privateKey, alicePublic);
         const sharedSend = (await this.rootRatchet.next(dhSend))[0];
@@ -358,8 +359,8 @@ class Bob {
         const [key, iv] = await this.sendRatchet.next();
         const cipher = await encryptMessage(key, iv, msg);
         return {
-            cipher: b64(cipher),
-            ratchet_key: btoa(JSON.stringify(await exportKey('jwk', this.DHratchet.publicKey))),
+            cipher: cipher.buffer,
+            ratchet_key: await exportKey('raw', this.DHratchet.publicKey),
             key_version: this.version
         }
     }
@@ -372,10 +373,13 @@ class Bob {
             cipher = await encryptMessage(key, iv, text);
         }
         const bytes_cipher = await encryptImage(key, iv, image);
+        if (cipher) {
+            cipher = cipher.buffer;
+        }
         return {
-            cipher: b64(cipher),
-            bytes_cipher: bytes_cipher,
-            ratchet_key: btoa(JSON.stringify(await exportKey('jwk', this.DHratchet.publicKey))),
+            cipher: cipher,
+            bytes_cipher: bytes_cipher.buffer,
+            ratchet_key: await exportKey('raw', this.DHratchet.publicKey),
             key_version: this.version
         }
     }
@@ -385,8 +389,7 @@ class Bob {
         if (cipher) {
             const [key, iv] = await this.recvRatchet.next();
             try {
-                const arrayBufferCipher = new Uint8Array([...atob(cipher)].map(char => char.charCodeAt(0)));
-                return await decryptMessage(key, iv, arrayBufferCipher)
+                return await decryptMessage(key, iv, cipher)
             } catch (error) {
                 return `Failed to decrypt message: ${error}`;
             }
@@ -400,8 +403,7 @@ class Bob {
             try {
                 let text_message = null;
                 if (text_cipher) {
-                    let text_cipher_bytes = new Uint8Array([...atob(text_cipher)].map(char => char.charCodeAt(0)));
-                    text_message = await decryptMessage(key, iv, text_cipher_bytes);
+                    text_message = await decryptMessage(key, iv, text_cipher);
                 }
 
                 let image_bytes = await decryptImage(key, iv, bytes_cipher);
@@ -417,7 +419,7 @@ class Bob {
 }
 
 class Alice {
-    constructor(room, device_id) {
+    constructor(room, device_id, asymm) {
         this.IKa = {};
         this.EKa = {};
         this.DHratchet = {};
@@ -425,6 +427,7 @@ class Alice {
         this.room = room;
         this.device_id = device_id;
         this.version = null;
+        this.asymm = asymm;
     }
 
     async setReceiverKey(key) {
@@ -444,6 +447,16 @@ class Alice {
         this.receiver_public_key = await crypto.subtle.importKey(
             'jwk',
             receivedJWK,
+            {name: 'ECDH', namedCurve: 'P-256'},
+            true,
+            []
+        );
+    }
+
+    async setReceiverKey_RAW(key) {
+        this.receiver_public_key = await crypto.subtle.importKey(
+            'raw',
+            key,
             {name: 'ECDH', namedCurve: 'P-256'},
             true,
             []
@@ -501,9 +514,9 @@ class Alice {
             let states = getRatchetState(this.room, this.device_id, b64(this.sk));
 
             if (states) {
-                this.rootRatchet = new SymmRatchet(states.rootRatchetState);
-                this.recvRatchet = new SymmRatchet(states.recvRatchetState);
-                this.sendRatchet = new SymmRatchet(states.sendRatchetState);
+                this.rootRatchet = new SymmRatchet(await this.asymm.decryptKeys(states.rootRatchetState));
+                this.recvRatchet = new SymmRatchet(await this.asymm.decryptKeys(states.recvRatchetState));
+                this.sendRatchet = new SymmRatchet(await this.asymm.decryptKeys(states.sendRatchetState));
             } else {
                 this.rootRatchet = new SymmRatchet(this.sk);
                 this.sendRatchet = new SymmRatchet((await this.rootRatchet.next())[0]);
@@ -519,14 +532,14 @@ class Alice {
     }
 
     async loadDhRatchetKey() {
-        let dhRatchetPrivateKey = JSON.parse(getDHRatchetKey(this.room, this.device_id, b64(this.sk)));
+        let dhRatchetPrivateKey = await this.asymm.decryptKeys(getDHRatchetKey(this.room));
         this.DHratchet.privateKey = await crypto.subtle.importKey(
-                'jwk',
-                dhRatchetPrivateKey,
-                {name: 'ECDH', namedCurve: 'P-256'},
-                false,
-                ['deriveKey']
-            );
+            'pkcs8',
+            dhRatchetPrivateKey,
+            {name: 'ECDH', namedCurve: 'P-256'},
+            false,
+            ['deriveKey']
+        );
     }
 
     async retrieveAndImportKeys() {
@@ -535,18 +548,18 @@ class Alice {
         this.version = roomData.version;
 
         if (roomData && roomData.private_keys) {
-            let ikPrivateKeyData = JSON.parse(roomData.private_keys.ikPrivateKeyData);
-            let ekPrivateKeyData = JSON.parse(roomData.private_keys.ekPrivateKeyData);
+            let ikPrivateKeyData = await this.asymm.decryptKeys(roomData.private_keys.ikPrivateKeyData);
+            let ekPrivateKeyData = await this.asymm.decryptKeys(roomData.private_keys.ekPrivateKeyData);
 
             this.IKa.privateKey = await crypto.subtle.importKey(
-                'jwk',
+                'pkcs8',
                 ikPrivateKeyData,
                 {name: 'ECDH', namedCurve: 'P-256'},
                 false,
                 ['deriveKey']
             );
             this.EKa.privateKey = await crypto.subtle.importKey(
-                'jwk',
+                'pkcs8',
                 ekPrivateKeyData,
                 {name: 'ECDH', namedCurve: 'P-256'},
                 false,
@@ -556,9 +569,10 @@ class Alice {
     }
 
     async saveToLocalStorage() {
-        let root = btoa(String.fromCharCode.apply(null, new Uint8Array(this.rootRatchet.state)));
-        let recv = btoa(String.fromCharCode.apply(null, new Uint8Array(this.recvRatchet.state)));
-        let send = btoa(String.fromCharCode.apply(null, new Uint8Array(this.sendRatchet.state)));
+        let root = b64(await this.asymm.encryptKeys(new Uint8Array(this.rootRatchet.state)));
+        let recv = b64(await this.asymm.encryptKeys(new Uint8Array(this.recvRatchet.state)));
+        let send = b64(await this.asymm.encryptKeys(new Uint8Array(this.sendRatchet.state)));
+
         saveRatchetState(this.room, this.device_id, b64(this.sk), root, recv, send);
     }
 
@@ -569,7 +583,7 @@ class Alice {
             ['deriveKey']
         );
 
-        saveDHRatchetKey(await exportKey('jwk', this.DHratchet.privateKey), this.room, this.device_id, b64(this.sk));
+        saveDHRatchetKey(b64(await this.asymm.encryptKeys(await exportKey('pkcs8', this.DHratchet.privateKey))), this.room);
 
         const dhSend = await deriveKey(this.DHratchet.privateKey, bobPublic);
         const sharedSend = (await this.rootRatchet.next(dhSend))[0];
@@ -591,8 +605,8 @@ class Alice {
         const [key, iv] = await this.sendRatchet.next();
         const cipher = await encryptMessage(key, iv, msg);
         return {
-            cipher: b64(cipher),
-            ratchet_key: btoa(JSON.stringify(await exportKey('jwk', this.DHratchet.publicKey))),
+            cipher: cipher.buffer,
+            ratchet_key: await exportKey('raw', this.DHratchet.publicKey),
             key_version: this.version
         }
     }
@@ -605,10 +619,13 @@ class Alice {
             cipher = await encryptMessage(key, iv, text);
         }
         const bytes_cipher = await encryptImage(key, iv, image);
+        if (cipher) {
+            cipher = cipher.buffer;
+        }
         return {
-            cipher: b64(cipher),
+            cipher: cipher,
             bytes_cipher: bytes_cipher.buffer,
-            ratchet_key: btoa(JSON.stringify(await exportKey('jwk', this.DHratchet.publicKey))),
+            ratchet_key: await exportKey('raw', this.DHratchet.publicKey),
             key_version: this.version
         }
     }
@@ -618,8 +635,7 @@ class Alice {
         if (cipher) {
             const [key, iv] = await this.recvRatchet.next();
             try {
-                const arrayBufferCipher = new Uint8Array([...atob(cipher)].map(char => char.charCodeAt(0)));
-                return await decryptMessage(key, iv, arrayBufferCipher)
+                return await decryptMessage(key, iv, cipher)
             } catch (error) {
                 return `Failed to decrypt message: ${error}`;
             }
@@ -633,8 +649,7 @@ class Alice {
             try {
                 let text_message = null;
                 if (text_cipher) {
-                    let text_cipher_bytes = new Uint8Array([...atob(text_cipher)].map(char => char.charCodeAt(0)));
-                    text_message = await decryptMessage(key, iv, text_cipher_bytes);
+                    text_message = await decryptMessage(key, iv, text_cipher);
                 }
 
                 let image_bytes = await decryptImage(key, iv, bytes_cipher);
@@ -649,12 +664,69 @@ class Alice {
     }
 }
 
+// Section: Symmetric encryption
+class symmetric {
+    constructor() {
+    }
+
+    async importKey(asymm) {
+        const self = this
+        $.ajax({
+            type: 'POST',
+            url: 'get/private-keys/token/',
+            xhrFields: {
+                responseType: 'arraybuffer'  // Specify responseType as 'arraybuffer' to handle binary response
+            },
+            success: async function (response) {
+                if (response) {
+                    let data = msgpack.decode(new Uint8Array(response));
+                    if (data) {
+                        const token = new Uint8Array(32);
+                        token.set(new Uint8Array(data.token), 0);
+                        token.set(base64StringToUint8Array(getKeyToken()), 16);
+                        let private_key = await window.crypto.subtle.importKey(
+                            'raw',
+                            token,
+                            {name: 'AES-CBC'},
+                            false,
+                            ['decrypt']
+                        );
+                        await asymm.setPublicKey(data.public_key);
+                        await asymm.importPrivateKey(await self.decryptAES(private_key, getSecondaryKey()));
+                    }
+                }
+            },
+            error: function (error) {
+                console.error('Error:', error);
+            }
+        });
+    }
+
+    async decryptAES(private_key, data) {
+        const combinedUint8 = base64StringToUint8Array(data);
+
+        const iv = combinedUint8.slice(0, 16);
+        const ciphertext = combinedUint8.slice(16);
+
+        // Decrypt the ciphertext
+        const decryptedData = await window.crypto.subtle.decrypt(
+            {
+                name: 'AES-CBC',
+                iv: iv
+            },
+            private_key,
+            ciphertext
+        );
+        return new Uint8Array(decryptedData);
+    }
+}
 
 // Section: Asymmetric encryption
 class asymmetric {
     constructor(device_id) {
         this.public_key = null;
         this.device_id = device_id
+        this.private_key = null;
     }
 
     async setReceiverKey(key) {
@@ -663,6 +735,23 @@ class asymmetric {
             this.public_key = await crypto.subtle.importKey(
                 'spki',
                 public_key,
+                {
+                    name: 'RSA-OAEP',
+                    hash: {name: 'SHA-256'}
+                },
+                true,
+                ['encrypt']
+            );
+        } catch (e) {
+            console.error(e);
+        }
+    }
+
+    async setPublicKey(key) {
+        try {
+            this.public_key = await crypto.subtle.importKey(
+                'spki',
+                key,
                 {
                     name: 'RSA-OAEP',
                     hash: {name: 'SHA-256'}
@@ -715,8 +804,8 @@ class asymmetric {
 
             // Return the combined IV and ciphertext, and the encrypted AES key
             return {
-                cipher: b64(ivAndCiphertext),
-                Aes: b64(encryptedAesKey)
+                cipher: ivAndCiphertext,
+                Aes: encryptedAesKey
             };
         } catch (e) {
             console.error(e);
@@ -769,133 +858,143 @@ class asymmetric {
             ivAndCipherText.set(iv, 0);
             ivAndCipherText.set(new Uint8Array(ciphertext), iv.byteLength);
             return {
-                ciphertext: b64(ivAndCipherText),
+                ciphertext: ivAndCipherText,
                 cipherbytes: cipherbytes,
-                AES: b64(encryptedAesKey)
+                AES: encryptedAesKey
             };
         } catch (e) {
             console.error(e);
         }
     }
-}
 
-async function decryptASYM_Message(cipher, aes_key) {
-    try {
-        let private_key = null;
-        let private_key_jwk = getSecondaryKey();
-        if (private_key_jwk) {
-            let private_key_data = JSON.parse(private_key_jwk);
-            private_key = await crypto.subtle.importKey(
-                'jwk',
-                private_key_data,
-                {
-                    name: 'RSA-OAEP',
-                    hash: {name: 'SHA-256'}
-                },
-                false,
-                ['decrypt']
-            );
-        }
-
-        if (!private_key) {
-            throw new Error('Private key not loaded.');
-        }
-
-        let iv = base64StringToArrayBuffer(cipher).slice(0, 12);
-
-        let ciphertext = base64StringToArrayBuffer(cipher).slice(12);
-
-        let aesKeyBuffer = await window.crypto.subtle.decrypt(
-            {name: 'RSA-OAEP'},
-            private_key,
-            base64StringToArrayBuffer(aes_key)
+    async importPrivateKey(private_key_data) {
+        this.private_key = await crypto.subtle.importKey(
+            'pkcs8',
+            private_key_data,
+            {
+                name: 'RSA-OAEP',
+                hash: {name: 'SHA-256'}
+            },
+            false,
+            ['decrypt']
         );
-
-        let decryptedAesKey = await window.crypto.subtle.importKey(
-            'raw',
-            aesKeyBuffer,
-            {name: 'AES-GCM'},
-            true,
-            ['encrypt', 'decrypt']
-        );
-
-        let decryptedPlaintext = await window.crypto.subtle.decrypt(
-            {name: 'AES-GCM', iv: iv},
-            decryptedAesKey,
-            ciphertext
-        );
-
-        return new TextDecoder().decode(decryptedPlaintext);
-    } catch (e) {
-        console.error(e);
     }
-}
 
-async function decryptASYM_Image_Message(cipher_bytes, cipher_text, aes_key) {
-    try {
-        let private_key = null;
-        let private_key_jwk = getSecondaryKey();
-        if (private_key_jwk) {
-            let private_key_data = JSON.parse(private_key_jwk);
-            private_key = await crypto.subtle.importKey(
-                'jwk',
-                private_key_data,
-                {
-                    name: 'RSA-OAEP',
-                    hash: {name: 'SHA-256'}
-                },
-                false,
-                ['decrypt']
+    async encryptKeys(key) {
+        const encryptedData = await window.crypto.subtle.encrypt(
+            {
+                name: 'RSA-OAEP',
+            },
+            this.public_key,
+            key
+        );
+
+        return new Uint8Array(encryptedData);
+    }
+
+    async decryptKeys(cipher) {
+        try {
+            if (!this.private_key) {
+                throw new Error('Private key not loaded.');
+            }
+
+            let decryptedKey = await window.crypto.subtle.decrypt(
+                {name: 'RSA-OAEP'},
+                this.private_key,
+                base64StringToArrayBuffer(cipher)
             );
+
+            return new Uint8Array(decryptedKey);
+        } catch (e) {
+            console.error(e);
         }
+    }
 
-        if (!private_key) {
-            throw new Error('Private key not loaded.');
+    async decryptMessage(cipher, aes_key) {
+        try {
+            if (!this.private_key) {
+                throw new Error('Private key not loaded.');
+            }
+
+            let iv = cipher.slice(0, 12);
+
+            let ciphertext = cipher.slice(12);
+
+            let aesKeyBuffer = await window.crypto.subtle.decrypt(
+                {name: 'RSA-OAEP'},
+                this.private_key,
+                aes_key
+            );
+
+            let decryptedAesKey = await window.crypto.subtle.importKey(
+                'raw',
+                aesKeyBuffer,
+                {name: 'AES-GCM'},
+                true,
+                ['encrypt', 'decrypt']
+            );
+
+            let decryptedPlaintext = await window.crypto.subtle.decrypt(
+                {name: 'AES-GCM', iv: iv},
+                decryptedAesKey,
+                ciphertext
+            );
+
+            return new TextDecoder().decode(decryptedPlaintext);
+        } catch (e) {
+            console.error(e);
         }
+    }
 
+    async decrypt_Image_Message(cipher_bytes, cipher_text, aes_key) {
+        try {
+            if (!this.private_key) {
+                throw new Error('Private key not loaded.');
+            }
 
-        let iv = base64StringToArrayBuffer(cipher_text).slice(0, 12);
+            let iv = cipher_text.slice(0, 12);
 
-        let ciphertext = base64StringToArrayBuffer(cipher_text).slice(12);
+            let ciphertext = cipher_text.slice(12);
 
-        // Decrypt the AES key using RSA-OAEP with the private key
-        let aesKeyBuffer = await window.crypto.subtle.decrypt(
-            {name: 'RSA-OAEP'},
-            private_key,
-            base64StringToArrayBuffer(aes_key)
-        );
+            // Decrypt the AES key using RSA-OAEP with the private key
+            let aesKeyBuffer = await window.crypto.subtle.decrypt(
+                {name: 'RSA-OAEP'},
+                this.private_key,
+                aes_key
+            );
 
-        let decryptedAesKey = await window.crypto.subtle.importKey(
-            'raw',
-            aesKeyBuffer,
-            {name: 'AES-GCM'},
-            true,
-            ['encrypt', 'decrypt']
-        );
+            let decryptedAesKey = await window.crypto.subtle.importKey(
+                'raw',
+                aesKeyBuffer,
+                {name: 'AES-GCM'},
+                true,
+                ['encrypt', 'decrypt']
+            );
 
-        let decrypted_bytes = await window.crypto.subtle.decrypt(
-            {name: 'AES-GCM', iv: iv},
-            decryptedAesKey,
-            cipher_bytes,
-        );
-        let decryptedPlaintext = await window.crypto.subtle.decrypt(
-            {name: 'AES-GCM', iv: iv},
-            decryptedAesKey,
-            ciphertext,
-        );
+            let decrypted_bytes = await window.crypto.subtle.decrypt(
+                {name: 'AES-GCM', iv: iv},
+                decryptedAesKey,
+                cipher_bytes,
+            );
+            let decryptedPlaintext = await window.crypto.subtle.decrypt(
+                {name: 'AES-GCM', iv: iv},
+                decryptedAesKey,
+                ciphertext,
+            );
 
-        decryptedPlaintext = new TextDecoder().decode(decryptedPlaintext);
+            decryptedPlaintext = new TextDecoder().decode(decryptedPlaintext);
 
-        if (decryptedPlaintext === '') {
-            decryptedPlaintext = null;
+            if (decryptedPlaintext === '') {
+                decryptedPlaintext = null;
+            }
+
+            return {
+                text_message: decryptedPlaintext,
+                cipher_bytes: new Uint8Array(decrypted_bytes)
+            };
+        } catch (e) {
+            console.error(`Error: ${e}`);
         }
-
-        return {
-            text_message: decryptedPlaintext,
-            cipher_bytes: new Uint8Array(decrypted_bytes)
-        };
-    } catch (e) {
-        console.error(`Error: ${e}`);
     }
 }
 
@@ -1028,47 +1127,26 @@ function deleteRatchetStates(room, device_id, sk) {
     }
 }
 
-function saveDHRatchetKey(dhratchet_private_key, room, device_id, sk) {
+function saveDHRatchetKey(dhratchet_private_key, room) {
     let ratchetData = JSON.parse(localStorage.getItem('ratchet')) || {};
 
     if (!ratchetData[room]) {
         ratchetData[room] = {};
     }
 
-    if (!ratchetData[room][device_id]) {
-        ratchetData[room][device_id] = {};
-    }
-
-    if (!ratchetData[room][device_id][sk]) {
-        ratchetData[room][device_id][sk] = {};
-    }
-
-    ratchetData[room].private_keys.dhratchet_key = JSON.stringify(dhratchet_private_key);
-
-    ratchetData[room][device_id][sk].dhratchet_key = JSON.stringify(dhratchet_private_key);
+    ratchetData[room].private_keys.dhratchet_key = dhratchet_private_key;
 
     localStorage.setItem('ratchet', JSON.stringify(ratchetData));
 }
 
-function getDHRatchetKey(room, device_id, sk) {
+function getDHRatchetKey(room) {
     let ratchetData = JSON.parse(localStorage.getItem('ratchet')) || {};
 
     if (!ratchetData[room]) {
         ratchetData[room] = {};
     }
 
-    if (!ratchetData[room][device_id]) {
-        ratchetData[room][device_id] = {};
-    }
-
-    if (!ratchetData[room][device_id][sk]) {
-        ratchetData[room][device_id][sk] = {};
-    }
-
-    if (ratchetData[room][device_id][sk].dhratchet_key) {
-        // return ratchetData[room][device_id][sk].dhratchet_key;
-        return ratchetData[room].private_keys.dhratchet_key;
-    } else if (ratchetData[room].private_keys.dhratchet_key) {
+    if (ratchetData[room].private_keys.dhratchet_key) {
         return ratchetData[room].private_keys.dhratchet_key;
     } else {
         return null;
@@ -1117,7 +1195,7 @@ function getSk(room, device_id, sk) {
     }
 }
 
-function saveSecondaryKey(key) {
+function saveSecondaryKey(key, token) {
     if (key) {
         let storage = JSON.parse(localStorage.getItem('secondary_key')) || {};
 
@@ -1126,6 +1204,7 @@ function saveSecondaryKey(key) {
         }
 
         storage.key = key;
+        storage.token = token;
 
         localStorage.setItem('secondary_key', JSON.stringify(storage));
     }
@@ -1136,6 +1215,16 @@ function getSecondaryKey() {
 
     if (storage.key) {
         return storage.key;
+    } else {
+        return null;
+    }
+}
+
+function getKeyToken() {
+    let storage = JSON.parse(localStorage.getItem('secondary_key')) || {};
+
+    if (storage.token) {
+        return storage.token;
     } else {
         return null;
     }
