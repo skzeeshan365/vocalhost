@@ -1,15 +1,15 @@
 const firebaseConfig = {
-        apiKey: _356,
-        authDomain: "farae-df5b2.firebaseapp.com",
-        databaseURL: "https://farae-df5b2-default-rtdb.firebaseio.com",
-        projectId: "farae-df5b2",
-        storageBucket: "farae-df5b2.appspot.com",
-        messagingSenderId: "835148268492",
-        appId: "1:835148268492:web:80ad338c12a76e5c019369",
-        measurementId: "G-RZJHM8Y21L"
-    };
+    apiKey: _356,
+    authDomain: "farae-df5b2.firebaseapp.com",
+    databaseURL: "https://farae-df5b2-default-rtdb.firebaseio.com",
+    projectId: "farae-df5b2",
+    storageBucket: "farae-df5b2.appspot.com",
+    messagingSenderId: "835148268492",
+    appId: "1:835148268492:web:80ad338c12a76e5c019369",
+    measurementId: "G-RZJHM8Y21L"
+};
 let messaging = null;
-    try {
+try {
     firebase.initializeApp(firebaseConfig);
     firebase.analytics();
     messaging = firebase.messaging();
@@ -56,34 +56,20 @@ let messaging = null;
             });
     }
 
-    function getCookie(name) {
-    const cookies = document.cookie.split(';');
-    for (const cookie of cookies) {
-        const [cookieName, cookieValue] = cookie.trim().split('=');
-        if (cookieName === name) {
-            return decodeURIComponent(cookieValue);
-        }
-    }
-    return null;
-}
-
-
     function sendRegistrationTokenToServer(token) {
-        console.log(getCookie('device_id'))
-        // Use AJAX, fetch, or any other method to send the token to your Django server
         fetch('/chat/push/register_device/', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({token: token, device_id: getCookie('device_id')}),
+            body: JSON.stringify({token: token}),
         })
             .then((response) => response.json())
             .then((data) => console.log('Server response:', data))
             .catch((error) => console.error('Error:', error));
     }
 
-    } catch (error) {
+} catch (error) {
     // Handle the error here
     console.log('Error initializing Firebase:', error);
 }

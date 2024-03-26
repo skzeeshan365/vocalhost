@@ -137,6 +137,7 @@ def chat_box(request):
                           context)
     else:
         device = UserDevice.create_user_device(user, request)
+        secret = UserSecure.get_or_create(user, device)
         if device:
             context = {'protocol': protocol,
                        'abcf': settings.FIREBASE_API_KEY,
@@ -149,7 +150,22 @@ def chat_box(request):
                        }
             response = render(request, "chat/chat.html",
                               context)
-            response.set_cookie('device_id', str(device.identifier), max_age=365 * 24 * 60 * 60)
+            response.set_cookie('device_id',
+                                str(device.identifier),
+                                max_age=365 * 24 * 60 * 60,
+                                httponly=True,
+                                secure=True,
+                                samesite='Strict',
+                                domain=settings.ROOT_DOMAIN,
+                                )
+            response.set_cookie('internal',
+                                str(secret.Token),
+                                max_age=365 * 24 * 60 * 60,
+                                httponly=True,
+                                secure=True,
+                                samesite='Strict',
+                                domain=settings.ROOT_DOMAIN,
+                                )
             return response
         else:
             return redirect('chat_profile', user.username)
@@ -159,19 +175,21 @@ def chat_box(request):
 
 def generate_secondary_key_pair(request):
     if request.method == 'POST':
-        data = json.loads(request.body)
-        device_id = data.get('device_id')
+        device_id = request.COOKIES.get('device_id')
         device = UserDevice.get_device_by_id(device_id)
-
-        if device and UserDevice.get_user_by_device(device_id).username == request.user.username:
+        token = request.COOKIES.get('internal')
+        secrets = UserSecure.get_user_secret_by_token(user=request.user, device=device, token=token)
+        if device and UserDevice.get_user_by_device(device_id).username == request.user.username and secrets:
             private_key, public_key, token = generate_key_pair(request.user, device)
             device.device_public_key = public_key
             device.save()
-            return JsonResponse({'status': 'success', 'private_key': {
-                'key': PublicKey.format_key(private_key),
-                'token': PublicKey.format_key(token)
-            },
-            'public_key': PublicKey.format_key(public_key)})
+            return JsonResponse({'status': 'success',
+                                 'private_key': {
+                                     'key': PublicKey.format_key(private_key),
+                                     'token': PublicKey.format_key(token)
+                                 },
+                                 'public_key': PublicKey.format_key(public_key),
+                                 'device_id': device_id})
         else:
             return JsonResponse({'status': 'error', 'message': 'Unauthorized'})
     else:
@@ -184,18 +202,18 @@ def get_private_key_token(request):
         device_id = request.COOKIES.get('device_id')
         user = request.user
         device = UserDevice.get_device_by_id(device_id)
+        token = request.COOKIES.get('internal')
         if device and user:
-            try:
-                secret = UserSecure.objects.get(User=user, Device=device)
+            secret = UserSecure.get_user_secret_by_token(user=request.user, device=device, token=token)
+            if secret:
                 public_key = secret.Device.device_public_key
                 data = {
                     'token': secret.AES,
                     'public_key': public_key
                 }
                 serialized_data = msgpack.packb(data)
-                response = HttpResponse(serialized_data, content_type="application/octet-stream")
-                return response
-            except UserSecure.DoesNotExist:
+                return HttpResponse(serialized_data, content_type="application/octet-stream")
+            else:
                 return HttpResponse(status=404)
         else:
             return HttpResponse(status=400)
@@ -229,7 +247,7 @@ def load_messages(request, receiver):
 
         data = json.loads(request.body)
         generate_keys = data.get('generate_keys')
-        device_id = data.get('device_id')
+        device_id = request.COOKIES.get('device_id')
 
         receiver = UserProfile.get_user_by_username(receiver_username)
         room = Room.getRoom(user, receiver)
@@ -238,18 +256,12 @@ def load_messages(request, receiver):
             public_keys = room.get_public_keys(receiver, device_id)
             public_key = PublicKey.get_latest_public_key(user=user, room=room,
                                                          device_id=UserDevice.get_device_by_id(device_id))
-            if generate_keys or not public_key:
+            if generate_keys or not public_key or (public_key and public_key.is_expired()):
                 generate_keys = True
-                if public_key:
-                    if public_key.key_type == PublicKey.SENDER:
-                        private_keys = generate_sender_keys(room, user, device_id)
-                    else:
-                        private_keys = generate_receiver_keys(room, user, device_id)
+                if room.get_user_type(user) == 'Sender':
+                    private_keys = generate_sender_keys(room, user, device_id)
                 else:
-                    if room.get_user_type(user) == 'Sender':
-                        private_keys = generate_sender_keys(room, user, device_id)
-                    else:
-                        private_keys = generate_receiver_keys(room, user, device_id)
+                    private_keys = generate_receiver_keys(room, user, device_id)
             else:
                 private_keys = None
 
@@ -258,22 +270,16 @@ def load_messages(request, receiver):
 
             messages_db = Message.objects.filter(room=room, receiver=user, saved=False)
 
-            for message in messages:
-                if 'public_key' in message and isinstance(message['public_key'], bytes):
-                    message['public_key'] = format_key(message['public_key'])
-
             if messages_db.exists():
                 thread = threading.Thread(target=update_message_status, args=(receiver_username, user.username))
                 thread.start()
-
+            messages = json.dumps(messages, cls=DjangoJSONEncoder)
+            return JsonResponse(
+                {'status': 'success', 'data': messages, 'generate_keys': generate_keys,
+                 'keys': {'public_keys': public_keys,
+                          'private_keys': private_keys}})
         else:
-            messages = []
-            public_keys = None
-            private_keys = None
-        messages = json.dumps(messages, cls=DjangoJSONEncoder)
-        return JsonResponse(
-            {'status': 'success', 'data': messages, 'generate_keys': generate_keys, 'keys': {'public_keys': public_keys,
-                                                                                             'private_keys': private_keys}})
+            return JsonResponse({'status': 'error', 'message': 'Unauthorized'})
     else:
         return JsonResponse({'status': 'error', 'message': 'Invalid request'})
 
@@ -283,7 +289,7 @@ def process_temp_messages(request):
     if request.method == 'POST':
         user = request.user
         data = json.loads(request.body)
-        device_id = data.get('device_id')
+        device_id = request.COOKIES.get('device_id')
         receiver_username = data.get('receiver_username')
 
         receiver = UserProfile.get_user_by_username(receiver_username)
@@ -307,7 +313,7 @@ def get_user_public_keys(request):
     if request.method == 'POST':
         user = request.user
         data = json.loads(request.body)
-        device_id = data.get('device_id')
+        device_id = request.COOKIES.get('device_id')
         receiver_username = data.get('receiver_username')
 
         receiver = UserProfile.get_user_by_username(receiver_username)
@@ -331,7 +337,7 @@ def get_device_public_keys(request):
     if request.method == 'POST':
         user = request.user
         data = json.loads(request.body)
-        device_id = data.get('self_device_id')
+        device_id = request.COOKIES.get('device_id')
         receiver_device_id = data.get('receiver_device_id')
         receiver_username = data.get('receiver_username')
 
@@ -368,7 +374,7 @@ def register_device(request):
         user = request.user
         registration_token = data.get('token')
         device_type = data.get('device_type', 'web')
-        device_id = data.get('device_id')
+        device_id = request.COOKIES.get('device_id')
 
         # Check if the device is already registered for the user
 
@@ -432,7 +438,7 @@ def send_friend_request(request):
     if request.method == 'POST':
         username = request.POST.get('username')
         send_request = request.POST.get('send_request')
-        device_id = request.POST.get('device_id')
+        device_id = request.COOKIES.get('device_id')
         send_request = json.loads(send_request)
 
         device_id = UserDevice.get_device_by_id(device_id)
@@ -528,7 +534,7 @@ def send_friend_request(request):
 def accept_friend_request(request):
     if request.method == 'POST':
         username = request.POST.get('username')
-        device_id = request.POST.get('device_id')
+        device_id = request.COOKIES.get('device_id')
 
         friend_user = UserProfile.get_user_by_username(username)
         device_id = UserDevice.get_device_by_id(device_id)
@@ -627,7 +633,7 @@ def accept_friend_request(request):
 def generate_ratchet_keys(request):
     if request.method == 'POST':
         data = json.loads(request.body)
-        device_id = data.get('device_id')
+        device_id = request.COOKIES.get('device_id')
         receiver_username = data.get('receiver_username')
 
         receiver = UserProfile.get_user_by_username(receiver_username)

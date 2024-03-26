@@ -11,7 +11,8 @@ from django.dispatch import receiver
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render, redirect, get_object_or_404, resolve_url
 
-from chat.models import UserDevice
+from ReiserX_Tunnel import settings
+from chat.models import UserDevice, UserSecure
 from main import forms
 from main.consumers import MyWebSocketConsumer
 # Create your views here.
@@ -168,8 +169,24 @@ def login_view(request):
                 next_page = resolve_url(next_page)
                 response = redirect(next_page)
                 device_id = UserDevice.create_user_device(user, request)
+                secret = UserSecure.get_or_create(user, device_id)
                 if device_id:
-                    response.set_cookie('device_id', str(device_id.identifier), max_age=365 * 24 * 60 * 60)
+                    response.set_cookie('device_id',
+                                        str(device_id.identifier),
+                                        max_age=365 * 24 * 60 * 60,
+                                        httponly=True,
+                                        secure=True,
+                                        samesite='Strict',
+                                        domain=settings.ROOT_DOMAIN,
+                                        )
+                    response.set_cookie('internal',
+                                        str(secret.Token),
+                                        max_age=365 * 24 * 60 * 60,
+                                        httponly=True,
+                                        secure=True,
+                                        samesite='Strict',
+                                        domain=settings.ROOT_DOMAIN,
+                                        )
                     return response
                 else:
                     return redirect('chat_profile', user.username)

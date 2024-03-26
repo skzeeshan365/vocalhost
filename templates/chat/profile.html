@@ -279,16 +279,10 @@
                 <a onclick="clear_chat('{{ username }}')" class="wishlist-border pt-2">
                     <span class="wishlist">Clear chat</span>
                 </a>
-                <a onclick="generate_ratchet_keys('{{ username }}')" class="wishlist-border pt-2">
-                    <span class="wishlist">Reset encryption keys</span>
-                </a>
                 <a onclick="remove_chat('{{ username }}')" class="wishlist-border pt-2">
                     <span class="wishlist">Remove friend</span>
                 </a>
             {% else %}
-                <a onclick="generate_secondary_key()" class="wishlist-border pt-2">
-                    <span class="wishlist">Reset master key</span>
-                </a>
                 <a class="wishlist-border pt-2" style="margin-bottom: unset;">
                     <span class="wishlist">My devices</span>
                 {% if user_devices %}
@@ -680,61 +674,6 @@
             error: function (response) {
                 // Handle errors, e.g., show an error message
                 alert(response.responseJSON.message);
-            }
-        });
-    }
-
-    function generate_ratchet_keys(username) {
-        saveMessageLoader.style.display = 'block';
-        let device_id = getCookie('device_id');
-        $.ajax({
-            type: 'POST',
-            url: '{% url "get_user_private_key_ratchet" %}',
-            dataType: 'json',
-            data: JSON.stringify({
-                receiver_username: username,
-                device_id: device_id
-            }),
-            success: function (response) {
-                if (response.status === 'success') {
-                    if (response.private_keys.type === 0) {
-                        saveKeys_sender(response.room, response.private_keys.version, response.private_keys.ik_private_key, response.private_keys.ek_private_key, response.private_keys.dhratchet_private_key);
-                    } else if (response.private_keys.type === 1) {
-                        saveKeys_receiver(response.room, response.private_keys.version, response.private_keys.ik_private_key, response.private_keys.spk_private_key, response.private_keys.opk_private_key, response.private_keys.dhratchet_private_key)
-                    }
-                } else {
-                    console.error('Error loading messages:', response.error);
-                }
-                saveMessageLoader.style.display = 'none';
-            },
-            error: function (error) {
-                console.error('Error loading messages:', error);
-                saveMessageLoader.style.display = 'none';
-            }
-        });
-    }
-
-    function generate_secondary_key() {
-        saveMessageLoader.style.display = 'block';
-        let device_id = getCookie('device_id');
-        $.ajax({
-            type: 'POST',
-            url: '{% url "get_user_private_key_secondary" %}',
-            dataType: 'json',
-            data: JSON.stringify({
-                device_id: device_id
-            }),
-            success: function (response) {
-                if (response.status === 'success') {
-                    saveSecondaryKey(response.private_key);
-                } else {
-                    console.error('Error loading messages:', response.error);
-                }
-                saveMessageLoader.style.display = 'none';
-            },
-            error: function (error) {
-                console.error('Error loading messages:', error);
-                saveMessageLoader.style.display = 'none';
             }
         });
     }

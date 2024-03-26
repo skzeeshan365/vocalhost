@@ -44,7 +44,7 @@ class FriendRequestAdmin(admin.ModelAdmin):
 
 
 class PublicKeyAdmin(admin.ModelAdmin):
-    list_display = ('version', 'user', 'key_type', 'device_identifier', 'room', 'ratchet_key_overview')
+    list_display = ('version', 'timestamp', 'user', 'key_type', 'device_identifier', 'room', 'ratchet_key_overview')
     list_display_links = ('version',)
     list_filter = ('version', 'user', 'key_type', 'device_identifier', 'room')
 
@@ -62,8 +62,11 @@ class PublicKeyAdmin(admin.ModelAdmin):
 
     def ratchet_key_overview(self, obj):
         if obj.ratchet_key:
-            return obj.ratchet_key[:20]  # Display first 30 characters of device_public_key
+            return obj.ratchet_key[:20]
         return '-'
+
+    def timestamp(self, obj):
+        return obj.timestamp()
 
 
 class ChildMessageAdmin(admin.ModelAdmin):

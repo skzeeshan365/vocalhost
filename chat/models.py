@@ -14,6 +14,7 @@ from django.contrib.auth.models import User
 from django.db import models
 from django.db.models import Max, Exists, OuterRef, Subquery
 from django.dispatch import Signal
+from django.utils import timezone
 from django.utils.timesince import timesince
 from django.utils.timezone import now
 
@@ -138,6 +139,7 @@ class UserDevice(models.Model):
 
 class UserSecure(models.Model):
     AES = models.BinaryField(default=None, null=True, blank=True)
+    Token = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
     User = models.ForeignKey(User, on_delete=models.CASCADE)
     Device = models.OneToOneField(UserDevice, on_delete=models.CASCADE)
 
@@ -152,12 +154,26 @@ class UserSecure(models.Model):
 
         return user_secure
 
+    @classmethod
+    def get_or_create(cls, user, device):
+        # Check if a UserSecure object already exists for the given user and device
+        user_secure, created = cls.objects.get_or_create(User=user, Device=device)
+        return user_secure
+
     def update_aes_key(self, aes_key):
         # Update the AES key
         self.AES = aes_key
         self.save()
 
         return self
+
+    @classmethod
+    def get_user_secret_by_token(cls, user, device, token):
+        try:
+            secret = cls.objects.get(User=user, Device=device, Token=token)
+            return secret
+        except UserSecure.DoesNotExist:
+            return None
 
 
 class SenderKeyBundle:
@@ -373,6 +389,7 @@ class PublicKey(models.Model):
     key_bundle = models.BinaryField()
     ratchet_key = models.BinaryField(null=True, blank=True, default=None)
     version = models.PositiveIntegerField(default=1)
+    created_at = models.DateTimeField(auto_now_add=True)
 
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     device_identifier = models.ForeignKey(UserDevice, on_delete=models.CASCADE, related_name='public_key')
@@ -384,6 +401,13 @@ class PublicKey(models.Model):
     def save(self, *args, **kwargs):
         self.delete_unused_public_keys(self.user, self.room, self.device_identifier.identifier)
         super().save(*args, **kwargs)
+
+    def timestamp(self):
+        return timesince(self.created_at, now()) + ' ago'
+
+    def is_expired(self):
+        expiration_period = timezone.timedelta(days=21)
+        return timezone.now() - self.created_at > expiration_period
 
     @classmethod
     def create_key(cls, bundle, user, device_identifier, room):

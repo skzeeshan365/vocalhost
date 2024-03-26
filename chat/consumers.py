@@ -1,5 +1,3 @@
-import base64
-import json
 import json
 import threading
 import time
@@ -13,6 +11,7 @@ from cloudinary.api import delete_resources
 from django.contrib.auth.models import User
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import transaction
+from django.http import SimpleCookie
 
 from ReiserX_Tunnel import settings
 from ReiserX_Tunnel.AuthBackend import CustomAuthBackend
@@ -65,47 +64,54 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 connected_users[self.sender_username][self.device_id] = {'channel_name': self.channel_name}
             else:
                 await self.close()
-        elif device_id is not None:
-            self.device_id = device_id[0]
-            self.sender = await self.get_device_user(self.device_id)
-            if self.sender:
-                self.sender_username = self.sender.get_username()
-                if self.sender.is_authenticated:
-                    await self.channel_layer.group_send(
-                        'chat',
-                        {
-                            "type": "update_user_status",
-                            "status": "online",
-                            "username": self.sender_username,
-                        },
-                    )
-                    if self.sender_username in connected_users:
-                        # Update the devices dictionary for the existing user
-                        connected_users[self.sender_username]['devices'].update({
-                            self.device_id: {
-                                'channel_name': self.channel_name
-                            }
-                        })
-                    else:
-                        # If the user doesn't exist, create a new entry
-                        connected_users[self.sender_username] = {
-                            'room': None,
-                            'devices': {
+        else:
+            headers = dict(self.scope['headers'])
+
+            cookies = SimpleCookie()
+            cookies.load(headers.get(b'cookie').decode())
+
+            device_id = cookies.get('device_id')
+            if device_id:
+                self.device_id = device_id.value
+                self.sender = await self.get_device_user(self.device_id)
+                if self.sender:
+                    self.sender_username = self.sender.get_username()
+                    if self.sender.is_authenticated:
+                        await self.channel_layer.group_send(
+                            'chat',
+                            {
+                                "type": "update_user_status",
+                                "status": "online",
+                                "username": self.sender_username,
+                            },
+                        )
+                        if self.sender_username in connected_users:
+                            # Update the devices dictionary for the existing user
+                            connected_users[self.sender_username]['devices'].update({
                                 self.device_id: {
                                     'channel_name': self.channel_name
                                 }
+                            })
+                        else:
+                            # If the user doesn't exist, create a new entry
+                            connected_users[self.sender_username] = {
+                                'room': None,
+                                'devices': {
+                                    self.device_id: {
+                                        'channel_name': self.channel_name
+                                    }
+                                }
                             }
-                        }
-                    # thread = threading.Thread(target=PublicKey.delete_unused_public_keys, args=(
-                    #     self.sender, self.room, self.device_id
-                    # ))
-                    # thread.start()
+                        # thread = threading.Thread(target=PublicKey.delete_unused_public_keys, args=(
+                        #     self.sender, self.room, self.device_id
+                        # ))
+                        # thread.start()
+                    else:
+                        await self.close()
                 else:
                     await self.close()
             else:
                 await self.close()
-        else:
-            await self.close()
 
     async def listen_for_signal_messages(self):
         async def forward_signal_messages(sender, receiver_username, message, **kwargs):

@@ -425,19 +425,6 @@ function preloaderEnd() {
         preloader.style.display = 'none';
     }, 1000); // Adjust the delay time as needed
 }
-
-// Function to get the value of a cookie by its name
-function getCookie(name) {
-    const cookies = document.cookie.split(';');
-    for (const cookie of cookies) {
-        const [cookieName, cookieValue] = cookie.trim().split('=');
-        if (cookieName === name) {
-            return decodeURIComponent(cookieValue);
-        }
-    }
-    return null;
-}
-
 function load_chat(userName) {
     preloaderStart();
     if (window.innerWidth <= 768) {
@@ -493,21 +480,19 @@ function load_chat(userName) {
         dataType: 'json',
         data: JSON.stringify({
             generate_keys: generate_keys,
-            device_id: getCookie('device_id')
         }),
         success: function (response) {
             if (response.status === 'success') {
-                if (response.generate_keys) {
+                var messages = JSON.parse(response.data);
+                (async () => {
+                    await load_chat_message(messages, response.keys.public_keys);
+                    if (response.generate_keys) {
                     if (response.keys.private_keys.type === 0) {
                         saveKeys_sender(getActiveRoom(), response.keys.private_keys.version, response.keys.private_keys.ik_private_key, response.keys.private_keys.ek_private_key, response.keys.private_keys.dhratchet_private_key);
                     } else if (response.keys.private_keys.type === 1) {
                         saveKeys_receiver(getActiveRoom(), response.keys.private_keys.version, response.keys.private_keys.ik_private_key, response.keys.private_keys.spk_private_key, response.keys.private_keys.opk_private_key, response.keys.private_keys.dhratchet_private_key)
                     }
                 }
-
-                var messages = JSON.parse(response.data);
-                (async () => {
-                    await load_chat_message(messages, response.keys.public_keys);
                     await initialize_keys(getActiveRoom(), response.keys.public_keys);
                 })();
             } else {
@@ -667,7 +652,6 @@ function process_temp_messages(username) {
         dataType: 'json',
         data: JSON.stringify({
             receiver_username: username,
-            device_id: getCookie('device_id')
         }),
         success: function (response) {
             if (response.status === 'success') {
@@ -689,7 +673,6 @@ function get_user_public_keys(username, room) {
         dataType: 'json',
         data: JSON.stringify({
             receiver_username: username,
-            device_id: getCookie('device_id')
         }),
         success: function (response) {
             if (response.status === 'success') {
@@ -707,14 +690,12 @@ function get_user_public_keys(username, room) {
 }
 
 async function get_device_public_keys(username, room, device_id) {
-    let self_device_id = getCookie('device_id')
     $.ajax({
         type: 'POST',
         url: `/chat/get/device/public-keys/`,
         dataType: 'json',
         data: JSON.stringify({
             receiver_username: username,
-            self_device_id: self_device_id,
             receiver_device_id: device_id
         }),
         success: async function (response) {
@@ -731,18 +712,14 @@ async function get_device_public_keys(username, room, device_id) {
 }
 
 async function get_user_private_keys_secondary() {
-    let device_id = getCookie('device_id');
     $.ajax({
         type: 'POST',
         url: `/chat/get/private-keys/secondary/`,
         dataType: 'json',
-        data: JSON.stringify({
-            device_id: device_id
-        }),
         success: async function (response) {
             if (response.status === 'success') {
                 saveSecondaryKey(response.private_key.key, response.private_key.token);
-                device_public_keys[device_id] = response.public_key;
+                device_public_keys[response.device_id] = response.public_key;
                 await initialize_asymmetric_devices();
                 let sym = new symmetric();
                 asymmetric_private_instance = new asymmetric();
@@ -1002,7 +979,7 @@ function remove_user(username) {
 }
 
 function initialize_socket() {
-    const web_socket_url = `${protocol}://` + window.location.host + `/ws/chat/?device_id=${getCookie('device_id')}`
+    const web_socket_url = `${protocol}://` + window.location.host + `/ws/chat/`
     chatSocket = new WebSocket(web_socket_url);
     chatSocket.binaryType = 'blob'
 
@@ -2099,7 +2076,6 @@ function display_feature_message() {
 
 function generate_room_private_keys() {
     var userListItems = document.querySelectorAll('.people .person');
-    let device_id = getCookie('device_id');
 
     // Iterate over each list item
     userListItems.forEach(function (userListItem) {
@@ -2113,7 +2089,6 @@ function generate_room_private_keys() {
                 dataType: 'json',
                 data: JSON.stringify({
                     receiver_username: username,
-                    device_id: device_id
                 }),
                 success: function (response) {
                     if (response.status === 'success') {

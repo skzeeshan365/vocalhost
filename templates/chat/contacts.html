@@ -20,6 +20,7 @@
     <link rel="stylesheet" href="{% static 'contact/css/style.css' %}">
     <link rel="stylesheet" href="{% static 'chat/css/styles.css' %}">
     <link rel="stylesheet" href="{% static 'chat/css/base_style.css' %}">
+    <link rel="stylesheet" href="{% static 'chat/css/preloader_style.css' %}">
 
     <title>Add chat</title>
     <!-- Favicon -->
@@ -175,19 +176,6 @@
 <script src="{% static 'chat/js/ratchet-v'|add:ASSET_VERSION_RATCHET|add:'.js' %}"></script>
 
 <script>
-    // Function to get the value of a cookie by its name
-    function getCookie(name) {
-        const cookies = document.cookie.split(';');
-        for (const cookie of cookies) {
-            const [cookieName, cookieValue] = cookie.trim().split('=');
-            if (cookieName === name) {
-                return decodeURIComponent(cookieValue);
-            }
-        }
-        return null;
-    }
-
-
     function addFriend(username) {
         let user_list = document.getElementById('user_list');
         var personElement = user_list.querySelector(`[data-chat='${username}']`);
@@ -199,10 +187,9 @@
         $.ajax({
             type: 'POST',
             url: '{% url "send_friend_request" %}',
-            data: {'username': username, 'send_request': status, 'device_id': getCookie('device_id')},
+            data: {'username': username, 'send_request': status},
             dataType: 'json',
             success: function (response) {
-                console.log(response)
                 if (response.status === 'success') {
                     if (response.request_status) {
                         buttonElement.innerText = 'Added';
@@ -232,7 +219,7 @@
         $.ajax({
             type: 'POST',
             url: '{% url "accept_friend_request" %}',  // Update the URL based on your project's URL structure
-            data: {'username': username, 'device_id': getCookie('device_id')},
+            data: {'username': username},
             dataType: 'json',
             success: function (response) {
                 if (response.status === 'success') {

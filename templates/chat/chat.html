@@ -7,7 +7,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
 
     <!-- Bootstrap CSS -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.2/css/all.min.css"
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"
           crossorigin="anonymous">
 
     <link rel="stylesheet" href="{% static 'contact/fonts/icomoon/style.css' %}">
@@ -62,6 +62,19 @@
             background-color: #FFFFFF;
             padding: 1px;
         }
+
+        .headers {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px;
+        }
+
+        .icon-middle {
+            font-size: 30px;
+            color: #dcdcdc;
+            margin-right: 10px;
+        }
     </style>
 </head>
 
@@ -69,33 +82,36 @@
 <div class="container" style="padding: unset;" id="chat_container">
     <div class="row">
         <div id="left_bar" class="col-lg-3 col-md-3 col-sm-3 left_bar">
-            <!-- Icon in the top right corner -->
-            <a href="{% url 'chat_profile' request.user.username %}" id="user_content"
-               style="elevation: 8deg; position: absolute; top: 4px; left: 2%; cursor: pointer; border-radius: 50%; background-color: #444444; display: flex; align-items: center;">
+            <div class="headers">
+                <!-- Icon on the left -->
+                <a href="{% url 'chat_profile' request.user.username %}" id="user_content"
+                   class="icon-container">
+                    {% if request.user.userprofile.image %}
+                        <img class="author-thumb" src="{{ request.user.userprofile.image.url }}"
+                             alt="Profile picture">
+                    {% else %}
+                        <img class="author-thumb" src="{% static 'img/user.png' %}" alt="Profile picture">
+                    {% endif %}
+                </a>
 
-                {% if  request.user.userprofile.image %}
-                    <img class="author-thumb" src="{{ request.user.userprofile.image.url }}"
-                         alt="Profile picture">
-                {% else %}
-                    <img class="author-thumb" src="{% static 'img/user.png' %}" alt="Profile picture">
-                {% endif %}
-            </a>
+                <!-- Icon in the middle -->
+                <i class="icon-middle">V</i>
 
-            <!-- Icon in the top right corner -->
-            <a href="{% url 'add_chat' %}">
-                <div style="position: absolute; top: 5px; right: 5%;">
+                <!-- Icon in the middle -->
+                <a href="{% url 'add_chat' %}" class="icon-container">
                     <!-- FontAwesome chat icon -->
-                    <i class="fas fa-plus-square" style="font-size: 30px; color: #dcdcdc;"></i>
+                    <i class="fas fa-plus-square icon-middle"></i>
                     <!-- Bootstrap badge -->
                     {% if received_requests > 0 %}
-                    <span id="request_badge" class="badge badge-danger" style="position: absolute; top: -5px; right: -10px; border-radius: 50%; background-color: #009dff; elevation: below;">{{ received_requests }}</span>
+                        <span id="request_badge" class="badge badge-danger">{{ received_requests }}</span>
                     {% else %}
-                        <span id="request_badge" class="badge badge-danger" style="position: absolute; top: -5px; right: -10px; border-radius: 50%; background-color: #009dff; elevation: below; display: none;">{{ received_requests }}</span>
+                        <span id="request_badge" class="badge badge-danger"
+                              style="display: none;">{{ received_requests }}</span>
                     {% endif %}
-                </div>
-            </a>
+                </a>
+            </div>
 
-            <hr style="background-color: #464646; margin-top: 60px; height: 1px;">
+            <hr style="background-color: #464646; margin-top: 15px; height: 1px;">
 
             <ul class="people">
                 {% for user in users %}
@@ -103,11 +119,11 @@
                         data-chat="{{ user.user.username }}" data-room="{{ user.room }}">
                         {% if user.user.userprofile.image %}
                             {% if user.user.userprofile.image.url %}
-                            <img id="users_profile_pic" class="users_profile_pic"
-                                 src="{{ user.user.userprofile.image.url }}" alt="Profile picture"/>
+                                <img id="users_profile_pic" class="users_profile_pic"
+                                     src="{{ user.user.userprofile.image.url }}" alt="Profile picture"/>
                             {% else %}
                                 <img id="users_profile_pic" class="users_profile_pic" src="{% static 'img/user.png' %}"
-                                 alt="Profile picture"/>
+                                     alt="Profile picture"/>
                             {% endif %}
                         {% else %}
                             <img id="users_profile_pic" class="users_profile_pic" src="{% static 'img/user.png' %}"
@@ -120,23 +136,30 @@
                         {% endif %}
                         {% if user.last_message %}
                             {% if user.new %}
-                                <span style="color: #ffffff" class="time" data-timestamp="{{ user.last_message_timestamp }}"></span>
+                                <span style="color: #ffffff" class="time"
+                                      data-timestamp="{{ user.last_message_timestamp }}"></span>
                                 {% if user.status == 0 %}
                                     <!--- STATUS OPENED --->
                                     <span class="preview" style="color: #ffffff;">
-                                    <img class="status_icon" id="status_icon" style="margin-right: 5px; height: 25px; width: 25px;" src="{% static 'img/status_seen_outline.svg' %}" alt="Icon">
+                                    <img class="status_icon" id="status_icon"
+                                         style="margin-right: 5px; height: 25px; width: 25px;"
+                                         src="{% static 'img/status_seen_outline.svg' %}" alt="Icon">
                                         Opened
                                     </span>
                                 {% elif user.status == 2 %}
                                     <!--- STATUS DELIVERED --->
                                     <span class="preview" style="color: #ffffff;">
-                                    <img class="status_icon" id="status_icon" style="margin-right: 5px; height: 25px; width: 25px;" src="{% static 'img/status_delivered.svg' %}" alt="Icon">
+                                    <img class="status_icon" id="status_icon"
+                                         style="margin-right: 5px; height: 25px; width: 25px;"
+                                         src="{% static 'img/status_delivered.svg' %}" alt="Icon">
                                         Delivered
                                     </span>
                                 {% else %}
                                     <!--- STATUS RECEIVED --->
                                     <span class="preview" style="color: #ffffff;">
-                                    <img class="status_icon" id="status_icon" style="margin-right: 5px; height: 25px; width: 25px;" src="{% static 'img/status_received.svg' %}" alt="Icon">
+                                    <img class="status_icon" id="status_icon"
+                                         style="margin-right: 5px; height: 25px; width: 25px;"
+                                         src="{% static 'img/status_received.svg' %}" alt="Icon">
                                         Received
                                     </span>
                                 {% endif %}
@@ -145,19 +168,25 @@
                                 {% if user.status == 0 %}
                                     <!--- STATUS OPENED --->
                                     <span class="preview" style="display: flex; align-items: center">
-                                    <img class="status_icon" id="status_icon" style="margin-right: 5px; height: 25px; width: 25px;" src="{% static 'img/status_seen_outline.svg' %}" alt="Icon">
+                                    <img class="status_icon" id="status_icon"
+                                         style="margin-right: 5px; height: 25px; width: 25px;"
+                                         src="{% static 'img/status_seen_outline.svg' %}" alt="Icon">
                                         Opened
                                     </span>
                                 {% elif user.status == 2 %}
                                     <!--- STATUS DELIVERED --->
                                     <span class="preview" style="display: flex; align-items: center">
-                                    <img class="status_icon " id="status_icon" style="margin-right: 5px; height: 25px; width: 25px;" src="{% static 'img/status_delivered.svg' %}" alt="Icon">
+                                    <img class="status_icon " id="status_icon"
+                                         style="margin-right: 5px; height: 25px; width: 25px;"
+                                         src="{% static 'img/status_delivered.svg' %}" alt="Icon">
                                         Delivered
                                     </span>
-                                    {% else %}
+                                {% else %}
                                     <!--- STATUS RECEIVED --->
                                     <span class="preview" style="display: flex; align-items: center">
-                                    <img class="status_icon" id="status_icon" style="margin-right: 5px; height: 25px; width: 25px;" src="{% static 'img/status_received_outline.svg' %}" alt="Icon">
+                                    <img class="status_icon" id="status_icon"
+                                         style="margin-right: 5px; height: 25px; width: 25px;"
+                                         src="{% static 'img/status_received_outline.svg' %}" alt="Icon">
                                         Received
                                     </span>
                                 {% endif %}
@@ -165,13 +194,15 @@
                         {% else %}
                             <span class="time" data-timestamp=""></span>
                             <span class="preview">
-                                <img class="status_icon" id="status_icon" style="margin-right: 5px; height: 25px; width: 25px;" src="{% static 'img/status_received_outline.svg' %}" alt="Icon">
+                                <img class="status_icon" id="status_icon"
+                                     style="margin-right: 5px; height: 25px; width: 25px;"
+                                     src="{% static 'img/status_received_outline.svg' %}" alt="Icon">
                                 Tap to chat</span>
                         {% endif %}
                     </li>
-                    {% empty %}
+                {% empty %}
                     <div class="d-flex justify-content-center">
-                    <h6 style="color:#fff; margin-top: 20px;">No chats available</h6>
+                        <h6 style="color:#fff; margin-top: 20px;">No chats available</h6>
                     </div>
                 {% endfor %}
             </ul>
@@ -183,8 +214,11 @@
             </div>
             <div class="container_image" id="container_image">
                 <img src="{% static 'img/img.png' %}" alt="Image" style="width: 75%; margin-top: 5%;">
-                <div id="feature_message" class="top" style="display: flex; align-items: center; justify-content: center; position: absolute; top: 10px; width: 100%;"></div>
-                <div class="bottom-left">Your messages are end-to-end encrypted,<br>ensuring no one, not even ReiserX, can read them.</div>
+                <div id="feature_message" class="top"
+                     style="display: flex; align-items: center; justify-content: center; position: absolute; top: 10px; width: 100%;"></div>
+                <div class="bottom-left">Your messages are end-to-end encrypted,<br>ensuring no one, not even ReiserX,
+                    can read them.
+                </div>
             </div>
             <div id="header_content"
                  style="cursor: pointer; margin-top: 5px; padding: 5px 10px 15px 8px;border-radius: 20px; background-color: #1f1f1f; display: none; height: 40px">
@@ -321,12 +355,12 @@
     const token_status = {{ token_status|yesno:"true,false" }};
     const default_user_icon = "{% static 'img/user.png' %}";
     {% if private_key %}
-    const key = '{{ private_key }}';
-        {% else %}
+        const key = '{{ private_key }}';
+    {% else %}
         const key = null;
     {% endif %}
     {% if device_keys %}
-    let device_public_keys = {{ device_keys }}
+        let device_public_keys = {{ device_keys }}
     {% endif %}
 </script>
 <!-- VARIABLE DEFINITION -->
