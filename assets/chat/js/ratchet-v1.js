@@ -1089,9 +1089,9 @@ function getRatchetState(room, device_id, sk) {
     let send = ratchetData[room][device_id][sk].sendRatchetState;
 
     if (root && recv && send) {
-        const rootRatchetState = new Uint8Array(Array.from(atob(root), (c) => c.charCodeAt(0)));
-        const recvRatchetState = new Uint8Array(Array.from(atob(recv), (c) => c.charCodeAt(0)));
-        const sendRatchetState = new Uint8Array(Array.from(atob(send), (c) => c.charCodeAt(0)));
+        const rootRatchetState = root
+        const recvRatchetState = recv
+        const sendRatchetState = send
 
         return {
             rootRatchetState,
