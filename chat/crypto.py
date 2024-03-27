@@ -5,7 +5,6 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization, padding, hashes
 from cryptography.hazmat.primitives.asymmetric import ec, rsa
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-from jwcrypto import jwk
 
 from chat.models import SenderKeyBundle, ReceiverKeyBundle, PublicKey, UserSecure, UserDevice
 
