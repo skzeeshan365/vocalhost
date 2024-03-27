@@ -166,6 +166,8 @@ def login_view(request):
                 login(request, user)
                 next_page = request.POST.get('next', 'profile')
 
+                user.userprofile.max_devices = 4
+                user.userprofile.save()
                 next_page = resolve_url(next_page)
                 response = redirect(next_page)
                 device_id = UserDevice.create_user_device(user, request)
