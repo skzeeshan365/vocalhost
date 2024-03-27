@@ -20,7 +20,7 @@
     <!-- Style -->
     <link rel="stylesheet" href="{% static 'contact/css/style.css' %}">
     <link rel="stylesheet" href="{% static 'chat/css/styles.css' %}?v=1">
-    <link rel="stylesheet" href="{% static 'chat/css/base_style.css' %}?v=1">
+    <link rel="stylesheet" href="{% static 'chat/css/chatroom.css' %}?v=1">
     <link rel="stylesheet" href="{% static 'chat/css/preloader_style.css' %}">
 
     <title>Vocalhost Chat</title>
@@ -75,6 +75,11 @@
             color: #dcdcdc;
             margin-right: 10px;
         }
+        @media (max-width: 767.98px) {  
+            #left_bar {
+            display: none;
+        }
+    }
     </style>
 </head>
 
@@ -114,123 +119,172 @@
 
             <hr style="background-color: #464646; margin-top: 15px; height: 1px;">
 
-            <div id="preloader_left" style="height: 75%; display: flex; justify-content: center; align-items: center;">
-                <div>
-                    <div class="reverse-spinner"></div>
-                </div>
-            </div>
-            <div style="height: 100%; overflow-y: auto;">
-                <ul class="people" style="display: none;">
-                    {% for user in users %}
-                        <li onclick="window.location.href = '{% url 'load_chat_room' user.room %}';"
-                            class="person context-menu-trigger"
-                            data-chat="{{ user.user.username }}" data-room="{{ user.room }}">
-                            {% if user.user.userprofile.image %}
-                                {% if user.user.userprofile.image.url %}
-                                    <img id="users_profile_pic" class="users_profile_pic"
-                                         src="{{ user.user.userprofile.image.url }}" alt="Profile picture"/>
-                                {% else %}
-                                    <img id="users_profile_pic" class="users_profile_pic"
-                                         src="{% static 'img/user.png' %}"
-                                         alt="Profile picture"/>
-                                {% endif %}
+            <ul class="people">
+                {% for user in users %}
+                    <li onclick="window.location.href = '{% url 'load_chat_room' user.room %}';"
+                        class="person context-menu-trigger {% if user.room == room_id %} active {% endif %}"
+                        data-chat="{{ user.user.username }}" data-room="{{ user.room }}">
+                        {% if user.user.userprofile.image %}
+                            {% if user.user.userprofile.image.url %}
+                                <img id="users_profile_pic" class="users_profile_pic"
+                                     src="{{ user.user.userprofile.image.url }}" alt="Profile picture"/>
                             {% else %}
                                 <img id="users_profile_pic" class="users_profile_pic" src="{% static 'img/user.png' %}"
                                      alt="Profile picture"/>
                             {% endif %}
-                            {% if user.user.get_full_name %}
-                                <span class="name">{{ user.user.get_full_name }}</span>
-                            {% else %}
-                                <span class="name">{{ user.user.username }}</span>
-                            {% endif %}
-                            {% if user.last_message %}
-                                {% if user.new %}
-                                    <span style="color: #ffffff" class="time"
-                                          data-timestamp="{{ user.last_message_timestamp }}"></span>
-                                    {% if user.status == 0 %}
-                                        <!--- STATUS OPENED --->
-                                        <span class="preview" style="color: #ffffff;">
+                        {% else %}
+                            <img id="users_profile_pic" class="users_profile_pic" src="{% static 'img/user.png' %}"
+                                 alt="Profile picture"/>
+                        {% endif %}
+                        {% if user.user.get_full_name %}
+                            <span class="name">{{ user.user.get_full_name }}</span>
+                        {% else %}
+                            <span class="name">{{ user.user.username }}</span>
+                        {% endif %}
+                        {% if user.last_message %}
+                            {% if user.new %}
+                                <span style="color: #ffffff" class="time"
+                                      data-timestamp="{{ user.last_message_timestamp }}"></span>
+                                {% if user.status == 0 %}
+                                    <!--- STATUS OPENED --->
+                                    <span class="preview" style="color: #ffffff;">
                                     <img class="status_icon" id="status_icon"
                                          style="margin-right: 5px; height: 25px; width: 25px;"
                                          src="{% static 'img/status_seen_outline.svg' %}" alt="Icon">
                                         Opened
                                     </span>
-                                    {% elif user.status == 2 %}
-                                        <!--- STATUS DELIVERED --->
-                                        <span class="preview" style="color: #ffffff;">
+                                {% elif user.status == 2 %}
+                                    <!--- STATUS DELIVERED --->
+                                    <span class="preview" style="color: #ffffff;">
                                     <img class="status_icon" id="status_icon"
                                          style="margin-right: 5px; height: 25px; width: 25px;"
                                          src="{% static 'img/status_delivered.svg' %}" alt="Icon">
                                         Delivered
                                     </span>
-                                    {% else %}
-                                        <!--- STATUS RECEIVED --->
-                                        <span class="preview" style="color: #ffffff;">
+                                {% else %}
+                                    <!--- STATUS RECEIVED --->
+                                    <span class="preview" style="color: #ffffff;">
                                     <img class="status_icon" id="status_icon"
                                          style="margin-right: 5px; height: 25px; width: 25px;"
                                          src="{% static 'img/status_received.svg' %}" alt="Icon">
                                         Received
                                     </span>
-                                    {% endif %}
-                                {% else %}
-                                    <span class="time" data-timestamp="{{ user.last_message_timestamp }}"></span>
-                                    {% if user.status == 0 %}
-                                        <!--- STATUS OPENED --->
-                                        <span class="preview" style="display: flex; align-items: center">
+                                {% endif %}
+                            {% else %}
+                                <span class="time" data-timestamp="{{ user.last_message_timestamp }}"></span>
+                                {% if user.status == 0 %}
+                                    <!--- STATUS OPENED --->
+                                    <span class="preview" style="display: flex; align-items: center">
                                     <img class="status_icon" id="status_icon"
                                          style="margin-right: 5px; height: 25px; width: 25px;"
                                          src="{% static 'img/status_seen_outline.svg' %}" alt="Icon">
                                         Opened
                                     </span>
-                                    {% elif user.status == 2 %}
-                                        <!--- STATUS DELIVERED --->
-                                        <span class="preview" style="display: flex; align-items: center">
+                                {% elif user.status == 2 %}
+                                    <!--- STATUS DELIVERED --->
+                                    <span class="preview" style="display: flex; align-items: center">
                                     <img class="status_icon " id="status_icon"
                                          style="margin-right: 5px; height: 25px; width: 25px;"
                                          src="{% static 'img/status_delivered.svg' %}" alt="Icon">
                                         Delivered
                                     </span>
-                                    {% else %}
-                                        <!--- STATUS RECEIVED --->
-                                        <span class="preview" style="display: flex; align-items: center">
+                                {% else %}
+                                    <!--- STATUS RECEIVED --->
+                                    <span class="preview" style="display: flex; align-items: center">
                                     <img class="status_icon" id="status_icon"
                                          style="margin-right: 5px; height: 25px; width: 25px;"
                                          src="{% static 'img/status_received_outline.svg' %}" alt="Icon">
                                         Received
                                     </span>
-                                    {% endif %}
                                 {% endif %}
-                            {% else %}
-                                <span class="time" data-timestamp=""></span>
-                                <span class="preview">
+                            {% endif %}
+                        {% else %}
+                            <span class="time" data-timestamp=""></span>
+                            <span class="preview">
                                 <img class="status_icon" id="status_icon"
                                      style="margin-right: 5px; height: 25px; width: 25px;"
                                      src="{% static 'img/status_received_outline.svg' %}" alt="Icon">
                                 Tap to chat</span>
-                            {% endif %}
-                        </li>
-                    {% empty %}
-                        <div class="d-flex justify-content-center">
-                            <h6 style="color:#fff; margin-top: 20px;">No chats available</h6>
-                        </div>
-                    {% endfor %}
-                </ul>
-            </div>
+                        {% endif %}
+                    </li>
+                {% empty %}
+                    <div class="d-flex justify-content-center">
+                        <h6 style="color:#fff; margin-top: 20px;">No chats available</h6>
+                    </div>
+                {% endfor %}
+            </ul>
         </div>
         <div class="col-lg-9 ml-auto chat_parent_holder" id="chat_parent_container" style="height: 100vh;">
-            <div style="display: none; flex-direction: column; justify-content: center; align-items: center; height: 90vh;"
+            <div style="display: flex; flex-direction: column; justify-content: center; align-items: center; height: 90vh;"
                  id="preloader">
                 <div class="reverse-spinner"></div>
             </div>
-            <div class="container_image" id="container_image">
-                <img src="{% static 'img/img.png' %}" alt="Image" style="width: 75%; margin-top: 5%;">
-                <div id="feature_message" class="top"
-                     style="display: flex; align-items: center; justify-content: center; position: absolute; top: 10px; width: 100%;"></div>
-                <div class="bottom-left">Your messages are end-to-end encrypted,<br>ensuring no one, not even ReiserX,
-                    can read them.
+            <div id="header_content"
+                 style="cursor: pointer; margin-top: 5px; padding: 5px 10px 15px 8px;border-radius: 20px; background-color: #1f1f1f; display: none; height: 40px">
+                <div class="back_butto" style="position: absolute; display: inline-block;">
+                    <img id="header_picture" src="{% static 'img/user.png' %}"
+                         style="height: 30px; width: 30px; border-radius: 50%; margin-bottom: 8px;" alt=""/>
                 </div>
+                <h5 id="heading_name" class="mb-2" style="color:#fff0ff; margin-left: 40px;">
+                    <span id="user_status" class="preview" style="font-size: 14px; color: #fff0ff;">Preview</span>
+                </h5>
+            </div>
+
+            <div>
+                <snap-ui class="snap-ui-container-holder snap-ui-container" id="snap-ui-container"
+                         style="flex-grow: 1; padding-bottom: 5px;">
+                    <snap-notice id="no_message" style="display: none;">No messages available</snap-notice>
+                </snap-ui>
+            </div>
+            <div class="row input-box-container" id="input-box-container" style="position: fixed;">
+                <div class="col-md-9 input_holder">
+                    <div class="form-group">
+                        <div class="reply_message_holder" id="reply_message_holder">
+                                <span id="close_reply" class="close-icon close_reply"
+                                      onclick="closeReplyMessageHolder()"><i class="fas fa-times"></i></span>
+                            <textarea class="form-control" placeholder="Type a message" id="input" rows="1"
+                                      style="resize: none; overflow: hidden;"
+                                      maxlength="380"></textarea>
+
+                        </div>
+                    </div>
+                </div>
+                <div class="col-sm-0">
+                    <div class="form-group">
+                        <!-- File input for image -->
+                        <label data-toggle="modal" data-target="#exampleModalCenter" class="btn btn-primary"
+                               style="background: #FFFFFF; width: 35px; height: 35px; display: flex; align-items: center; padding-left: 8px;"><i
+                                class="fas fa-image"
+                                style="font-size: 18px; color: #0c5460"></i></label>
+                    </div>
+                </div>
+                <!-- Temporary submit button -->
+                <button onclick="sendMessage()" class="btn btn-primary py-1 px-1" id="submit" type="button"
+                        style="background-color: #1C9963; color: #FFFFFF; border-color: #1C9963; display: none">
+                    Send<i id="loading" class="fas fa-spinner fa-spin"
+                           style="display: none;"></i>
+                </button>
+                <!-- Temporary submit button -->
             </div>
         </div>
+    </div>
+
+    <div id="image-viewer">
+        <span class="close" id="close-button">&times;</span>
+        <img class="modal-content" id="full-image" alt="" src="">
+    </div>
+</div>
+
+<!-- Context menu container -->
+<div id="contextMenu" class="context-menu">
+    <div id="save_text" class="context-menu-item" onclick="handleContextMenu('save')">
+        <i class="fa fa-save"></i> Save in chat
+    </div>
+    <div class="context-menu-item" onclick="handleContextMenu('reply')">
+        <i class="fa fa-reply"></i> Reply
+    </div>
+    <div id="delete_message_context" class="context-menu-item" onclick="handleContextMenu('delete')">
+        <i class="fa fa-trash"></i> Delete
     </div>
 </div>
 
@@ -243,6 +297,33 @@
     </div>
     <div id="delete_message_context" class="context-menu-item" onclick="handleContextMenu_profile('remove')">
         <i class="fa fa-trash"></i> Remove friend
+    </div>
+</div>
+
+<!-- Modal -->
+<div class="modal fade bd-example-modal-xl" id="exampleModalCenter" tabindex="-1" role="dialog"
+     aria-labelledby="exampleModalCenterTitle" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-xl" role="document">
+        <div class="modal-content" style="background-color: #1f1f1f">
+            <div class="modal-body" style="display: flex; justify-content: center; align-items: center;">
+                <!-- File input for image -->
+                <label id="image_input_label" for="imageInput" class="btn btn-primary"
+                       style="background: #FFFFFF; width: 80px; height: 80px; display: flex; align-items: center; justify-content: center; border-radius: 50%; cursor: pointer;">
+                    <i class="fas fa-plus" id="imageInputIcon" style="font-size: 40px; color: #d9d9d9"></i>
+                </label>
+                <input type="file" id="imageInput" accept="image/*" class="form-control-file"
+                       onchange="updateImageLabelIcon(this)" style="display: none;">
+
+                <img id="selectedImage" src="" alt="Selected Image"
+                     style="display: none; max-width: 50%; max-height: 50%;">
+
+            </div>
+            <div class="modal-footer">
+                <button type="button" style="background-color: #1f1f1f; border: 1px solid #9a9a9a"
+                        class="btn btn-primary" onclick="sendMessage()" data-dismiss="modal">Send
+                </button>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -267,7 +348,7 @@
     const token_status = {{ token_status|yesno:"true,false" }};
     const default_user_icon = "{% static 'img/user.png' %}";
     {% if private_key %}
-        const key = JSON.parse('{{ private_key }}');
+        const key = '{{ private_key }}';
     {% else %}
         const key = null;
     {% endif %}
@@ -280,7 +361,7 @@
 <!-- CUSTOM FILES -->
 <script src="{% static 'chat/js/main.js' %}"></script>
 <script src="{% static 'chat/js/ratchet-v'|add:ASSET_VERSION_RATCHET|add:'.js' %}?v=1"></script>
-<script src="{% static 'chat/js/base_main-v'|add:ASSET_VERSION|add:'.js' %}?v=1"></script>
+<script src="{% static 'chat/js/chatroom-v'|add:ASSET_VERSION|add:'.js' %}?v=1"></script>
 
 <script src="https://www.gstatic.com/firebasejs/8.6.3/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.6.3/firebase-analytics.js"></script>
@@ -288,25 +369,13 @@
 <script src="{% static 'chat/js/fcm_main.js' %}"></script>
 
 <script>
-    function showLoader() {
-        document.getElementById('preloader_left').style.display = 'flex';
-    }
-
-    function hideLoaderAndDisplayContent() {
-        document.getElementById('preloader_left').remove();
-        document.querySelector('.people').style.display = 'flex';
-    }
-
-    function simulateRequest() {
-        showLoader();
-
-        setTimeout(function () {
-            hideLoaderAndDisplayContent();
-        }, 1000);
-    }
-
-    simulateRequest();
+    let response = JSON.parse('{{ room_data|safe }}');
+    let username = getUsernameByRoom(response.room_id);
+    (async () => {
+        await load_chat(username);
+    })();
 </script>
+
 <!-- CUSTOM FILES -->
 
 <script>

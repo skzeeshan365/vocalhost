@@ -8,13 +8,13 @@ from cloudinary import uploader
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
-from django.contrib.auth import logout
+from django.contrib.auth import logout, authenticate, login
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db.models import OuterRef, Subquery
 from django.http import HttpResponse, JsonResponse, Http404
-from django.shortcuts import render, redirect
+from django.shortcuts import render, redirect, resolve_url
 from django.template.loader import render_to_string
 from django.utils.safestring import mark_safe
 from fcm_django.models import FCMDevice
@@ -25,11 +25,11 @@ from chat.models import Message, Room, get_connected_users, new_signal_message, 
     ReceiverKeyBundle, PublicKey, UserDevice, ChildMessage, UserSecure
 from chat.utils import process_messages, clear_temp_messages, get_ip
 from main.Utils import send_pusher_update
-from main.forms import ImageUploadForm
+from main.forms import ImageUploadForm, LoginForm
 from main.models import UserProfile
 
 
-@login_required(login_url='/account/login/')
+@login_required(login_url='/chat/login/')
 def chat_box(request):
     user = request.user
     users = User.objects.exclude(username=user.username)
@@ -121,6 +121,13 @@ def chat_box(request):
     if user_device and user_device.username == user.username:
         device = UserDevice.get_device_by_id(device_id_cookie)
 
+        if device.device_public_key is None:
+            private_key, public_key, key_token = generate_key_pair(request.user, device)
+            device.device_public_key = public_key
+        else:
+            private_key = None
+            key_token = None
+
         device.ip_address = get_ip(request)
         device.save()
 
@@ -132,6 +139,8 @@ def chat_box(request):
                    'token_status': token,
                    'received_requests': received_friend_request,
                    'device_keys': mark_safe(device_keys)}
+        if private_key:
+            context['private_key'] = mark_safe(json.dumps({'private_key': PublicKey.format_key(private_key), 'token': PublicKey.format_key(key_token)}))
 
         response = render(request, "chat/chat.html",
                           context)
@@ -173,6 +182,153 @@ def chat_box(request):
     return response
 
 
+@login_required(login_url='/chat/login/')
+def load_chat_room(request, room_id):
+    user = request.user
+    users = User.objects.exclude(username=user.username)
+
+    token = FCMDevice.objects.filter(user=user).exists()
+
+    if settings.DEBUG is False:
+        protocol = 'wss'
+    else:
+        protocol = 'ws'
+    room_messages_info = []
+
+    for other_user in users:
+        room = Room.getRoom(user, other_user)
+        if room is None:
+            continue
+
+        messages_with_child_messages = ChildMessage.objects.filter(
+            base_message_id=OuterRef('message_id'),  # Link to the primary key of the outer Message
+            cipher__isnull=False
+        ).values('base_message_id')
+
+        # Get all Message instances where at least one related ChildMessage has a non-None cipher
+        messages_with_cipher = Message.objects.filter(
+            room=room,
+            receiver=user,
+            saved=False,
+            message_id__in=Subquery(messages_with_child_messages)
+        )
+
+        messages_with_cipher_other = Message.objects.filter(
+            room=room,
+            receiver=other_user,
+            saved=False,
+            message_id__in=Subquery(messages_with_child_messages)
+        )
+
+        # Then you can count the number of such messages
+        messages_count = messages_with_cipher.count()
+
+        last_message = room.get_last_message()
+
+        status = -1
+        new_message = None
+        if last_message:
+            if last_message.receiver == user and messages_with_cipher:
+                new_message = True
+            else:
+                new_message = False
+
+            if last_message.receiver == other_user and messages_with_cipher_other.exists():
+                status = 2
+            elif messages_with_cipher is None and messages_with_cipher_other is None:
+                status = -1
+        room_messages_info.append({
+            'user': other_user,
+            'room': room.room,
+            'message_count': str(messages_count) if messages_count > 0 else '',
+            'last_message': last_message.message_id if last_message else None,
+            'last_message_timestamp': str(last_message.timestamp) if last_message else None,
+            'new': new_message,
+            'status': status
+        })
+    room_messages_info.sort(
+        key=lambda x: datetime.strptime(x['last_message_timestamp'], '%Y-%m-%d %H:%M:%S.%f%z').replace(
+            tzinfo=timezone.utc)
+        if x['last_message_timestamp']
+        else datetime.min.replace(tzinfo=timezone.utc),
+        reverse=True
+    )
+
+    for item in room_messages_info:
+        if item['last_message_timestamp']:
+            utc_time = datetime.strptime(item['last_message_timestamp'], '%Y-%m-%d %H:%M:%S.%f%z')
+            kolkata_offset = timedelta(hours=5, minutes=30)  # Kolkata time zone offset
+            kolkata_time = utc_time + kolkata_offset
+            item['last_message_timestamp'] = kolkata_time.strftime('%I:%M %p')
+
+    received_friend_request = FriendRequest.objects.filter(receiver=user, status=FriendRequest.PENDING).count()
+
+    device_keys = UserDevice.get_user_device_public_keys(request.user)
+
+    device_id = request.COOKIES.get('device_id')
+    generate_keys = False
+
+    room = Room.get_room_by_id(room_id)
+    if room:
+        if room.sender == user:
+            receiver = room.receiver
+        else:
+            receiver = room.sender
+        public_keys = room.get_public_keys(receiver, device_id)
+        public_key = PublicKey.get_latest_public_key(user=user, room=room,
+                                                     device_id=UserDevice.get_device_by_id(device_id))
+        if UserDevice.get_device_by_id(device_id).device_public_key:
+            if not public_key or (public_key and public_key.is_expired()):
+                generate_keys = True
+                if room.get_user_type(user) == 'Sender':
+                    private_keys = generate_sender_keys(room, user, device_id)
+                else:
+                    private_keys = generate_receiver_keys(room, user, device_id)
+            else:
+                private_keys = None
+        else:
+            private_keys = None
+
+        messages_db = Message.objects.filter(room=room)
+        messages = process_messages(messages_db, user, room, device_id)
+
+        messages_db = Message.objects.filter(room=room, receiver=user, saved=False)
+
+        if messages_db.exists():
+            thread = threading.Thread(target=update_message_status, args=(receiver.username, user.username))
+            thread.start()
+        room_data = {
+            'status': 'success',
+            'data': messages,
+            'generate_keys': generate_keys,
+            'room_id': room.room,
+            'keys':
+                {
+                    'public_keys': public_keys,
+                    'private_keys': private_keys
+                }
+        }
+        room_data = json.dumps(room_data, cls=DjangoJSONEncoder)
+    else:
+        room_data = {}
+
+    context = {'protocol': protocol,
+               'abcf': settings.FIREBASE_API_KEY,
+               'users': room_messages_info,
+               'storeMessage': user.userprofile.auto_save,
+               'pusher': settings.PUSHER_KEY,
+               'token_status': token,
+               'received_requests': received_friend_request,
+               'device_keys': mark_safe(device_keys),
+               'room_data': room_data,
+               'room_id': room.room}
+
+    response = render(request, "chat/chatroom.html",
+                      context)
+
+    return response
+
+
 def generate_secondary_key_pair(request):
     if request.method == 'POST':
         device_id = request.COOKIES.get('device_id')
@@ -203,6 +359,7 @@ def get_private_key_token(request):
         user = request.user
         device = UserDevice.get_device_by_id(device_id)
         token = request.COOKIES.get('internal')
+        print(token)
         if device and user:
             secret = UserSecure.get_user_secret_by_token(user=request.user, device=device, token=token)
             if secret:
@@ -297,7 +454,6 @@ def process_temp_messages(request):
             room = Room.getRoom(user, receiver)
             if room:
                 messages_db = Message.objects.filter(room=room)
-
                 clear_temp_messages(messages_db, device_id)
                 return JsonResponse({'status': 'success'})
             else:
@@ -860,3 +1016,51 @@ def generate_message_id(request):
         message_id = int(time.time() * 1000)
         return JsonResponse({'status': 'success', 'message_id': message_id})
     return JsonResponse({'success': False, 'error': 'Invalid request'})
+
+
+def chat_login_view(request):
+    if request.method == 'POST':
+        form = LoginForm(request.POST)
+        if form.is_valid():
+            username_or_email = form.cleaned_data['username_or_email']
+            password = form.cleaned_data['password']
+
+            user = authenticate(request, username=username_or_email, password=password)
+            if user is None:
+                user = authenticate(request, email=username_or_email, password=password)
+
+            if user is not None:
+                login(request, user)
+
+                user.userprofile.max_devices = 4
+                user.userprofile.save()
+                next = resolve_url('chat')
+                response = redirect(next)
+                device_id = UserDevice.create_user_device(user, request)
+                if device_id:
+                    secret = UserSecure.get_or_create(user, device_id)
+                    response.set_cookie('device_id',
+                                        str(device_id.identifier),
+                                        max_age=365 * 24 * 60 * 60,
+                                        httponly=True,
+                                        secure=True,
+                                        samesite='Strict',
+                                        domain=settings.ROOT_DOMAIN,
+                                        )
+                    response.set_cookie('internal',
+                                        str(secret.Token),
+                                        max_age=365 * 24 * 60 * 60,
+                                        httponly=True,
+                                        secure=True,
+                                        samesite='Strict',
+                                        domain=settings.ROOT_DOMAIN,
+                                        )
+                    return response
+                else:
+                    return redirect('chat_profile', user.username)
+            else:
+                form.add_error(None, 'Invalid username/email or password.')
+    else:
+        form = LoginForm()
+
+    return render(request, 'registration/chat_login.html', {'form': form})

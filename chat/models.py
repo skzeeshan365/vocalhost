@@ -242,6 +242,13 @@ class Room(models.Model):
         return f'{self.room[:30]}'
 
     @staticmethod
+    def get_room_by_id(room_id):
+        try:
+            return Room.objects.get(room=room_id)
+        except Room.DoesNotExist:
+            return None
+
+    @staticmethod
     def generate_room_id(sender, receiver):
         if sender is not None and receiver is not None:
             sorted_usernames = sorted([sender.userprofile.UUID, receiver.userprofile.UUID])

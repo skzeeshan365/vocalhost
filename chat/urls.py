@@ -8,6 +8,7 @@ urlpatterns = [
     path('account/profile/update/info', views.update_profile_info, name='update_profile_info'),
 
     path('', chat_box, name="chat"),
+    path('login/', views.chat_login_view, name="chat_login"),
     path('profile/<str:username>/', views.chat_profile, name='chat_profile'),
     path("delete/<str:receiver>/", views.delete_messages, name="delete_messages"),
     path("load/messages/<str:receiver>/", views.load_messages, name="load_messages"),
@@ -29,4 +30,5 @@ urlpatterns = [
     path('request/accept/', views.accept_friend_request, name='accept_friend_request'),
 
     path('device/logout/', views.logout_device, name='logout_device'),
+    path('<str:room_id>/', views.load_chat_room, name='load_chat_room'),
 ]

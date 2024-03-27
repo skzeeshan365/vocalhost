@@ -670,36 +670,46 @@ class symmetric {
     }
 
     async importKey(asymm) {
-        const self = this
-        $.ajax({
-            type: 'POST',
-            url: 'get/private-keys/token/',
-            xhrFields: {
-                responseType: 'arraybuffer'  // Specify responseType as 'arraybuffer' to handle binary response
-            },
-            success: async function (response) {
-                if (response) {
-                    let data = msgpack.decode(new Uint8Array(response));
-                    if (data) {
-                        const token = new Uint8Array(32);
-                        token.set(new Uint8Array(data.token), 0);
-                        token.set(base64StringToUint8Array(getKeyToken()), 16);
-                        let private_key = await window.crypto.subtle.importKey(
-                            'raw',
-                            token,
-                            {name: 'AES-CBC'},
-                            false,
-                            ['decrypt']
-                        );
-                        await asymm.setPublicKey(data.public_key);
-                        await asymm.importPrivateKey(await self.decryptAES(private_key, getSecondaryKey()));
-                    }
+        self = this;
+        const ajaxPromise = new Promise((resolve, reject) => {
+            $.ajax({
+                type: 'POST',
+                url: '/chat/get/private-keys/token/',
+                xhrFields: {
+                    responseType: 'arraybuffer'
+                },
+                success: function (response) {
+                    resolve(response);  // Resolve the Promise with the response data
+                },
+                error: function (error) {
+                    reject(error);  // Reject the Promise with the error
                 }
-            },
-            error: function (error) {
-                console.error('Error:', error);
-            }
+            });
         });
+
+        try {
+            // Wait for the AJAX request to complete and get the response
+            const response = await ajaxPromise;
+            if (response) {
+                let data = msgpack.decode(new Uint8Array(response));
+                if (data) {
+                    const token = new Uint8Array(32);
+                    token.set(new Uint8Array(data.token), 0);
+                    token.set(base64StringToUint8Array(getKeyToken()), 16);
+                    let private_key = await window.crypto.subtle.importKey(
+                        'raw',
+                        token,
+                        {name: 'AES-CBC'},
+                        false,
+                        ['decrypt']
+                    );
+                    await asymm.setPublicKey(data.public_key);
+                    await asymm.importPrivateKey(await self.decryptAES(private_key, getSecondaryKey()));
+                }
+            }
+        } catch (error) {
+            console.error('Error:', error);
+        }
     }
 
     async decryptAES(private_key, data) {

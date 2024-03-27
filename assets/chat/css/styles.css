@@ -6,7 +6,6 @@ ul.people {
             margin-left: -1px;
             border-right: 1px solid #1f1f1f;
             border-left: 1px solid #1f1f1f;
-            width: calc(100% + 2px);
             .person {
                 position: relative;
                 width: 100%;
@@ -63,7 +62,7 @@ ul.people {
                     margin-left: -1px;
                     padding-top: 13px;
                     border: 0;
-                    background-color: #000000;
+                    background-color: #232323;
                     width: calc(100% + 2px);
                     padding-left: calc(5% + 1px);
                     span {

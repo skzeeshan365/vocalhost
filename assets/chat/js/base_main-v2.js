@@ -1,299 +1,5 @@
 "use strict";
 
-// Section: ContextMenu
-const saveTextElement = document.getElementById('save_text');
-const delete_message_context = document.getElementById('delete_message_context');
-
-let text = null;
-let from = null;
-let message_id = null;
-let imageUrl = null;
-let reply_id = null;
-
-function showContextMenu(event, texts, froms, message_id_arg, image_url, reply_ids) {
-    event.preventDefault();
-
-    // Access the context menu directly
-    const contextMenu = document.getElementById('contextMenu');
-    const result = getMessageElementById(message_id_arg);
-
-
-    if (result.element.getAttribute('saved') === '') {
-        saveTextElement.innerHTML = '<i class="fa fa-save"></i> Unsave';
-        saveTextElement.onclick = () => handleContextMenu('unsave');
-    } else {
-        saveTextElement.innerHTML = '<i class="fa fa-save"></i> Save in chat';
-        saveTextElement.onclick = () => handleContextMenu('save');
-    }
-
-    let from = result.element.getAttribute('from')
-    if (from === 'Me') {
-        delete_message_context.style.display = 'block';
-    } else {
-        delete_message_context.style.display = 'none';
-    }
-
-    // Set the position of the context menu
-    contextMenu.style.display = 'block';
-    contextMenu.style.left = event.pageX + 'px';
-    contextMenu.style.top = event.pageY + 'px';
-
-    if (texts) {
-        text = texts;
-    }
-
-    if (froms) {
-        from = froms;
-    }
-
-    if (message_id_arg) {
-        message_id = message_id_arg;
-    }
-
-    if (image_url) {
-        imageUrl = image_url;
-    }
-
-    if (reply_ids) {
-        reply_id = reply_ids;
-    }
-
-    // Hide the context menu when clicking outside
-    document.addEventListener('click', hideContextMenu);
-}
-
-// Handle context menu item click
-function handleContextMenu(option) {
-    if (option === 'reply') {
-
-        var textarea = document.getElementById("input");
-
-        // Focus on the textarea
-        textarea.focus();
-
-        adjustChatHeight(true);
-
-        var snapMessage = document.createElement('snap-message');
-
-        snapMessage.textContent = text;
-        snapMessage.style.wordBreak = 'break-all';
-
-        if (from) {
-            snapMessage.setAttribute('from', from);
-        }
-
-        if (message_id) {
-            snapMessage.setAttribute('id', message_id);
-        }
-
-        if (imageUrl) {
-            // Create an img element for the image
-            var imageElement = document.createElement('img');
-            imageElement.src = imageUrl; // Set the image URL
-            imageElement.alt = 'Image'; // Set the alt attribute
-            imageElement.width = 100;
-
-            // Append the image element to the snap-message element
-            snapMessage.prepend(imageElement);
-        }
-
-        var reply_message_holder = document.getElementById('reply_message_holder');
-        var close_reply = document.getElementById('close_reply');
-        close_reply.style.display = 'block';
-        var specific_element_to_remove = reply_message_holder.querySelector('snap-message');
-        if (specific_element_to_remove) {
-            reply_message_holder.removeChild(specific_element_to_remove);
-        }
-        reply_message_holder.prepend(snapMessage);
-    } else if (option === 'save') {
-        saveMessageToServer(message_id, true, reply_id || null, imageUrl || null)
-    } else if (option === 'unsave') {
-        saveMessageToServer(message_id, false, null)
-    } else if (option === 'delete') {
-        deleteMessage(message_id);
-    }
-    text = null;
-    from = null;
-    message_id = null;
-    imageUrl = null;
-    reply_id = null;
-    hideContextMenu();
-}
-
-// Hide the context menu
-function hideContextMenu() {
-    const contextMenu = document.getElementById('contextMenu');
-    contextMenu.style.display = 'none';
-
-    // Remove the click event listener
-    document.removeEventListener('click', hideContextMenu);
-}
-
-function saveMessageToServer(message_id, isSave, reply_id, image_url = null) {
-    const message = getMessageContentByID(message_id)
-    const result = getMessageElementById(message_id)
-
-    let from = result.element.getAttribute('from')
-    let sender = null;
-    let receiver = null;
-    if (from !== 'Me') {
-        sender = from;
-        receiver = userUsername;
-    } else {
-        sender = userUsername;
-        receiver = getActivePerson()
-    }
-    if (isSave) {
-        if (image_url) {
-            let image = result.element.querySelector('.message_image');
-            if (image) {
-                const imageUrl = image.src
-                if (imageUrl) {
-                    fetch(imageUrl)
-                        .then(response => response.blob())
-                        .then(blob => {
-                            const reader = new FileReader();
-                            reader.onloadend = function () {
-                                const imageData = reader.result;
-
-                                const blobImageData = new Blob([imageData]);
-                                const formData = new FormData();
-                                formData.append('image_data', blobImageData);
-                                formData.append('message_id', message_id);
-
-                                $.ajax({
-                                    url: '/chat/upload/image/',
-                                    type: 'POST',
-                                    processData: false,
-                                    contentType: false,
-                                    data: formData,
-                                    success: function (data) {
-                                        chatSocket.send(JSON.stringify({
-                                            'type': 'save_message',
-                                            'save_message': isSave,
-                                            'message_id': message_id,
-                                            'message': message,
-                                            'image_url': data.image_url,
-                                            'sender': sender,
-                                            'receiver': receiver,
-                                        }));
-                                    },
-                                    error: function (data) {
-                                        alert(data.error)
-                                    }
-                                });
-                            };
-                            reader.readAsArrayBuffer(blob);
-                        })
-                        .catch(error => {
-                            console.error('Error fetching image:', error);
-                        });
-                }
-            }
-        } else {
-            chatSocket.send(JSON.stringify({
-                'type': 'save_message',
-                'save_message': isSave,
-                'message_id': message_id,
-                'message': message,
-                'reply_id': reply_id || null,
-                'sender': sender,
-                'receiver': receiver,
-            }));
-        }
-    } else {
-        chatSocket.send(JSON.stringify({
-            'type': 'save_message',
-            'save_message': isSave,
-            'message_id': message_id,
-        }));
-    }
-}
-
-function closeReplyMessageHolder() {
-    adjustChatHeight(false)
-    var replyMessageHolder = document.getElementById('reply_message_holder');
-    if (replyMessageHolder) {
-        // Find and remove the snap-message element
-        var snapMessage = replyMessageHolder.querySelector('snap-message');
-        if (snapMessage) {
-            snapMessage.remove();
-        }
-    }
-    var close_reply = document.getElementById('close_reply');
-    close_reply.style.display = 'none';
-}
-
-function deleteMessage(message_id) {
-    chatSocket.send(JSON.stringify({
-        'type': 'delete_message',
-        'message_id': message_id,
-        'sender_username': userUsername,
-    }));
-}
-
-// Context Menu
-
-// Section: Handle Hover
-function handleHover(event) {
-    const hoveredElement = event.target;
-
-    // Find the direct parent (container) of the snap-message elements
-    const container = hoveredElement.parentNode;
-
-    // Find all snap-message elements in the container
-    const snapMessages = container.querySelectorAll('snap-message:not(snap-message snap-message)');
-
-    // Find the index of the hovered element among its siblings
-    const index = Array.from(snapMessages).indexOf(hoveredElement);
-
-    // Traverse the chain to find the actual first element
-    let actualFirstElement = hoveredElement;
-    for (let i = index; i < snapMessages.length - 1; i++) {
-        const sibling = snapMessages[i + 1];
-        if (sibling.classList.contains('hasFollower')) {
-            actualFirstElement = sibling;
-        } else {
-            break;
-        }
-
-    }
-
-    const shadowRoot = actualFirstElement.shadowRoot;
-
-    if (shadowRoot) {
-        const additionalText = shadowRoot.querySelector('.additional-text');
-
-        if (additionalText) {
-            additionalText.style.display = 'inline';
-            additionalText.textContent = hoveredElement.getAttribute('timestamp')
-        }
-    }
-}
-
-function handleHoverEnd(event) {
-    const hoveredElement = event.target;
-
-    // Find the direct parent (container) of the snap-message elements
-    const container = hoveredElement.parentNode;
-
-    // Find all snap-message elements in the container
-    const snapMessages = container.querySelectorAll('snap-message');
-
-    // Iterate over each snap-message element and hide additional text
-    snapMessages.forEach((snapMessage) => {
-        const shadowRoot = snapMessage.shadowRoot;
-        if (shadowRoot) {
-            const additionalText = shadowRoot.querySelector('.additional-text');
-            if (additionalText) {
-                additionalText.style.display = 'none';
-            }
-        }
-    });
-}
-
-// Handle Hover End
-
 // Section: Handle New Message
 const STATUS_DELIVERED = 0;
 const STATUS_SEEN = 1;
@@ -721,9 +427,6 @@ async function get_user_private_keys_secondary() {
                 saveSecondaryKey(response.private_key.key, response.private_key.token);
                 device_public_keys[response.device_id] = response.public_key;
                 await initialize_asymmetric_devices();
-                let sym = new symmetric();
-                asymmetric_private_instance = new asymmetric();
-                await sym.importKey(asymmetric_private_instance);
                 generate_room_private_keys();
             } else {
                 console.error('Error loading messages:', response.error);
@@ -807,21 +510,6 @@ function adjustChatHeight(reduce) {
     }
 }
 
-document.getElementById('input').addEventListener('input', function () {
-    resizeTextarea();
-});
-
-function resizeTextarea() {
-    var textarea = document.getElementById('input');
-    var lineHeight = parseFloat(window.getComputedStyle(textarea).lineHeight);
-
-    // Calculate the maximum height for 3 rows
-    var maxHeight = lineHeight * 3;
-
-    textarea.style.height = 'auto'; // Reset height to auto to calculate the actual height
-    textarea.style.height = (textarea.scrollHeight > maxHeight) ? maxHeight + 'px' : textarea.scrollHeight + 'px';
-}
-
 
 document.addEventListener('DOMContentLoaded', function () {
     initialize_socket();
@@ -830,16 +518,12 @@ document.addEventListener('DOMContentLoaded', function () {
             await get_user_private_keys_secondary();
         })();
     } else {
-        (async () => {
-            await initialize_asymmetric_devices(device_public_keys);
-            let sym = new symmetric();
-            asymmetric_private_instance = new asymmetric();
-            await sym.importKey(asymmetric_private_instance);
-        })();
+        if (key) {
+            saveSecondaryKey(key.private_key, key.token);
+        }
         generate_room_private_keys();
     }
 
-    displayImages();
     const ulElement = document.querySelector('.people');
     const userElements = ulElement.querySelectorAll('.person');
 
@@ -863,36 +547,6 @@ document.addEventListener('DOMContentLoaded', function () {
                 location.reload();
             }
         }
-    });
-
-    const messageInput = document.getElementById('input');
-    let isTyping = false;
-    let debounceTimeout;
-
-    messageInput.addEventListener('input', function () {
-        clearTimeout(debounceTimeout);
-
-        if (!isTyping) {
-            // User started typing
-            isTyping = true;
-            if (isWebSocketReady(chatSocket)) {
-                chatSocket.send(JSON.stringify({
-                    'type': 'typing_status',
-                    'typing': true
-                }));
-            }
-        }
-
-        debounceTimeout = setTimeout(function () {
-            // User stopped typing
-            isTyping = false;
-            if (isWebSocketReady(chatSocket)) {
-                chatSocket.send(JSON.stringify({
-                    'type': 'typing_status',
-                    'typing': false
-                }));
-            }
-        }, 500);
     });
 
     let text = document.getElementById('feature_message');
@@ -1197,6 +851,7 @@ function initialize_socket() {
             } else if (data.type === 'message_status_background') {
                 update_message_status(STATUS_SEEN, data.sender_username);
             } else if (data.type === 'typing_status') {
+                console.log(data);
                 update_typing_status(data.sender_username, data.typing);
             } else if (data.type === 'friend_request_accepted') {
                 let img;
@@ -1274,130 +929,6 @@ function message_seen(message_id) {
         'message_id': message_id,
     }));
 }
-
-// Function to handle sending messages
-const sendMessage = async function () {
-    if (isWebSocketReady(chatSocket)) {
-        const messageInput = document.querySelector('#input');
-        let message = messageInput.value.trim();
-
-        if (message !== '' || imageInput.files.length > 0) {
-            $('#form-messages').hide();
-            const loadingIcon = document.getElementById('loading');
-            loadingIcon.style.display = 'inline-block';
-
-            // Check if there is an image selected
-            if (imageInput.files.length > 0) {
-                const file = imageInput.files[0];
-                const img = new Image();
-                img.src = URL.createObjectURL(file);
-
-                img.onload = async function () {
-                    const canvas = document.createElement('canvas');
-                    const ctx = canvas.getContext('2d');
-                    canvas.width = img.width;
-                    canvas.height = img.height;
-
-                    // Step 1: Reduce Quality
-                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                    canvas.toBlob((webpBlob) => {
-
-                        // // Create a new Blob containing text and binary data
-                        // if (encrypted_message) {
-                        //     const combinedBlob = new Blob([JSON.stringify({
-                        //         message: encrypted_message.cipher,
-                        //         storeMessage: storeMessage,
-                        //         public_key: encrypted_message.ratchet_key
-                        //     }), webpBlob]);
-                        //     chatSocket.send(combinedBlob);
-                        // } else {
-                        //     const combinedBlob = new Blob([JSON.stringify({
-                        //         message: encrypted_message,
-                        //         storeMessage: storeMessage,
-                        //         public_keys: null
-                        //     }), webpBlob]);
-                        //     chatSocket.send(combinedBlob);
-                        // }
-
-                        if (message === '') {
-                            imageEncryption_send(webpBlob, null);
-                        } else {
-                            imageEncryption_send(webpBlob, message);
-                        }
-
-                        var imageElement = document.getElementById('selectedImage');
-                        imageElement.src = ''; // Reset the source
-                        imageInput.value = '';
-                        imageInput.type = 'file';
-
-                        bytes_webpBlob = webpBlob;
-                        bytes_message = message;
-                        updateImageLabelIcon(imageInput)
-
-                        var labelElement = document.getElementById('image_input_label');
-                        labelElement.style.display = 'flex';
-
-                        imageElement.style.display = 'none';
-
-                        let current_time = new Date();
-                        handleNewMessage(getActivePerson(), current_time, false);
-                        update_message_status(STATUS_DELIVERED, getActivePerson());
-                    }, 'image/webp', 0.7);
-                };
-            } else {
-                var replyMessageHolder = document.getElementById('reply_message_holder');
-
-                let encrypted_message = await encryption_send(message);
-                var containsSnapMessage = replyMessageHolder.querySelector('snap-message') !== null;
-
-                let encrypted_sent_messages = await encryptSentMessage(message);
-
-                if (containsSnapMessage) {
-                    const reply_id = replyMessageHolder.querySelector('snap-message').id;
-
-                    let data = {
-                        'type': 0,
-                        'message': encrypted_message,
-                        'storeMessage': storeMessage,
-                        'reply_id': reply_id,
-                        'sent_message': encrypted_sent_messages
-                    }
-                    let encodedData = msgpack.encode(data);
-                    chatSocket.send(encodedData);
-                    sent_reply_id = reply_id;
-                    bytes_message = message;
-                } else {
-                    let data = {
-                        'type': 0,
-                        'message': encrypted_message,
-                        'storeMessage': storeMessage,
-                        'sent_message': encrypted_sent_messages
-                    }
-                    let encodedData = msgpack.encode(data);
-                    chatSocket.send(encodedData);
-                    bytes_message = message;
-                }
-            }
-
-            // Scroll to the bottom after sending a message
-            var snapUiContainer = document.getElementById('snap-ui-container');
-            snapUiContainer.scrollTop = snapUiContainer.scrollHeight;
-
-
-            messageInput.value = '';
-        } else {
-            $('#form-messages').html('<div class="alert alert-danger" role="alert">' + "Please type a message" + '</div>');
-        }
-    }
-}
-
-// Event listener for the Enter key press in the input field
-document.querySelector('#input').addEventListener('keypress', function (event) {
-    if (event.key === 'Enter') {
-        sendMessage();
-        event.preventDefault(); // Prevents the default Enter key behavior (e.g., new line in textarea)
-    }
-});
 
 const updateSentMessage = function (message, message_id, reply_id = null) {
     if (message !== '') {
@@ -1566,37 +1097,6 @@ const updateImage = function (image, from, message_id, input, message = null) {
     updateImageLabelIcon(input)
 }
 
-const displayImages = function () {
-    const imageContainer = document.getElementById('snap-ui-container');
-
-    imageContainer.addEventListener('click', function (event) {
-        const imageUrl = getImageUrl(event.target);
-
-        if (imageUrl !== null) {
-            const modalElement = document.getElementById('image-viewer');
-            modalElement.style.display = 'block';
-
-            const fullImageElement = document.getElementById('full-image');
-            fullImageElement.src = imageUrl;
-        }
-    });
-
-    function getImageUrl(element) {
-        // Check if the clicked element is an image or a child of an image
-        const isImage = element.tagName === 'IMG' || element.closest('img');
-
-        // If it's an image, return the src, otherwise return null
-        return isImage ? element.src : null;
-    }
-
-    const closeButtonElement = document.getElementById('close-button');
-    closeButtonElement.addEventListener('click', function () {
-        // Hide the modal
-        const modalElement = document.getElementById('image-viewer');
-        modalElement.style.display = 'none';
-    });
-}
-
 function updateImageLabelIcon(input) {
     // Get the file input and its value
     if (input && input.files && input.files[0]) {
@@ -1741,22 +1241,13 @@ function remove_chat(username) {
 
 // Section: Typing
 function update_typing_status(username, typing) {
-    const heading_name = document.getElementById('heading_name');
-    heading_name.innerHTML = `${username}`;
-    const newUserStatusSpan = document.createElement('span');
-    newUserStatusSpan.className = 'preview';
-    newUserStatusSpan.style.fontSize = '14px'; // Set the desired style
-    newUserStatusSpan.style.color = 'rgb(217,217,217)'; // Set the desired style
-    newUserStatusSpan.style.marginLeft = 8;
 
     var personElement = document.querySelector(`[data-chat='${username}']`);
 
     if (typing) {
-        newUserStatusSpan.textContent = 'typing';
         update_message_status(STATUS_TYPING, username, false);
     } else {
         if (personElement) {
-            newUserStatusSpan.textContent = personElement.getAttribute('status');
             var statusValue = personElement.getAttribute('message_status');
             if (statusValue) {
                 var intValue = parseInt(statusValue, 10);
@@ -1766,7 +1257,6 @@ function update_typing_status(username, typing) {
             }
         }
     }
-    heading_name.appendChild(newUserStatusSpan);
 }
 
 // Section: RetrieveKeys

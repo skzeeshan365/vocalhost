@@ -77,6 +77,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 if self.sender:
                     self.sender_username = self.sender.get_username()
                     if self.sender.is_authenticated:
+                        await self.channel_layer.group_add(
+                            self.sender_username,
+                            self.channel_name
+                        )
                         await self.channel_layer.group_send(
                             'chat',
                             {
@@ -256,10 +260,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
                         },
                     )
             elif type == 'typing_status':
-                if channel_active:
+                if self.get_user_status_realtime(self.receiver_username):
                     typing = text_data_json.get('typing')
                     await self.channel_layer.group_send(
-                        f'{self.room.room}_{self.receiver_username}',
+                        self.receiver_username,
                         {
                             "type": "typing_status",
                             "typing": typing,
@@ -812,7 +816,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     saved=False,
                     image_url=None,
                 )
-        if cipher or bytes_cipher:
+        if (cipher or bytes_cipher) and base_message:
             device_id = UserDevice.get_device_by_id(device_id)
             sender_device_id = UserDevice.get_device_by_id(self.device_id)
             public_key = PublicKey.load_ratchet_key_raw(public_key)
@@ -895,6 +899,13 @@ class ChatConsumer(AsyncWebsocketConsumer):
     def get_room_user_status_realtime(self, username):
         user = connected_users.get(username)
         if user and user.get('room') == self.room.room:
+            return True
+        else:
+            return False
+
+    def get_user_status_realtime(self, username):
+        user = connected_users.get(username)
+        if user:
             return True
         else:
             return False
