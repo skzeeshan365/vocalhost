@@ -791,6 +791,7 @@ def update_request(type, room, sender, receiver, title, message, accept=False, d
                 'username': sender.username,
             }
             send_pusher_update(message_data=message_data, receiver_username=receiver.username)
+            print('1')
             # send_message_to_device(receiver, title=title, message=message)
     else:
         message_data = {
@@ -841,7 +842,7 @@ class FriendRequest(models.Model):
                            title='Friend request accepted',
                            message=f'{self.receiver.username} has accepted your friend request', accept=True)
 
-            self.delete()
+
         elif self.status == self.PENDING:
             thread = threading.Thread(target=update_request, args=(
                 'friend_request_added',

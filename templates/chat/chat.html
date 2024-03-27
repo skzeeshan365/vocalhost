@@ -103,10 +103,10 @@
                     <i class="fas fa-plus-square icon-middle"></i>
                     <!-- Bootstrap badge -->
                     {% if received_requests > 0 %}
-                        <span id="request_badge" class="badge badge-danger">{{ received_requests }}</span>
+                        <span id="request_badge" class="badge badge-danger" style="position: absolute; top: 5px; right: 10px; border-radius: 50%; background-color: #009dff; elevation: below;">{{ received_requests }}</span>
                     {% else %}
                         <span id="request_badge" class="badge badge-danger"
-                              style="display: none;">{{ received_requests }}</span>
+                              style="position: absolute; top: 5px; right: 10px; border-radius: 50%; background-color: #009dff; elevation: below; display: none;">{{ received_requests }}</span>
                     {% endif %}
                 </a>
             </div>

@@ -108,7 +108,7 @@ def chat_box(request):
             kolkata_time = utc_time + kolkata_offset
             item['last_message_timestamp'] = kolkata_time.strftime('%I:%M %p')
 
-    received_friend_request = FriendRequest.objects.filter(receiver=user).count()
+    received_friend_request = FriendRequest.objects.filter(receiver=user, status=FriendRequest.PENDING).count()
 
     device_id_cookie = request.COOKIES.get('device_id')
 
@@ -407,21 +407,23 @@ def add_chat(request):
 
     for other_user in users:
         room = Room.getRoom(user, other_user)
-        if room:
-            continue
 
         received_friend_request = FriendRequest.objects.filter(sender=other_user, receiver=user).first()
         sent_friend_request = FriendRequest.objects.filter(sender=user, receiver=other_user).first()
 
         if received_friend_request and received_friend_request.status == FriendRequest.PENDING:
-            pending_received_requests.append(other_user)
+            pending_received_requests.append({'user': other_user, 'status': 1})
 
         elif sent_friend_request:
             if sent_friend_request.status == FriendRequest.PENDING:
                 users_with_no_requests.append({'user': other_user, 'status': True})
+            elif sent_friend_request.status == FriendRequest.ACCEPTED:
+                pending_received_requests.append({'user': other_user, 'status': 0})
+                sent_friend_request.delete()
             else:
                 users_with_no_requests.append({'user': other_user, 'status': False})
-
+        elif room:
+            continue
         else:
             users_with_no_requests.append({'user': other_user, 'status': False})
 
@@ -675,7 +677,7 @@ def remove_chat(request):
         username = data.get('username')
         if user is not None and username is not None:
             receiver = UserProfile.get_user_by_username(username)
-            room = Room.getRoom(user.username, receiver)
+            room = Room.getRoom(user, receiver)
             if room:
                 room.delete()
                 message_data = {

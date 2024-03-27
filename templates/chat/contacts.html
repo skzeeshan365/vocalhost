@@ -86,29 +86,36 @@
         <div id="left_bar" class="col-lg-3 col-md-3 col-sm-3 left_bar">
             <ul class="people" id="request_list">
                 {% for user in requests %}
-                    <li class="person" data-chat={{ user.username }}>
-                        <a href="{% url 'chat_profile' user.username %}">
-                            {% if user.userprofile.image %}
+                    <li class="person" data-chat={{ user.user.username }}>
+                        <a href="{% url 'chat_profile' user.user.username %}">
+                            {% if user.user.userprofile.image %}
                                 <img id="users_profile_pic" class="users_profile_pic"
-                                     src="{{ user.userprofile.image.url }}" alt="Profile picture"/>
+                                     src="{{ user.user.userprofile.image.url }}" alt="Profile picture"/>
                             {% else %}
                                 <img id="users_profile_pic" class="users_profile_pic" src="{% static 'img/user.png' %}"
                                      alt="Profile picture"/>
                             {% endif %}
                             <div style="display: flex; flex-direction: column; margin-left: 10px;">
                                 <!-- Adjust margin as needed -->
-                                {% if user.get_full_name %}
-                                    <span class="name">{{ user.get_full_name }}</span>
+                                {% if user.user.get_full_name %}
+                                    <span class="name">{{ user.user.get_full_name }}</span>
                                 {% else %}
-                                    <span class="name">{{ user.username }}</span>
+                                    <span class="name">{{ user.user.username }}</span>
                                 {% endif %}
-                                <span class="preview" style="width: 100%;">{{ user.username }}</span>
+                                <span class="preview" style="width: 100%;">{{ user.user.username }}</span>
                             </div>
                         </a>
-                        <div class="add-friend-container">
-                            <button class="add-friend-icon" onclick="acceptRequest('{{ user.username }}')">Accept
+                    {% if  user.status == 1 %}
+                    	<div class="add-friend-container">
+                            <button class="add-friend-icon" onclick="acceptRequest('{{ user.user.username }}')">Accept
                             </button>
                         </div>
+                        {% else %}
+                        <div class="add-friend-container">
+                            <i class="fas fa-comment add-friend-icon" onclick=""></i>
+                        </div>
+                    {% endif %} 
+                    
                     </li>
                 {% empty %}
                     <div class="row justify-content-center">
@@ -247,7 +254,7 @@
 </script>
 
 <script>
-    Pusher.logToConsole = false;
+    Pusher.logToConsole = true;
 
     var pusher = new Pusher('{{ pusher }}', {
         cluster: 'ap2'
@@ -257,13 +264,15 @@
     channel.bind(`${userUsername}-new-message`, function (data) {
         let user_list = document.getElementById('user_list');
         let request_list = document.getElementById('request_list');
+        let personElement = user_list.querySelector(`[data-chat='${data.username}']`);
+        
         if (data.type === 'friend_request_accepted') {
-            let personElement = user_list.querySelector(`[data-chat='${data.username}']`);
             if (personElement) {
-                personElement.remove();
+                var buttonElement = personElement.querySelector('.add-friend-icon');
+                buttonElement.onclick = null;
+                request_list.insertBefore(personElement, request_list.firstChild);
             }
         } else if (data.type === 'friend_request_added') {
-            let personElement = user_list.querySelector(`[data-chat='${data.username}']`);
             if (personElement) {
                 var buttonElement = personElement.querySelector('.add-friend-icon');
                 buttonElement.onclick = function () {
