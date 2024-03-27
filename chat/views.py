@@ -39,7 +39,7 @@ def chat_box(request):
     if settings.DEBUG is False:
         protocol = 'wss'
     else:
-        protocol = 'ws'
+        protocol = 'wss'
     room_messages_info = []
 
     for other_user in users:
