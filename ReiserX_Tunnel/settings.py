@@ -22,7 +22,7 @@ DEBUG = True
 ALLOWED_HOSTS = ['localhost', '3.109.62.111', 'vocalhost.reiserx.com', '127.0.0.1', '192.168.0.100']
 
 if DEBUG:
-    ROOT_DOMAIN = 'vocalhost.reiserx.com'
+    ROOT_DOMAIN = 'localhost'
 else:
     ROOT_DOMAIN = 'vocalhost.reiserx.com'
 

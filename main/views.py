@@ -169,8 +169,8 @@ def login_view(request):
                 next_page = resolve_url(next_page)
                 response = redirect(next_page)
                 device_id = UserDevice.create_user_device(user, request)
-                secret = UserSecure.get_or_create(user, device_id)
                 if device_id:
+                    secret = UserSecure.get_or_create(user, device_id)
                     response.set_cookie('device_id',
                                         str(device_id.identifier),
                                         max_age=365 * 24 * 60 * 60,
