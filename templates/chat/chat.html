@@ -122,7 +122,7 @@
             <div style="height: 100%; overflow-y: auto;">
                 <ul class="people" style="display: none;">
                     {% for user in users %}
-                        <li onclick="window.location.href = '{% url 'load_chat_room' user.room %}';"
+                        <li onclick="load_chat_room('{% url 'load_chat_room' user.room %}')"
                             class="person context-menu-trigger"
                             data-chat="{{ user.user.username }}" data-room="{{ user.room }}">
                             {% if user.user.userprofile.image %}
@@ -280,7 +280,7 @@
 <!-- CUSTOM FILES -->
 <script src="{% static 'chat/js/main.js' %}"></script>
 <script src="{% static 'chat/js/ratchet-v'|add:ASSET_VERSION_RATCHET|add:'.js' %}?v=1"></script>
-<script src="{% static 'chat/js/base_main-v'|add:ASSET_VERSION|add:'.js' %}?v=1"></script>
+<script src="{% static 'chat/js/base_main-v'|add:ASSET_VERSION|add:'.js' %}?v=2"></script>
 
 <script src="https://www.gstatic.com/firebasejs/8.6.3/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.6.3/firebase-analytics.js"></script>
@@ -294,7 +294,7 @@
 
     function hideLoaderAndDisplayContent() {
         document.getElementById('preloader_left').remove();
-        document.querySelector('.people').style.display = 'flex';
+        document.querySelector('.people').style.display = 'block';
     }
 
     function simulateRequest() {

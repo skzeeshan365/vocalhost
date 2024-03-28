@@ -144,10 +144,11 @@ def chat_box(request):
 
         response = render(request, "chat/chat.html",
                           context)
+        print('1')
     else:
         device = UserDevice.create_user_device(user, request)
-        secret = UserSecure.get_or_create(user, device)
         if device:
+            secret = UserSecure.get_or_create(user, device)
             context = {'protocol': protocol,
                        'abcf': settings.FIREBASE_API_KEY,
                        'users': room_messages_info,

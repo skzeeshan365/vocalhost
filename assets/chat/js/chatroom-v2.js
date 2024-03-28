@@ -1,5 +1,10 @@
 "use strict";
 
+function load_chat_room(url) {
+    history.replaceState(null, document.title, '/chat/');
+    window.location.href = url;
+}
+
 // Section: ContextMenu
 const saveTextElement = document.getElementById('save_text');
 const delete_message_context = document.getElementById('delete_message_context');
