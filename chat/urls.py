@@ -11,6 +11,8 @@ urlpatterns = [
 
     path('', chat_box, name="chat"),
     path('login/', views.chat_login_view, name="chat_login"),
+    path('register/', views.chat_register, name="chat_register"),
+
     path('profile/<str:username>/', views.chat_profile, name='chat_profile'),
     path("delete/<str:receiver>/", views.delete_messages, name="delete_messages"),
     path("load/messages/<str:receiver>/", views.load_messages, name="load_messages"),

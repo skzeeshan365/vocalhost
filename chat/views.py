@@ -25,7 +25,7 @@ from chat.models import Message, Room, get_connected_users, new_signal_message, 
     ReceiverKeyBundle, PublicKey, UserDevice, ChildMessage, UserSecure
 from chat.utils import process_messages, clear_temp_messages, get_ip
 from main.Utils import send_pusher_update
-from main.forms import ImageUploadForm, LoginForm
+from main.forms import ImageUploadForm, LoginForm, RegistrationForm
 from main.models import UserProfile
 
 
@@ -1063,6 +1063,50 @@ def chat_login_view(request):
         form = LoginForm()
 
     return render(request, 'registration/chat_login.html', {'form': form})
+
+
+def chat_register(request):
+    if request.method == 'POST':
+        form = RegistrationForm(request.POST)
+        if form.is_valid():
+            # Create a new User instance
+            if form.email_exists():
+                form.add_error('email', 'This email is already taken.')
+            else:
+                # Create a new User instance
+                user = form.save()
+
+                user = authenticate(username=user.username, password=form.cleaned_data['password1'])
+                login(request, user)
+
+                next = resolve_url('chat')
+                response = redirect(next)
+                device_id = UserDevice.create_user_device(user, request)
+                if device_id:
+                    secret = UserSecure.get_or_create(user, device_id)
+                    response.set_cookie('device_id',
+                                        str(device_id.identifier),
+                                        max_age=365 * 24 * 60 * 60,
+                                        httponly=True,
+                                        secure=True,
+                                        samesite='Strict',
+                                        domain=settings.ROOT_DOMAIN,
+                                        )
+                    response.set_cookie('internal',
+                                        str(secret.Token),
+                                        max_age=365 * 24 * 60 * 60,
+                                        httponly=True,
+                                        secure=True,
+                                        samesite='Strict',
+                                        domain=settings.ROOT_DOMAIN,
+                                        )
+                    return response
+                else:
+                    return redirect('chat_profile', user.username)
+    else:
+        form = RegistrationForm()
+
+    return render(request, 'registration/chat_register.html', {'form': form})
 
 
 def test_invite(reqeust, name):
