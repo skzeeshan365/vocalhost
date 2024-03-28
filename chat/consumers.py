@@ -16,7 +16,7 @@ from django.http import SimpleCookie
 from ReiserX_Tunnel import settings
 from ReiserX_Tunnel.AuthBackend import CustomAuthBackend
 from chat.models import Room, Message, new_signal_message, connected_users, PublicKey, UserDevice, ChildMessage, \
-    SentMessage
+    SentMessage, UserSecure
 from main import Utils
 from main.Utils import cloudinary_image_delete, cloudinary_image_upload, get_image_public_id, send_message_to_device
 from main.models import UserProfile
@@ -39,7 +39,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
         return CustomAuthBackend().authenticate_api(api_key=api_key)
 
     async def connect(self):
-        await self.accept()
         query_string = self.scope['query_string'].decode('utf-8')
         query_params = parse_qs(query_string)
 
@@ -66,17 +65,24 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 await self.close()
         else:
             headers = dict(self.scope['headers'])
-
             cookies = SimpleCookie()
             cookies.load(headers.get(b'cookie').decode())
 
             device_id = cookies.get('device_id')
-            if device_id:
+            token = cookies.get('internal')
+            if device_id and token:
                 self.device_id = device_id.value
-                self.sender = await self.get_device_user(self.device_id)
-                if self.sender:
-                    self.sender_username = self.sender.get_username()
-                    if self.sender.is_authenticated:
+                self.sender = self.scope.get('user')
+
+                device_user = await UserDevice.get_user_by_device_async(self.device_id)
+                if self.sender and device_user:
+                    secrets = UserSecure.get_user_secret_by_token_async(self.sender, UserDevice.get_device_by_id_async(
+                        self.device_id), token)
+                    if self.sender.is_authenticated and self.sender == device_user and secrets:
+                        await self.accept()
+                        # Connection accepted
+
+                        self.sender_username = self.sender.get_username()
                         await self.channel_layer.group_add(
                             self.sender_username,
                             self.channel_name
@@ -111,11 +117,11 @@ class ChatConsumer(AsyncWebsocketConsumer):
                         # ))
                         # thread.start()
                     else:
-                        await self.close()
+                        await self.close(code=1000)
                 else:
-                    await self.close()
+                    await self.close(code=1000)
             else:
-                await self.close()
+                await self.close(code=1000)
 
     async def listen_for_signal_messages(self):
         async def forward_signal_messages(sender, receiver_username, message, **kwargs):

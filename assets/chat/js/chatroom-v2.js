@@ -438,7 +438,6 @@ async function load_chat(userName) {
         }
         if (window.innerWidth <= 768) {
             document.getElementById('chat_parent_container').style.display = 'block';
-            document.getElementById('left_bar').style.display = 'none';
         }
 
         var snapUiContainer = document.getElementById('snap-ui-container');
@@ -959,7 +958,7 @@ function initWebSocket(web_socket_url) {
     chatSocket.onclose = function (event) {
         if (event.code !== 1000) {
             console.log('Reconnecting...');
-            // setTimeout(initialize_socket, 10000);
+            setTimeout(initialize_socket, 10000);
         }
         reject(event);
     };

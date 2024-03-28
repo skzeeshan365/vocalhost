@@ -1,6 +1,7 @@
 import os
 
 import django
+from channels.auth import AuthMiddlewareStack
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'ReiserX_Tunnel.settings')
 django.setup()
@@ -11,5 +12,6 @@ from django.core.asgi import get_asgi_application
 
 application = ProtocolTypeRouter({
     'http': get_asgi_application(),
-    'websocket': URLRouter(websocket_urlpatterns),
+    'websocket': AuthMiddlewareStack(
+        URLRouter(websocket_urlpatterns)),
 })

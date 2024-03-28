@@ -144,7 +144,6 @@ def chat_box(request):
 
         response = render(request, "chat/chat.html",
                           context)
-        print('1')
     else:
         device = UserDevice.create_user_device(user, request)
         if device:
@@ -360,7 +359,6 @@ def get_private_key_token(request):
         user = request.user
         device = UserDevice.get_device_by_id(device_id)
         token = request.COOKIES.get('internal')
-        print(token)
         if device and user:
             secret = UserSecure.get_user_secret_by_token(user=request.user, device=device, token=token)
             if secret:
@@ -1065,3 +1063,8 @@ def chat_login_view(request):
         form = LoginForm()
 
     return render(request, 'registration/chat_login.html', {'form': form})
+
+
+def test_invite(reqeust, name):
+    name = name.title()
+    return render(reqeust, 'chat/invitation.html', {'name': name})

@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Beta Test Invitation</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #2f2f2f;
+        }
+        p {
+            color: #d0d0d0;
+        }
+        .content {
+            max-width: 600px;
+            text-align: left;
+        }
+        h2, h3 {
+            color: #d0d0d0;
+        }
+        ul {
+            list-style-type: none;
+            padding: 0;
+            color: #d0d0d0;
+        }
+        li {
+            margin-bottom: 10px;
+        }
+        
+        .github-list {
+    list-style: none;
+    padding-left: 20px;
+}
+
+.github-list li {
+    border-left: 4px solid #a276ff;
+    padding-left: 10px;
+    margin-bottom: 10px;
+}
+        a {
+            color: #a276ff;
+            text-decoration: none;
+        }
+        a:hover {
+            color: #894fff;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="content">
+        <h2>Join Vocalhost Beta Test!</h2>
+        <p>Hey {{ name }},</p>
+        
+        <p>I'm currently working on Vocalhost and I'd like to invite you for its first beta test.</p>
+        
+        <p>Vocalhost is a cutting-edge messaging platform end-to-end encrypted with Signal Protocol. Unlike traditional messaging apps, Vocalhost synchronizes seamlessly across multiple devices without the need to transfer keys or data between them. Each device maintains its own setup for encryption and decryption, ensuring a secure and hassle-free messaging experience. </p>
+        
+        <h3>Prominent Features:</h3>
+        <ul class="github-list">
+            <li>End-to-end encrypted messaging</li>
+            <li>Every device operates independently, allowing seamless synchronization across all your devices without the need for a primary device like other messaging apps.</li>
+            <li>Supports various types of messages including text and images</li>
+        </ul>
+        
+        <h3>Current Stage:</h3>
+        <p>The backend development has reached a functional stage, and frontend development is halfway done for the web platform. Development for Android and iOS apps will commence soon.</p>
+        
+        <h3>Details:</h3>
+        <ul>
+            <li>Beta Test: 1</li>
+            <li>Duration: 3 days</li>
+            <li>Platform: Web</li>
+            <li>How to Access: <a href="{% url 'chat' %}">click here</a></li>
+            <li>Requirements: Modern web browser, Google Chrome/Microsoft Edge</li>
+        </ul>
+        
+        <h3>Submit Feedback:</h3>
+        <p>Your feedback will be most valuable at this stage.</p>
+        <p><a href="https://reiserx.com/contact/">Feedback Form</a></p>
+        
+        <p>Cheers,<br>ReiserX</p>
+    </div>
+</body>
+</html>

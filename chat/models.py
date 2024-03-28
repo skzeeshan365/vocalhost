@@ -75,6 +75,16 @@ class UserDevice(models.Model):
             return None
 
     @staticmethod
+    @database_sync_to_async
+    def get_user_by_device_async(identifier_value):
+        try:
+            device_identifier = UserDevice.objects.get(identifier=identifier_value)
+            user = device_identifier.user
+            return user
+        except UserDevice.DoesNotExist:
+            return None
+
+    @staticmethod
     def get_user_devices(user):
         devices = UserDevice.objects.filter(user=user)
         if devices.exists():
@@ -169,6 +179,15 @@ class UserSecure(models.Model):
 
     @classmethod
     def get_user_secret_by_token(cls, user, device, token):
+        try:
+            secret = cls.objects.get(User=user, Device=device, Token=token)
+            return secret
+        except UserSecure.DoesNotExist:
+            return None
+
+    @classmethod
+    @database_sync_to_async
+    def get_user_secret_by_token_async(cls, user, device, token):
         try:
             secret = cls.objects.get(User=user, Device=device, Token=token)
             return secret

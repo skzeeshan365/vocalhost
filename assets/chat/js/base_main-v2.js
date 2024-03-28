@@ -198,7 +198,7 @@ function initialize_socket() {
     chatSocket.onclose = function (event) {
         if (event.code !== 1000) {
             console.log('Reconnecting...');
-            // setTimeout(initialize_socket, 10000);
+            setTimeout(initialize_socket, 10000);
         }
     };
 

@@ -7,6 +7,8 @@ urlpatterns = [
     path('account/profile/update/profile-pic', views.update_profile, name='update_profile'),
     path('account/profile/update/info', views.update_profile_info, name='update_profile_info'),
 
+    path('test/invite/<str:name>/', views.test_invite, name='test_invite'),
+
     path('', chat_box, name="chat"),
     path('login/', views.chat_login_view, name="chat_login"),
     path('profile/<str:username>/', views.chat_profile, name='chat_profile'),
